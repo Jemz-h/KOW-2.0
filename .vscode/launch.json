@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "KOW",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/landing.dart"
+    },
+    {
+      "name": "testdrive (profile mode)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "profile",
+      "program": "lib/landing.dart"
+    },
+    {
+      "name": "testdrive (release mode)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "release",
+      "program": "lib/landing.dart"
+    }
+  ]
+}
