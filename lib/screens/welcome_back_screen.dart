@@ -7,20 +7,40 @@ import 'menu_screen.dart';
 import 'welcome_student_screen.dart';
 
 /// Login screen that leads to menu or sign-up flow.
-class WelcomeBackScreen extends StatelessWidget {
+class WelcomeBackScreen extends StatefulWidget {
   const WelcomeBackScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MockBackground(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final w = constraints.maxWidth;
-          final h = constraints.maxHeight;
+  State<WelcomeBackScreen> createState() => _WelcomeBackScreenState();
+}
 
-          return SafeArea(
-            child: Stack(
-              children: [
+class _WelcomeBackScreenState extends State<WelcomeBackScreen> {
+  final _formKey = GlobalKey<FormState>();
+
+  void _handleStart(BuildContext context) {
+    final isValid = _formKey.currentState?.validate() ?? false;
+    if (!isValid) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select your birthday before continuing.')),
+      );
+      return;
+    }
+    pushFade(context, const MenuScreen());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: MockBackground(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final w = constraints.maxWidth;
+            final h = constraints.maxHeight;
+
+            return SafeArea(
+              child: Stack(
+                children: [
                 Positioned(
                   top: h * 0.03,
                   left: w * 0.05,
@@ -84,97 +104,100 @@ class WelcomeBackScreen extends StatelessWidget {
                     padding: EdgeInsets.symmetric(horizontal: w * 0.08),
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 420),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'WELCOME\nBACK!',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: w * 0.12,
-                              color: Colors.white,
-                              height: 0.9,
-                              shadows: const [
-                                Shadow(
-                                  blurRadius: 8,
-                                  color: Colors.black45,
-                                  offset: Offset(2, 2),
-                                ),
-                              ],
+                      child: Form(
+                        key: _formKey,
+                        autovalidateMode: AutovalidateMode.onUserInteraction,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'WELCOME\nBACK!',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: w * 0.12,
+                                color: Colors.white,
+                                height: 0.9,
+                                shadows: const [
+                                  Shadow(
+                                    blurRadius: 8,
+                                    color: Colors.black45,
+                                    offset: Offset(2, 2),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'LOGIN TO CONTINUE\nYOUR ADVENTURE!',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: w * 0.04,
-                              color: const Color(0xFFFFE34D),
-                              shadows: const [
-                                Shadow(
-                                  blurRadius: 4,
-                                  color: Colors.black38,
-                                  offset: Offset(1, 1),
-                                ),
-                              ],
+                            const SizedBox(height: 12),
+                            Text(
+                              'LOGIN TO CONTINUE\nYOUR ADVENTURE!',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: w * 0.04,
+                                color: const Color(0xFFFFE34D),
+                                shadows: const [
+                                  Shadow(
+                                    blurRadius: 4,
+                                    color: Colors.black38,
+                                    offset: Offset(1, 1),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          SizedBox(height: h * 0.03),
-                          const ChalkTextField(
-                            hintText: 'NICKNAME',
-                            icon: Icons.person,
-                          ),
-                          const SizedBox(height: 12),
-                          const ChalkDropdown(
-                            hintText: 'BIRTHDAY',
-                            icon: Icons.cake,
-                            items: ['January', 'February', 'March'],
-                          ),
-                          const SizedBox(height: 16),
-                          ChalkButton(
-                            label: 'START',
-                            color: const Color(0xFF5C87E5),
-                            textColor: Colors.white,
-                            onPressed: () => pushFade(
-                              context,
-                              const MenuScreen(),
+                            SizedBox(height: h * 0.03),
+                            const ChalkTextField(
+                              hintText: 'NICKNAME',
+                              icon: Icons.person,
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'NO NICKNAME YET? CLICK THE BUTTON BELOW',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: w * 0.03,
-                              color: const Color(0xFFFFE34D),
-                              shadows: const [
-                                Shadow(
-                                  blurRadius: 3,
-                                  color: Colors.black38,
-                                  offset: Offset(1, 1),
-                                ),
-                              ],
+                            const SizedBox(height: 12),
+                            const ChalkDropdown(
+                              hintText: 'BIRTHDAY',
+                              icon: Icons.cake,
+                              items: ['January', 'February', 'March'],
+                              required: true,
                             ),
-                          ),
-                          const SizedBox(height: 10),
-                          ChalkButton(
-                            label: 'SIGN UP',
-                            color: const Color(0xFFF2F089),
-                            textColor: const Color(0xFF2B2B2B),
-                            onPressed: () => pushFade(
-                              context,
-                              const WelcomeStudentScreen(),
+                            const SizedBox(height: 16),
+                            ChalkButton(
+                              label: 'START',
+                              color: const Color(0xFF5C87E5),
+                              textColor: Colors.white,
+                              onPressed: () => _handleStart(context),
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 12),
+                            Text(
+                              'NO NICKNAME YET? CLICK THE BUTTON BELOW',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: w * 0.03,
+                                color: const Color(0xFFFFE34D),
+                                shadows: const [
+                                  Shadow(
+                                    blurRadius: 3,
+                                    color: Colors.black38,
+                                    offset: Offset(1, 1),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            ChalkButton(
+                              label: 'SIGN UP',
+                              color: const Color(0xFFF2F089),
+                              textColor: const Color(0xFF2B2B2B),
+                              onPressed: () => pushFade(
+                                context,
+                                const WelcomeStudentScreen(),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ],
-            ),
-          );
-        },
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }

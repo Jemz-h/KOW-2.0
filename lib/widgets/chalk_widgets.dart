@@ -27,11 +27,22 @@ class ChalkTextField extends StatelessWidget {
 
 /// Chalk-styled dropdown input.
 class ChalkDropdown extends StatefulWidget {
-  const ChalkDropdown({super.key, required this.hintText, required this.icon, required this.items});
+  const ChalkDropdown({
+    super.key,
+    required this.hintText,
+    required this.icon,
+    required this.items,
+    this.required = false,
+    this.onChanged,
+    this.validator,
+  });
 
   final String hintText;
   final IconData icon;
   final List<String> items;
+  final bool required;
+  final ValueChanged<String?>? onChanged;
+  final String? Function(String?)? validator;
 
   @override
   State<ChalkDropdown> createState() => _ChalkDropdownState();
@@ -56,6 +67,12 @@ class _ChalkDropdownState extends State<ChalkDropdown> {
           borderSide: BorderSide.none,
         ),
       ),
+      validator: (value) {
+        if (widget.required && (value == null || value.isEmpty)) {
+          return 'Required';
+        }
+        return widget.validator?.call(value);
+      },
       items: widget.items
           .map(
             (item) => DropdownMenuItem<String>(
@@ -68,6 +85,7 @@ class _ChalkDropdownState extends State<ChalkDropdown> {
         setState(() {
           _selected = value;
         });
+        widget.onChanged?.call(value);
       },
     );
   }
