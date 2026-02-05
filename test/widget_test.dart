@@ -6,10 +6,10 @@ void main() {
     await tester.pumpWidget(const MyApp());
 
     // Check title exists
-    expect(find.text('KARUNUNGAN ON\nWHEELS'), findsOneWidget);
+  expect(find.text('KARUNUNGAN\nON WHEELS'), findsOneWidget);
 
     // Check tap text exists
     expect(find.text('Tap anywhere to start'), findsOneWidget);
   });
 }
- 
+  
