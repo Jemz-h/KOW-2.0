@@ -16,16 +16,23 @@ class WelcomeBackScreen extends StatefulWidget {
 
 class _WelcomeBackScreenState extends State<WelcomeBackScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _birthdayController = TextEditingController();
 
   void _handleStart(BuildContext context) {
     final isValid = _formKey.currentState?.validate() ?? false;
     if (!isValid) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select your birthday before continuing.')),
+        const SnackBar(content: Text('Please enter your birthday before continuing.')),
       );
       return;
     }
     pushFade(context, const MenuScreen());
+  }
+
+  @override
+  void dispose() {
+    _birthdayController.dispose();
+    super.dispose();
   }
 
   @override
@@ -148,11 +155,17 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen> {
                               icon: Icons.person,
                             ),
                             const SizedBox(height: 12),
-                            const ChalkDropdown(
-                              hintText: 'BIRTHDAY',
+                            ChalkTextField(
+                              hintText: '10/22/2004',
                               icon: Icons.cake,
-                              items: ['January', 'February', 'March'],
-                              required: true,
+                              keyboardType: TextInputType.datetime,
+                              controller: _birthdayController,
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) {
+                                  return 'Required';
+                                }
+                                return null;
+                              },
                             ),
                             const SizedBox(height: 16),
                             ChalkButton(
