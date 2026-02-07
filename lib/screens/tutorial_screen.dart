@@ -3,7 +3,7 @@ import '../widgets/mock_background.dart';
 
 /// A simple placeholder for the Tutorial screen.
 class TutorialScreen extends StatelessWidget {
-  const TutorialScreen({Key? key}) : super(key: key);
+  const TutorialScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

@@ -1,6 +1,6 @@
 {
-    "name": "testdrive",
-    "short_name": "testdrive",
+    "name": "KOW",
+    "short_name": "KOW",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

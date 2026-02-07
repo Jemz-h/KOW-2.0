@@ -67,7 +67,7 @@ class _ChalkDropdownState extends State<ChalkDropdown> {
   @override
   Widget build(BuildContext context) {
     return DropdownButtonFormField<String>(
-      value: _selected,
+      initialValue: _selected,
       icon: const Icon(Icons.arrow_drop_down),
       decoration: InputDecoration(
         filled: true,
