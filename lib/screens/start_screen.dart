@@ -10,9 +10,10 @@ class StartScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MockBackground(
-      child: GestureDetector(
-        onTap: () => pushFade(context, const WelcomeBackScreen()),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => pushFade(context, const WelcomeBackScreen()),
+      child: MockBackground(
         child: LayoutBuilder(
           builder: (context, constraints) {
             final w = constraints.maxWidth;

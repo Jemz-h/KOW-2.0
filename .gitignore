@@ -33,6 +33,24 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Flutter generated platform artifacts
+android/.gradle/
+android/.idea/
+android/local.properties
+android/app/.cxx/
+android/app/build/
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/App.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Flutter/ephemeral/
+ios/Runner/GeneratedPluginRegistrant.*
+linux/flutter/ephemeral/
+macos/Flutter/ephemeral/
+windows/flutter/ephemeral/
+
 # Symbolication related
 app.*.symbols
 
@@ -43,3 +61,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local work logs (not committed)
+/md/

@@ -3,7 +3,7 @@ import '../widgets/mock_background.dart';
 
 /// A simple placeholder for About.
 class AboutScreen extends StatelessWidget {
-  const AboutScreen({Key? key}) : super(key: key);
+  const AboutScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
