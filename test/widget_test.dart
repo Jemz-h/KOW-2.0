@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kow/main.dart';
+import 'package:KOW/main.dart';
 
 void main() {
   testWidgets('App loads background screen', (WidgetTester tester) async {

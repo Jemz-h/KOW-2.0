@@ -1,43 +1,41 @@
 import 'package:flutter/material.dart';
 
-/// Global theme notifier so any screen can listen to background changes.
-final ValueNotifier<String> selectedThemeNotifier = ValueNotifier<String>('space');
-
-/// Maps theme keys to their background asset paths.
-const Map<String, String> themeBackgrounds = {
-  'classroom': 'assets/settings/classroom_bg.png',
-  'sauyo':     'assets/settings/sauyo_bg.png',
-  'space':     'assets/settings/space_bg.png',
-};
+const String kDefaultBackgroundImage = 'assets/images/bg_spc_w:cloud.png';
 
 /// Chalkboard background wrapper used across all screens.
 class MockBackground extends StatelessWidget {
-  const MockBackground({super.key, required this.child});
+  const MockBackground({
+    super.key,
+    required this.child,
+    this.backgroundImage,
+    this.fit = BoxFit.cover,
+  });
 
   final Widget child;
+  final String? backgroundImage;
+  final BoxFit fit;
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<String>(
-      valueListenable: selectedThemeNotifier,
-      builder: (context, theme, _) {
-        final bgAsset = themeBackgrounds[theme] ?? themeBackgrounds['space']!;
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: Image.asset(
-                bgAsset,
-                fit: BoxFit.cover,
-                errorBuilder: (c, e, s) => Container(color: const Color(0xFF1A2A3A)),
-              ),
-            ),
-            Material(
-              type: MaterialType.transparency,
-              child: child,
-            ),
-          ],
-        );
-      },
+    final resolvedBackground = backgroundImage ?? kDefaultBackgroundImage;
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Image.asset(
+            resolvedBackground,
+            fit: fit,
+            errorBuilder: (context, error, stackTrace) {
+              // Safe fallback: solid color so we never re-trigger a broken asset
+              return Container(color: const Color(0xFF2E4A2E));
+            },
+          ),
+        ),
+        Material(
+          type: MaterialType.transparency,
+          child: child,
+        ),
+      ],
     );
   }
 }
@@ -51,19 +49,11 @@ class LogoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      top: top,
-      left: 0,
-      right: 0,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Image.asset('assets/misc/sauyo.png', height: width * 0.12),
-          SizedBox(width: width * 0.03),
-          Image.asset('assets/misc/qcu.png', height: width * 0.12),
-          SizedBox(width: width * 0.03),
-          Image.asset('assets/misc/bctpoc.png', height: width * 0.12),
-        ],
+    return Center(
+      child: Image.asset(
+        'assets/images/Group_Logos.png',
+        height: width * 0.25,
+        fit: BoxFit.contain,
       ),
     );
   }
