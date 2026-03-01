@@ -1,24 +1,33 @@
 import 'package:flutter/material.dart';
 
 /// Chalk-styled text input used on the welcome back screen.
+///
+/// Supply either [icon] (an [IconData]) or [prefixIconWidget] (any widget) for
+/// the leading icon. When [prefixIconWidget] is provided it takes precedence.
 class ChalkTextField extends StatelessWidget {
   const ChalkTextField({
     super.key,
     required this.hintText,
-    required this.icon,
+    this.icon,
+    this.prefixIconWidget,
     this.keyboardType,
     this.controller,
     this.validator,
-  });
+  }) : assert(icon != null || prefixIconWidget != null,
+            'Provide either icon or prefixIconWidget');
 
   final String hintText;
-  final IconData icon;
+  final IconData? icon;
+  /// Optional custom widget used as the prefix icon instead of [icon].
+  final Widget? prefixIconWidget;
   final TextInputType? keyboardType;
   final TextEditingController? controller;
   final String? Function(String?)? validator;
 
   @override
   Widget build(BuildContext context) {
+    final Widget resolvedPrefixIcon = prefixIconWidget ??
+        Icon(icon!, color: const Color(0xFF7B7B7B));
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
@@ -27,7 +36,7 @@ class ChalkTextField extends StatelessWidget {
         filled: true,
         fillColor: Colors.white,
         hintText: hintText,
-        prefixIcon: Icon(icon, color: const Color(0xFF7B7B7B)),
+        prefixIcon: resolvedPrefixIcon,
         contentPadding: const EdgeInsets.symmetric(vertical: 16),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),

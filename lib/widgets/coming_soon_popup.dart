@@ -52,7 +52,7 @@ void showComingSoonPopup(BuildContext context) {
                 'assets/images/Bunny_construction.png',
                 height: 140,
                 fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => Image.asset(
+                errorBuilder: (_, _, _) => Image.asset(
                   'assets/images/oyo.png',
                   height: 140,
                   fit: BoxFit.contain,

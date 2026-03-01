@@ -19,7 +19,6 @@ class MenuScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: MockBackground(
-        backgroundAsset: 'assets/images/bg_spc_w:cloud.png',
         child: LayoutBuilder(
           builder: (context, constraints) {
             final screenW = constraints.maxWidth;

@@ -91,7 +91,7 @@ class _WelcomeStudentScreenState extends State<WelcomeStudentScreen> {
                                 'assets/images/exit_btn.png',
                                 width: sx(34),
                                 height: sx(34),
-                                errorBuilder: (_, __, ___) => Container(
+                                errorBuilder: (_, _, _) => Container(
                                   width: sx(34),
                                   height: sx(34),
                                   decoration: BoxDecoration(
