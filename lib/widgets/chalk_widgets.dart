@@ -13,6 +13,10 @@ class ChalkTextField extends StatelessWidget {
     this.keyboardType,
     this.controller,
     this.validator,
+    this.textStyle,
+    this.hintStyle,
+    this.contentPadding,
+    this.iconSize,
   }) : assert(icon != null || prefixIconWidget != null,
             'Provide either icon or prefixIconWidget');
 
@@ -23,21 +27,28 @@ class ChalkTextField extends StatelessWidget {
   final TextInputType? keyboardType;
   final TextEditingController? controller;
   final String? Function(String?)? validator;
+  final TextStyle? textStyle;
+  final TextStyle? hintStyle;
+  final EdgeInsetsGeometry? contentPadding;
+  final double? iconSize;
 
   @override
   Widget build(BuildContext context) {
     final Widget resolvedPrefixIcon = prefixIconWidget ??
-        Icon(icon!, color: const Color(0xFF7B7B7B));
+        Icon(icon!, color: const Color(0xFF7B7B7B), size: iconSize);
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
       validator: validator,
+      style: textStyle,
       decoration: InputDecoration(
         filled: true,
         fillColor: Colors.white,
         hintText: hintText,
+        hintStyle: hintStyle,
         prefixIcon: resolvedPrefixIcon,
-        contentPadding: const EdgeInsets.symmetric(vertical: 16),
+        contentPadding:
+            contentPadding ?? const EdgeInsets.symmetric(vertical: 16),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
@@ -138,13 +149,13 @@ class ChalkButton extends StatelessWidget {
           foregroundColor: textColor,
           padding: const EdgeInsets.symmetric(vertical: 14),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(75),
           ),
         ),
         onPressed: onPressed,
         child: Text(
           label,
-          style: const TextStyle(fontSize: 18, letterSpacing: 1),
+          style: const TextStyle(fontSize: 25, letterSpacing: 1),
         ),
       ),
     );

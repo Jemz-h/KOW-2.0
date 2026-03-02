@@ -15,7 +15,7 @@ class TutorialScreen extends StatelessWidget {
               // Top bar
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                child: Row(
+                child: Row( 
                   children: [
                     IconButton(
                       icon: const Icon(Icons.arrow_back, color: Colors.white, size: 28),
@@ -45,7 +45,7 @@ class TutorialScreen extends StatelessWidget {
                 child: Center(
                   child: Container(
                     margin: const EdgeInsets.symmetric(horizontal: 40),
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+                    padding: const EdgeInsets.symmetric(horizontal: 44, vertical: 28),
                     decoration: BoxDecoration(
                       color: const Color(0xFFB8F0F7),
                       borderRadius: BorderRadius.circular(24),

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../navigation/route_transitions.dart';
 import '../widgets/form_widgets.dart';
@@ -25,9 +26,60 @@ class WelcomeStudentScreen extends StatefulWidget {
   State<WelcomeStudentScreen> createState() => _WelcomeStudentScreenState();
 }
 
-class _WelcomeStudentScreenState extends State<WelcomeStudentScreen> {
+class _WelcomeStudentScreenState extends State<WelcomeStudentScreen>
+    with SingleTickerProviderStateMixin {
   String? _selectedSex;
   bool _agreedToTerms = false;
+
+  late final AnimationController _popupController;
+  late final Animation<double> _popupOpacity;
+  late final Animation<Offset> _popupSlide;
+  late final Animation<double> _popupScale;
+
+  @override
+  void initState() {
+    super.initState();
+    _popupController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 780),
+      animationBehavior: AnimationBehavior.preserve,
+    );
+
+    _popupOpacity = CurvedAnimation(
+      parent: _popupController,
+      curve: const Interval(0.0, 0.55, curve: Curves.easeOut),
+    );
+
+    _popupSlide = Tween<Offset>(begin: const Offset(0, 0.12), end: Offset.zero)
+        .animate(
+          CurvedAnimation(parent: _popupController, curve: Curves.easeOutCubic),
+        );
+
+    _popupScale = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(
+          begin: 0.86,
+          end: 1.03,
+        ).chain(CurveTween(curve: Curves.easeOutBack)),
+        weight: 72,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(
+          begin: 1.03,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 28,
+      ),
+    ]).animate(_popupController);
+
+    _popupController.forward();
+  }
+
+  @override
+  void dispose() {
+    _popupController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,8 +91,7 @@ class _WelcomeStudentScreenState extends State<WelcomeStudentScreen> {
             final screenW = constraints.maxWidth;
             final screenH = constraints.maxHeight;
 
-            final isTablet =
-                screenW >= WelcomeStudentScreen._tabletBreakpoint;
+            final isTablet = screenW >= WelcomeStudentScreen._tabletBreakpoint;
             final contentMaxW = isTablet
                 ? WelcomeStudentScreen._maxContentWidth
                 : screenW;
@@ -61,300 +112,321 @@ class _WelcomeStudentScreenState extends State<WelcomeStudentScreen> {
                     horizontal: sx(40),
                     vertical: sy(20),
                   ),
-                  child: Container(
-                    width: sx(332),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: sx(20),
-                      vertical: sy(16),
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(sx(16)),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black26,
-                          blurRadius: 12,
-                          offset: Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // ── Exit button ──
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
+                  child: FadeTransition(
+                    opacity: _popupOpacity,
+                    child: SlideTransition(
+                      position: _popupSlide,
+                      child: ScaleTransition(
+                        scale: _popupScale,
+                        child: Stack(
+                          clipBehavior: Clip.none,
                           children: [
-                            GestureDetector(
-                              onTap: () => Navigator.of(context).pop(),
-                              child: Image.asset(
-                                'assets/images/exit_btn.png',
-                                width: sx(34),
-                                height: sx(34),
-                                errorBuilder: (_, _, _) => Container(
-                                  width: sx(34),
-                                  height: sx(34),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFE74C3C),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Icon(Icons.close,
-                                      color: Colors.white, size: sx(20)),
-                                ),
+                            Container(
+                              width: sx(332),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: sx(20),
+                                vertical: sy(2),
                               ),
-                            ),
-                          ],
-                        ),
-
-                        // ── Title ──
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            'WELCOME\nSTUDENT!',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontFamily: 'SuperCartoon',
-                              fontSize: sx(48),
-                              fontWeight: FontWeight.w900,
-                              height: 0.95,
-                              color: const Color(0xFF2D2D2D),
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: sy(6)),
-
-                        // ── Subtitle ──
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            'TELL US SOMETHING ABOUT YOU!',
-                            style: TextStyle(
-                              fontFamily: 'SuperCartoon',
-                              fontSize: sx(16),
-                              fontWeight: FontWeight.w700,
-                              color: const Color(0xFF606060),
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: sy(16)),
-
-                        // ── First Name ──
-                        _buildLabel('FIRST NAME', sx),
-                        SizedBox(height: sy(4)),
-                        const LightField(hintText: 'Example: Sisa'),
-                        SizedBox(height: sy(10)),
-
-                        // ── Last Name ──
-                        _buildLabel('LAST NAME', sx),
-                        SizedBox(height: sy(4)),
-                        const LightField(hintText: 'Example: Antido'),
-                        SizedBox(height: sy(10)),
-
-                        // ── Nickname ──
-                        _buildLabel('NICKNAME', sx),
-                        SizedBox(height: sy(4)),
-                        const LightField(hintText: 'Example: Sample'),
-                        SizedBox(height: sy(10)),
-
-                        // ── Birthday ──
-                        _buildLabel('BIRTHDAY', sx),
-                        SizedBox(height: sy(4)),
-                        const LightField(
-                          hintText: '10/22/2004',
-                          keyboardType: TextInputType.datetime,
-                        ),
-                        SizedBox(height: sy(4)),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            '*Your birthday will serve as your password.',
-                            style: TextStyle(
-                              fontSize: sx(10),
-                              color: const Color(0xFFE55353),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: sy(10)),
-
-                        // ── Area ──
-                        _buildLabel('AREA', sx),
-                        SizedBox(height: sy(4)),
-                        LightField(
-                          hintText: 'Select area',
-                          readOnly: true,
-                          suffixIcon: Icon(
-                            Icons.keyboard_arrow_down,
-                            color: const Color(0xFF2D2D2D),
-                            size: sx(22),
-                          ),
-                        ),
-                        SizedBox(height: sy(14)),
-
-                        // ── Sex ──
-                        Text(
-                          'SEX',
-                          style: TextStyle(
-                            fontFamily: 'SuperCartoon',
-                            fontSize: sx(16),
-                            fontWeight: FontWeight.w800,
-                            color: const Color(0xFF2D2D2D),
-                          ),
-                        ),
-                        SizedBox(height: sy(8)),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            SexCard(
-                              imagePath: 'assets/images/student_boy.png',
-                              label: 'MALE',
-                              backgroundColor: const Color(0xFF67D1F2),
-                              selected: _selectedSex == 'MALE',
-                              onTap: () =>
-                                  setState(() => _selectedSex = 'MALE'),
-                            ),
-                            SexCard(
-                              imagePath: 'assets/images/student_girl.png',
-                              label: 'FEMALE',
-                              backgroundColor: const Color(0xFFF58CE3),
-                              selected: _selectedSex == 'FEMALE',
-                              onTap: () =>
-                                  setState(() => _selectedSex = 'FEMALE'),
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: sy(12)),
-
-                        // ── Terms & policy ──
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(
-                              width: sx(20),
-                              height: sx(20),
-                              child: Checkbox(
-                                value: _agreedToTerms,
-                                onChanged: (v) =>
-                                    setState(() => _agreedToTerms = v ?? false),
-                                materialTapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
-                              ),
-                            ),
-                            SizedBox(width: sx(6)),
-                            Expanded(
-                              child: RichText(
-                                text: TextSpan(
-                                  style: TextStyle(
-                                    fontSize: sx(11),
-                                    color: const Color(0xFF2D2D2D),
-                                    height: 1.3,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(sx(16)),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Colors.black26,
+                                    blurRadius: 12,
+                                    offset: Offset(0, 6),
                                   ),
-                                  children: [
-                                    const TextSpan(
-                                        text: 'I have agreed on the '),
-                                    TextSpan(
-                                      text: 'terms and policy',
-                                      style: const TextStyle(
-                                        decoration: TextDecoration.underline,
+                                ],
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  SizedBox(height: sy(16)),
+
+                                  // ── Title ──
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      'WELCOME\nSTUDENT!',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontFamily: 'SuperCartoon',
+                                        fontSize: sx(48),
+                                        fontWeight: FontWeight.w900,
+                                        height: 0.95,
+                                        color: const Color(0xFF2D2D2D),
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(height: sy(2)),
+
+                                  // ── Subtitle ──
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      'TELL US SOMETHING ABOUT YOU!',
+                                      style: TextStyle(
+                                        fontFamily: 'SuperCartoon',
+                                        fontSize: sx(16),
+                                        fontWeight: FontWeight.w700,
+                                        color: const Color(0xFF606060),
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(height: sy(16)),
+
+                                  // ── First Name ──
+                                  _buildLabel('FIRST NAME', sx),
+                                  SizedBox(height: sy(4)),
+                                  const LightField(hintText: 'Example: Sisa'),
+                                  SizedBox(height: sy(10)),
+
+                                  // ── Last Name ──
+                                  _buildLabel('LAST NAME', sx),
+                                  SizedBox(height: sy(4)),
+                                  const LightField(hintText: 'Example: Oyo'),
+                                  SizedBox(height: sy(10)),
+
+                                  // ── Nickname ──
+                                  _buildLabel('NICKNAME', sx),
+                                  SizedBox(height: sy(4)),
+                                  const LightField(hintText: 'Example: Sample'),
+                                  SizedBox(height: sy(10)),
+
+                                  // ── Birthday ──
+                                  _buildLabel('BIRTHDAY', sx),
+                                  SizedBox(height: sy(4)),
+                                  const LightField(
+                                    hintText: '10/22/2004',
+                                    keyboardType: TextInputType.datetime,
+                                  ),
+                                  SizedBox(height: sy(4)),
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      '*Your birthday will serve as your password.',
+                                      style: TextStyle(
+                                        fontSize: sx(11),
+                                        color: const Color(0xFFE55353),
                                         fontWeight: FontWeight.w600,
                                       ),
-                                      recognizer: TapGestureRecognizer()
-                                        ..onTap = () {
-                                          // TODO: open terms
-                                        },
                                     ),
-                                    const TextSpan(
-                                        text:
-                                            ' about data privacy while using this application.'),
-                                    const TextSpan(
-                                      text: '*',
-                                      style: TextStyle(
-                                        color: Color(0xFFE55353),
-                                        fontWeight: FontWeight.w700,
+                                  ),
+                                  SizedBox(height: sy(10)),
+
+                                  // ── Area ──
+                                  _buildLabel('AREA', sx),
+                                  SizedBox(height: sy(4)),
+                                  LightField(
+                                    hintText: 'Select area',
+                                    readOnly: true,
+                                    suffixIcon: Icon(
+                                      Icons.keyboard_arrow_down,
+                                      color: const Color(0xFF2D2D2D),
+                                      size: sx(22),
+                                    ),
+                                  ),
+                                  SizedBox(height: sy(14)),
+
+                                  // ── Sex ──
+                                  Text(
+                                    'SEX',
+                                    style: TextStyle(
+                                      fontFamily: 'SuperCartoon',
+                                      fontSize: sx(18),
+                                      fontWeight: FontWeight.w800,
+                                      color: const Color(0xFF2D2D2D),
+                                    ),
+                                  ),
+                                  SizedBox(height: sy(8)),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceEvenly,
+                                    children: [
+                                      SexCard(
+                                        iconPath:
+                                            'assets/Icons/KOWICONS/11.svg',
+                                        label: 'MALE',
+                                        selected: _selectedSex == 'MALE',
+                                        onTap: () => setState(
+                                          () => _selectedSex = 'MALE',
+                                        ),
+                                      ),
+                                      SexCard(
+                                        iconPath:
+                                            'assets/Icons/KOWICONS/12.svg',
+                                        label: 'FEMALE',
+                                        selected: _selectedSex == 'FEMALE',
+                                        onTap: () => setState(
+                                          () => _selectedSex = 'FEMALE',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(height: sy(12)),
+
+                                  // ── Terms & policy ──
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      SizedBox(
+                                        width: sx(20),
+                                        height: sx(20),
+                                        child: Checkbox(
+                                          value: _agreedToTerms,
+                                          onChanged: (v) => setState(
+                                            () => _agreedToTerms = v ?? false,
+                                          ),
+                                          materialTapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                        ),
+                                      ),
+                                      SizedBox(width: sx(6)),
+                                      Expanded(
+                                        child: RichText(
+                                          text: TextSpan(
+                                            style: TextStyle(
+                                              fontSize: sx(12),
+                                              color: const Color(0xFF2D2D2D),
+                                              height: 1.3,
+                                            ),
+                                            children: [
+                                              const TextSpan(
+                                                text: 'I have agreed on the ',
+                                              ),
+                                              TextSpan(
+                                                text: 'terms and policy',
+                                                style: const TextStyle(
+                                                  decoration:
+                                                      TextDecoration.underline,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                                recognizer:
+                                                    TapGestureRecognizer()
+                                                      ..onTap = () {
+                                                        // TODO: open terms
+                                                      },
+                                              ),
+                                              const TextSpan(
+                                                text:
+                                                    ' about data privacy while using this application.',
+                                              ),
+                                              const TextSpan(
+                                                text: '*',
+                                                style: TextStyle(
+                                                  color: Color(0xFFE55353),
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(height: sy(14)),
+
+                                  // ── Submit ──
+                                  SizedBox(
+                                    width: sx(180),
+                                    child: ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(
+                                          0xFF8CFF9A,
+                                        ),
+                                        foregroundColor: Colors.black,
+                                        padding: EdgeInsets.symmetric(
+                                          vertical: sy(10),
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            sx(24),
+                                          ),
+                                        ),
+                                      ),
+                                      onPressed: () =>
+                                          pushFade(context, const MenuScreen()),
+                                      child: Text(
+                                        'SUBMIT',
+                                        style: TextStyle(
+                                          fontFamily: 'SuperCartoon',
+                                          fontSize: sx(16),
+                                          fontWeight: FontWeight.w800,
+                                        ),
                                       ),
                                     ),
-                                  ],
+                                  ),
+                                  SizedBox(height: sy(10)),
+
+                                  // ── Already have account ──
+                                  RichText(
+                                    textAlign: TextAlign.center,
+                                    text: TextSpan(
+                                      children: [
+                                        TextSpan(
+                                          text: 'ALREADY HAVE AN ACCOUNT? ',
+                                          style: TextStyle(
+                                            fontFamily: 'SuperCartoon',
+                                            fontSize: sx(12),
+                                            color: const Color(0xFFF6FF79),
+                                            fontWeight: FontWeight.w900,
+                                            shadows: const [
+                                              Shadow(
+                                                color: Colors.black38,
+                                                blurRadius: 2,
+                                                offset: Offset(0, 1),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        TextSpan(
+                                          text: 'CLICK ME!',
+                                          style: TextStyle(
+                                            fontFamily: 'SuperCartoon',
+                                            fontSize: sx(12),
+                                            color: const Color(0xFF79EBFF),
+                                            fontWeight: FontWeight.w800,
+                                            decoration:
+                                                TextDecoration.underline,
+                                            shadows: const [
+                                              Shadow(
+                                                color: Colors.black38,
+                                                blurRadius: 2,
+                                                offset: Offset(0, 1),
+                                              ),
+                                            ],
+                                          ),
+                                          recognizer: TapGestureRecognizer()
+                                            ..onTap = () => pushFade(
+                                              context,
+                                              const WelcomeBackScreen(),
+                                            ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  SizedBox(height: sy(8)),
+                                ],
+                              ),
+                            ),
+                            // Exit icon (close button) at the top-right corner
+                            Positioned(
+                              top: sy(-2),
+                              right: -sx(2),
+                              child: GestureDetector(
+                                onTap: () => Navigator.of(context).pop(),
+                                child: SvgPicture.asset(
+                                  'assets/Icons/KOWICONS/7.svg',
+                                  width: sx(55),
+                                  height: sx(55),
+                                  fit: BoxFit.contain,
                                 ),
                               ),
                             ),
                           ],
                         ),
-                        SizedBox(height: sy(14)),
-
-                        // ── Submit ──
-                        SizedBox(
-                          width: sx(180),
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF8CFF9A),
-                              foregroundColor: Colors.black,
-                              padding:
-                                  EdgeInsets.symmetric(vertical: sy(10)),
-                              shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(sx(24)),
-                              ),
-                            ),
-                            onPressed: () =>
-                                pushFade(context, const MenuScreen()),
-                            child: Text(
-                              'SUBMIT',
-                              style: TextStyle(
-                                fontFamily: 'SuperCartoon',
-                                fontSize: sx(16),
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: sy(10)),
-
-                        // ── Already have account ──
-                        RichText(
-                          textAlign: TextAlign.center,
-                          text: TextSpan(
-                            children: [
-                              TextSpan(
-                                text: 'ALREADY HAVE AN ACCOUNT? ',
-                                style: TextStyle(
-                                  fontFamily: 'SuperCartoon',
-                                  fontSize: sx(12),
-                                  color: const Color(0xFFF6FF79),
-                                  fontWeight: FontWeight.w700,
-                                  shadows: const [
-                                    Shadow(
-                                      color: Colors.black38,
-                                      blurRadius: 2,
-                                      offset: Offset(0, 1),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              TextSpan(
-                                text: 'CLICK ME!',
-                                style: TextStyle(
-                                  fontFamily: 'SuperCartoon',
-                                  fontSize: sx(12),
-                                  color: const Color(0xFF79EBFF),
-                                  fontWeight: FontWeight.w800,
-                                  decoration: TextDecoration.underline,
-                                  shadows: const [
-                                    Shadow(
-                                      color: Colors.black38,
-                                      blurRadius: 2,
-                                      offset: Offset(0, 1),
-                                    ),
-                                  ],
-                                ),
-                                recognizer: TapGestureRecognizer()
-                                  ..onTap = () => pushFade(
-                                      context, const WelcomeBackScreen()),
-                              ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(height: sy(8)),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -374,7 +446,7 @@ class _WelcomeStudentScreenState extends State<WelcomeStudentScreen> {
         text,
         style: TextStyle(
           fontFamily: 'SuperCartoon',
-          fontSize: sx(14),
+          fontSize: sx(16),
           fontWeight: FontWeight.w800,
           color: const Color(0xFF2D2D2D),
         ),

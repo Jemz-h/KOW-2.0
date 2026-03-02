@@ -29,6 +29,7 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
   with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _birthdayController = TextEditingController();
+  DateTime? _selectedBirthday;
   late final AnimationController _introController;
   late final AnimationController _emphasisController;
 
@@ -77,6 +78,94 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
       return;
     }
     pushFade(context, const MenuScreen());
+  }
+
+  Future<void> _pickBirthday(BuildContext context) async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedBirthday ?? DateTime(now.year - 8, now.month, now.day),
+      firstDate: DateTime(1900),
+      lastDate: now,
+    );
+
+    if (picked == null) return;
+
+    setState(() {
+      _selectedBirthday = picked;
+      _birthdayController.text = _formatBirthday(picked);
+    });
+  }
+
+  String _formatBirthday(DateTime date) {
+    final mm = date.month.toString().padLeft(2, '0');
+    final dd = date.day.toString().padLeft(2, '0');
+    final yyyy = date.year.toString();
+    return '$mm/$dd/$yyyy';
+  }
+
+  Widget _buildKowInput({
+    required double Function(double) sx,
+    required double Function(double) sy,
+    required String hintText,
+    IconData? icon,
+    Widget? prefixIconWidget,
+    TextEditingController? controller,
+    String? Function(String?)? validator,
+    TextInputType? keyboardType,
+    bool readOnly = false,
+    VoidCallback? onTap,
+    Widget? suffixIcon,
+  }) {
+    assert(icon != null || prefixIconWidget != null,
+        'Provide either icon or prefixIconWidget');
+
+    final inputTextStyle = TextStyle(
+      fontFamily: 'SuperCartoon',
+      fontSize: sx(24),
+      fontWeight: FontWeight.w700,
+      color: const Color(0xFF111111),
+    );
+
+    final borderRadius = BorderRadius.circular(sy(22));
+
+    return TextFormField(
+      controller: controller,
+      validator: validator,
+      keyboardType: keyboardType,
+      readOnly: readOnly,
+      onTap: onTap,
+      style: inputTextStyle,
+      decoration: InputDecoration(
+        filled: true,
+        fillColor: Colors.white,
+        hintText: hintText,
+        hintStyle: inputTextStyle,
+        prefixIcon: prefixIconWidget ??
+            Icon(icon!, color: const Color(0xFF7B7B7B), size: sx(34)),
+        suffixIcon: suffixIcon,
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: sx(16),
+          vertical: sy(22),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: borderRadius,
+          borderSide: BorderSide(color: const Color(0xFF111111), width: sx(2)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: borderRadius,
+          borderSide: BorderSide(color: const Color(0xFF0C8CE9), width: sx(2.5)),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: borderRadius,
+          borderSide: BorderSide(color: Colors.red.shade700, width: sx(2)),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: borderRadius,
+          borderSide: BorderSide(color: Colors.red.shade700, width: sx(2.5)),
+        ),
+      ),
+    );
   }
 
   @override
@@ -276,48 +365,67 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
 
                       // Form fields + buttons
                       Positioned(
-                        left: sx(40),
+                        left: sx(20),
                         top: sy(360),
-                        width: sx(332),
+                        width: sx(372),
                         child: Form(
                           key: _formKey,
                           autovalidateMode: AutovalidateMode.onUserInteraction,
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const ChalkTextField(
-                                hintText: 'NICKNAME',
-                                icon: Icons.person,
-                              ),
-                              SizedBox(height: sy(14)),
-                              ChalkTextField(
-                                hintText: 'BIRTHDAY',
-                                prefixIconWidget: Padding(
-                                  padding: const EdgeInsets.all(10.0),
-                                  child: SvgPicture.asset(
-                                    'assets/Icons/KOWICONS/4.svg',
-                                    width: 28,
-                                    height: 28,
-                                    fit: BoxFit.contain,
-                                  ),
+                              SizedBox(
+                                height: sy(84),
+                                child: _buildKowInput(
+                                  sx: sx,
+                                  sy: sy,
+                                  hintText: 'NICKNAME',
+                                  icon: Icons.person,
                                 ),
-                                keyboardType: TextInputType.datetime,
-                                controller: _birthdayController,
-                                validator: (value) {
-                                  if (value == null || value.trim().isEmpty) {
-                                    return 'Required';
-                                  }
-                                  return null;
-                                },
                               ),
                               SizedBox(height: sy(18)),
-                              ChalkButton(
-                                label: 'START',
-                                color: const Color(0xFF5C87E5),
-                                textColor: Colors.white,
-                                onPressed: () => _handleStart(context),
+                              SizedBox(
+                                height: sy(84),
+                                child: _buildKowInput(
+                                  sx: sx,
+                                  sy: sy,
+                                  hintText: 'BIRTHDAY',
+                                  readOnly: true,
+                                  onTap: () => _pickBirthday(context),
+                                  controller: _birthdayController,
+                                  suffixIcon: Icon(
+                                    Icons.arrow_drop_down,
+                                    size: sx(40),
+                                    color: const Color(0xFF111111),
+                                  ),
+                                  prefixIconWidget: Padding(
+                                    padding: EdgeInsets.all(sx(10)),
+                                    child: SvgPicture.asset(
+                                      'assets/Icons/KOWICONS/4.svg',
+                                      width: sx(50),
+                                      height: sy(50),
+                                      fit: BoxFit.contain,
+                                    ),
+                                  ),
+                                  validator: (value) {
+                                    if (value == null || value.trim().isEmpty) {
+                                      return 'Required';
+                                    }
+                                    return null;
+                                  },
+                                ),
                               ),
-                              SizedBox(height: sy(14)),
+                              SizedBox(height: sy(22)),
+                              SizedBox(
+                                height: sy(66),
+                                child: ChalkButton(
+                                  label: 'START',
+                                  color: const Color(0xFF5C87E5),
+                                  textColor: Colors.white,
+                                  onPressed: () => _handleStart(context),
+                                ),
+                              ),
+                              SizedBox(height: sy(18)),
                               AnimatedBuilder(
                                 animation: _emphasisController,
                                 builder: (context, child) {
@@ -349,9 +457,10 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
                                   ),
                                 ),
                               ),
-                              SizedBox(height: sy(10)),
+                              SizedBox(height: sy(14)),
                               SizedBox(
-                                width: sx(240),
+                                width: sy(150),
+                                height: sy(60),
                                 child: ChalkButton(
                                   label: 'SIGN UP',
                                   color: const Color(0xFFF2F089),

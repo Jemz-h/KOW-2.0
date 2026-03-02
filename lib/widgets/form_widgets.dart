@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 /// Simple label for form sections.
 class FormLabel extends StatelessWidget {
@@ -12,10 +13,7 @@ class FormLabel extends StatelessWidget {
       alignment: Alignment.centerLeft,
       child: Text(
         text,
-        style: const TextStyle(
-          fontSize: 12,
-          color: Color(0xFF2D2D2D),
-        ),
+        style: const TextStyle(fontSize: 12, color: Color(0xFF2D2D2D)),
       ),
     );
   }
@@ -43,26 +41,42 @@ class LightField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      height: 62,
       width: double.infinity,
       decoration: BoxDecoration(
         color: const Color(0xFFE0E0E0),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: TextField(
         readOnly: readOnly,
         onTap: onTap,
         keyboardType: keyboardType,
-        style: const TextStyle(fontSize: 12, color: Color(0xFF2D2D2D)),
+        textAlignVertical: TextAlignVertical.center,
+        style: const TextStyle(
+          fontSize: 30,
+          fontWeight: FontWeight.w300,
+          height: 1.1,
+          color: Color(0xFF2D2D2D),
+        ),
         decoration: InputDecoration(
           hintText: hintText,
-          hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF9B9B9B)),
+          hintStyle: const TextStyle(
+            fontSize: 30,
+            fontWeight: FontWeight.w300,
+            height: 1.1,
+            color: Color(0xFF9B9B9B),
+          ),
           border: InputBorder.none,
           isDense: true,
+          constraints: const BoxConstraints(minHeight: 62),
           prefixIcon: prefixIcon == null
               ? null
-              : Icon(prefixIcon, size: 18, color: const Color(0xFF6B6B6B)),
+              : Icon(prefixIcon, size: 24, color: const Color(0xFF6B6B6B)),
           suffixIcon: suffixIcon,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 14,
+          ),
         ),
       ),
     );
@@ -73,16 +87,14 @@ class LightField extends StatelessWidget {
 class SexCard extends StatelessWidget {
   const SexCard({
     super.key,
-    required this.imagePath,
+    required this.iconPath,
     required this.label,
-    required this.backgroundColor,
     required this.selected,
     this.onTap,
   });
 
-  final String imagePath;
+  final String iconPath;
   final String label;
-  final Color backgroundColor;
   final bool selected;
   final VoidCallback? onTap;
 
@@ -90,50 +102,28 @@ class SexCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Stack(
-        children: [
-          Container(
-            width: 92,
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+      child: Semantics(
+        label: label,
+        button: true,
+        selected: selected,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 180),
+          opacity: selected ? 1.0 : 0.72,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            width: 110,
+            height: 94,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: backgroundColor,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: selected ? const Color(0xFF2ECC71) : Colors.transparent,
                 width: 2,
               ),
-              boxShadow: const [
-                BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
-              ],
             ),
-            child: Column(
-              children: [
-                Image.asset(imagePath, height: 46),
-                const SizedBox(height: 4),
-                Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
-              ],
-            ),
+            child: SvgPicture.asset(iconPath, height: 72),
           ),
-          if (selected)
-            Positioned.fill(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xAA1B1B1B),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          if (selected)
-            Positioned.fill(
-              child: Center(
-                child: Image.asset(
-                  'assets/images/gender_check.png',
-                  width: 44,
-                  height: 44,
-                ),
-              ),
-            ),
-        ],
+        ),
       ),
     );
   }
