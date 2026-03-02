@@ -1,0 +1,28 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "KOW-2.0-main",
+            "cwd": "KOW-2.0-main",
+            "request": "launch",
+            "type": "dart",
+            "program": "lib/landing.dart"
+        },
+        {
+            "name": "KOW-2.0-main (profile mode)",
+            "cwd": "KOW-2.0-main",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile",
+            "program": "lib/landing.dart"
+        },
+        {
+            "name": "KOW-2.0-main (release mode)",
+            "cwd": "KOW-2.0-main",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release",
+            "program": "lib/landing.dart"
+        }
+    ]
+}
