@@ -1,0 +1,455 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
+// ── Grade → planet image paths ────────────────────────────────
+const _gradePlanets = {
+  'PUNLA':  ['assets/images/earth.png',   'assets/images/mars.png',    'assets/images/neptune.png'],
+  'BINHI':  ['assets/images/earth.png',   'assets/images/mars.png',    'assets/images/neptune.png'],
+  'COMING': ['assets/images/earth.png',   'assets/images/mars.png',    'assets/images/neptune.png'],
+};
+
+// ── Grade → floating island image (moon / sun / star) ─────────
+const _gradeIslands = {
+  'PUNLA':  'assets/images/grade.select/gs.moon.png',
+  'BINHI':  'assets/images/grade.select/gs.sun.png',
+  'COMING': 'assets/images/grade.select/gs.star.png',
+};
+
+// ── Subject → accent colour for label pill ────────────────────
+const _subjectColors = {
+  'MATH':    Color(0xFF4FC3F7),
+  'SCIENCE': Color(0xFF81C784),
+  'READING': Color(0xFFFFB74D),
+  'WRITING': Color(0xFFFFCA28),
+};
+
+// ════════════════════════════════════════════════════
+// COORDINATES — tweak these to reposition anything
+// All values are fractions of screen width (sw) or height (sh)
+// ════════════════════════════════════════════════════
+
+// ── Planets (center x, center y, radius) ─────────────────────
+// CX: decrease = move LEFT,  increase = move RIGHT
+// CY: decrease = move UP,    increase = move DOWN
+// R:  decrease = smaller,    increase = bigger
+const kEarthCX   = 0.77;
+const kEarthCY   = 0.695;
+const kEarthR    = 0.195;   // fraction of sw
+
+const kMarsCX    = 0.28;
+const kMarsCY    = 0.455;
+const kMarsR     = 0.200;
+
+const kNeptuneCX = 0.66;
+const kNeptuneCY = 0.170;
+const kNeptuneR  = 0.185;
+
+// ── Nodes (x, y as fraction of sw/sh) ────────────────────────
+// X: decrease = move LEFT,  increase = move RIGHT
+// Y: decrease = move UP,    increase = move DOWN
+
+// Top segment (above neptune): red, orange, green
+const kN1X = 0.190; const kN1Y = 0.040;  // red
+const kN2X = 0.490; const kN2Y = 0.070;  // orange
+const kN3X = 0.775; const kN3Y = 0.062;  // green
+
+// Middle segment (neptune → mars): red, orange, green
+const kN4X = 0.835; const kN4Y = 0.290;  // red
+const kN5X = 0.505; const kN5Y = 0.323;  // orange
+const kN6X = 0.140; const kN6Y = 0.340;  // green
+
+// Bottom segment (mars → earth): red, orange, green
+const kN7X = 0.205; const kN7Y = 0.548;  // red
+const kN8X = 0.315; const kN8Y = 0.615;  // orange
+const kN9X = 0.590; const kN9Y = 0.608;  // green
+
+// ── Gojo / sisa character ─────────────────────────────────────
+const kGojoX    = 0.510;   // left edge — decrease = LEFT, increase = RIGHT
+const kGojoY    = 0.520;   // top edge  — decrease = UP,   increase = DOWN
+const kGojoSize = 0.18;    // fraction of sw
+
+// ── Grade island (moon / sun / star) ─────────────────────────
+const kIslandX    = 0.0;    // left edge
+const kIslandY    = 0.680;  // top edge
+const kIslandSize = 0.50;   // fraction of sw
+
+// ── Label pill (PUNLA / MATH box) ────────────────────────────
+const kLabelLeft   = 0.30;  // fraction of sw from left  — decrease = pill starts more LEFT
+const kLabelRight  = 0.14;  // fraction of sw from right — decrease = pill stretches more RIGHT
+const kLabelBottom = 0.05;  // increase = move UP, decrease = move DOWN (added on top of bar height)
+
+// ── Bottom bar button sizes (pixels) ─────────────────────────
+const kBackSize     = 50.0;
+const kPlaySize     = 62.0;  // keep this the biggest
+const kSettingsSize = 48.0;
+
+// ── Dashed path waypoints ─────────────────────────────────────
+// Points connect: top-left → neptune → mars → earth
+// X: increase = move RIGHT, decrease = move LEFT
+// Y: increase = move DOWN,  decrease = move UP
+// Change in steps of 0.01–0.05 for fine-tuning
+const kP1X  = 0.14; const kP1Y  = 0.010;  // top-left start
+const kP2X  = 0.28; const kP2Y  = 0.100;  // curve right
+const kP3X  = 0.88; const kP3Y  = 0.040;  // toward neptune
+const kP4X  = 0.58; const kP4Y  = 0.130;  // enter neptune
+const kP5X  = 0.97; const kP5Y  = 0.375;  // exit neptune bottom
+const kP6X  = 0.35; const kP6Y  = 0.305;  // swing right
+const kP7X  = 0.32; const kP7Y  = 0.300;  // back left
+const kP8X  = 0.20; const kP8Y  = 0.300;  // heading to mars
+const kP9X  = 0.10; const kP9Y  = 0.360;  // enter mars
+const kP10X = 0.25; const kP10Y = 0.500;  // exit mars bottom
+const kP11X = 0.10; const kP11Y = 0.660;  // small right
+const kP12X = 0.40; const kP12Y = 0.605;  // curve toward earth
+const kP13X = 0.55; const kP13Y = 0.605;  // approach earth
+const kP14X = 0.75; const kP14Y = 0.655;  // enter earth
+
+// ════════════════════════════════════════════════════
+
+class LevelMapScreen extends StatefulWidget {
+  final String grade;
+  final String subject;
+  final String gradeImg;
+
+  const LevelMapScreen({
+    super.key,
+    required this.grade,
+    required this.subject,
+    required this.gradeImg,
+  });
+
+  @override
+  State<LevelMapScreen> createState() => _LevelMapScreenState();
+}
+
+class _LevelMapScreenState extends State<LevelMapScreen>
+    with TickerProviderStateMixin {
+
+  // Inline init guarantees fields are ready before build() is ever called
+
+  // ── Gojo float animation ──────────────────────────────────
+  late final AnimationController _gojoCtrl =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 1800))
+        ..repeat(reverse: true);
+  late final Animation<double> _gojoAnim =
+      Tween<double>(begin: -6, end: 6)
+          .animate(CurvedAnimation(parent: _gojoCtrl, curve: Curves.easeInOut));
+
+  // ── Island float animation ────────────────────────────────
+  late final AnimationController _islandCtrl =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 2100))
+        ..repeat(reverse: true);
+  late final Animation<double> _islandAnim =
+      Tween<double>(begin: -5, end: 5)
+          .animate(CurvedAnimation(parent: _islandCtrl, curve: Curves.easeInOut));
+
+  @override
+  void initState() { super.initState(); }
+
+  @override
+  void dispose() {
+    _gojoCtrl.dispose();
+    _islandCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size    = MediaQuery.of(context).size;
+    final sw      = size.width;
+    final sh      = size.height;
+    final planets = _gradePlanets[widget.grade] ?? _gradePlanets['PUNLA']!;
+    final island  = _gradeIslands[widget.grade]  ?? _gradeIslands['PUNLA']!;
+    final accent  = _subjectColors[widget.subject] ?? const Color(0xFF4FC3F7);
+    final barH    = sh * 0.09;
+
+    // ── Apply coordinate constants → pixel values ─────────────
+    final earthC   = Offset(sw * kEarthCX,   sh * kEarthCY);
+    final marsC    = Offset(sw * kMarsCX,    sh * kMarsCY);
+    final neptuneC = Offset(sw * kNeptuneCX, sh * kNeptuneCY);
+    final earthR   = sw * kEarthR;
+    final marsR    = sw * kMarsR;
+    final neptuneR = sw * kNeptuneR;
+
+    // ── Path waypoints ────────────────────────────────────────
+    final pathPts = <Offset>[
+      Offset(sw * kP1X,  sh * kP1Y),
+      Offset(sw * kP2X,  sh * kP2Y),
+      Offset(sw * kP3X,  sh * kP3Y),
+      Offset(sw * kP4X,  sh * kP4Y),
+      Offset(sw * kP5X,  sh * kP5Y),
+      Offset(sw * kP6X,  sh * kP6Y),
+      Offset(sw * kP7X,  sh * kP7Y),
+      Offset(sw * kP8X,  sh * kP8Y),
+      Offset(sw * kP9X,  sh * kP9Y),
+      Offset(sw * kP10X, sh * kP10Y),
+      Offset(sw * kP11X, sh * kP11Y),
+      Offset(sw * kP12X, sh * kP12Y),
+      Offset(sw * kP13X, sh * kP13Y),
+      Offset(sw * kP14X, sh * kP14Y),
+    ];
+
+    // ── Node colours ──────────────────────────────────────────
+    const _r = Color(0xFFE53935);   // red
+    const _g = Color(0xFF43A047);   // green
+    const _o = Color(0xFFFF8C00);   // orange
+
+    final nodes = <_Node>[
+      // Top segment
+      _Node(sw * kN1X, sh * kN1Y, _r),
+      _Node(sw * kN2X, sh * kN2Y, _o),
+      _Node(sw * kN3X, sh * kN3Y, _g),
+      // Middle segment
+      _Node(sw * kN4X, sh * kN4Y, _r),
+      _Node(sw * kN5X, sh * kN5Y, _o),
+      _Node(sw * kN6X, sh * kN6Y, _g),
+      // Bottom segment
+      _Node(sw * kN7X, sh * kN7Y, _r),
+      _Node(sw * kN8X, sh * kN8Y, _o),
+      _Node(sw * kN9X, sh * kN9Y, _g),
+    ];
+
+    return Scaffold(
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+
+          // 1. Background
+          Image.asset('assets/images/gs.space.bg.png', fit: BoxFit.cover),
+
+          // 2. Dashed path — behind everything
+          CustomPaint(
+            size: size,
+            painter: _PathPainter(points: pathPts),
+          ),
+
+          // 3. Nodes — behind planets
+          ...nodes.map((n) => Positioned(
+            left: n.x - 15,
+            top:  n.y - 9,
+            child: _NodeChip(color: n.color),
+          )),
+
+          // 4. Planets — on top of path & nodes
+          _planetWidget(planets[2], neptuneC, neptuneR),  // neptune — top
+          _planetWidget(planets[1], marsC,    marsR),     // mars    — middle
+          _planetWidget(planets[0], earthC,   earthR),    // earth   — bottom
+
+          // 5. Gojo / sisa character — floats between mars and earth
+          AnimatedBuilder(
+            animation: _gojoAnim,
+            builder: (_, child) => Positioned(
+              left: sw * kGojoX,
+              top:  sh * kGojoY + _gojoAnim.value,
+              child: child!,
+            ),
+            child: Image.asset(
+              'assets/images/sisa.in.nodes.gif',
+              width:  sw * kGojoSize,
+              height: sw * kGojoSize,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) =>
+                  const Icon(Icons.person, color: Colors.white, size: 32),
+            ),
+          ),
+
+          // 6. Label pill — drawn FIRST so island overlaps it
+          Positioned(
+            bottom: barH + sh * kLabelBottom,
+            left:   sw * kLabelLeft,
+            right:  sw * kLabelRight,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(22),
+                boxShadow: [BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.15),
+                  blurRadius: 6, offset: const Offset(0, -2),
+                )],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(widget.grade,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontFamily: 'SuperCartoon', fontSize: 18,
+                      color: Color(0xFF1A1A2E), letterSpacing: 2,
+                    )),
+                  Text(widget.subject,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontFamily: 'SuperCartoon', fontSize: 16,
+                      color: accent, letterSpacing: 2,
+                    )),
+                ],
+              ),
+            ),
+          ),
+
+          // 7. Grade island — drawn AFTER label so it appears ON TOP of the pill
+          AnimatedBuilder(
+            animation: _islandAnim,
+            builder: (_, child) => Positioned(
+              left: sw * kIslandX,
+              top:  sh * kIslandY + _islandAnim.value,
+              child: child!,
+            ),
+            child: Image.asset(
+              island,
+              width: sw * kIslandSize,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          ),
+
+          // 8. Bottom bar — always on top
+          Positioned(
+            bottom: 0, left: 0, right: 0,
+            child: Container(
+              height: barH,
+              color: const Color(0xFF0A0A18),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+
+                  // ← Back
+                  _TapIcon(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: SvgPicture.asset(
+                      'assets/images/backb.svg',
+                      width: kBackSize, height: kBackSize,
+                    ),
+                  ),
+
+                  // ▶ Play
+                  _TapIcon(
+                    onTap: () { /* TODO: navigate to game */ },
+                    child: SvgPicture.asset(
+                      'assets/images/playbtn.svg',
+                      width: kPlaySize, height: kPlaySize,
+                    ),
+                  ),
+
+                  // ⚙ Settings
+                  _TapIcon(
+                    onTap: () {},
+                    child: SvgPicture.asset(
+                      'assets/images/setting.svg',
+                      width: kSettingsSize, height: kSettingsSize,
+                    ),
+                  ),
+
+                ],
+              ),
+            ),
+          ),
+
+        ],
+      ),
+    );
+  }
+
+  // ── Planet widget helper ──────────────────────────────────
+  Widget _planetWidget(String img, Offset center, double r) {
+    return Positioned(
+      left: center.dx - r,
+      top:  center.dy - r,
+      child: Image.asset(
+        img, width: r * 2, height: r * 2,
+        fit: BoxFit.contain,
+      ),
+    );
+  }
+}
+
+// ── Node data model ───────────────────────────────────────────
+class _Node {
+  final double x, y;
+  final Color color;
+  const _Node(this.x, this.y, this.color);
+}
+
+// ── Node chip widget (coloured pill on the path) ──────────────
+class _NodeChip extends StatelessWidget {
+  final Color color;
+  const _NodeChip({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 30, height: 18,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(9),
+        boxShadow: [BoxShadow(
+          color: color.withValues(alpha: 0.7),
+          blurRadius: 7, offset: const Offset(0, 3),
+        )],
+      ),
+    );
+  }
+}
+
+// ── Dashed path painter ───────────────────────────────────────
+// Draws a smooth bezier curve through all pathPts as a dashed line
+class _PathPainter extends CustomPainter {
+  final List<Offset> points;
+  const _PathPainter({required this.points});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (points.length < 2) return;
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.82)
+      ..strokeWidth = 3.2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    // Build smooth bezier curve through all points
+    final path = Path()..moveTo(points[0].dx, points[0].dy);
+    for (int i = 0; i < points.length - 1; i++) {
+      final c = points[i];
+      final n = points[i + 1];
+      path.quadraticBezierTo(c.dx, c.dy, (c.dx + n.dx) / 2, (c.dy + n.dy) / 2);
+    }
+    path.lineTo(points.last.dx, points.last.dy);
+
+    // Draw as dashes
+    const dash = 13.0, gap = 9.0;
+    for (final m in path.computeMetrics()) {
+      double d = 0;
+      while (d < m.length) {
+        canvas.drawPath(m.extractPath(d, (d + dash).clamp(0.0, m.length)), paint);
+        d += dash + gap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_PathPainter o) => false;
+}
+
+// ── Tap icon — press-to-scale feedback wrapper ────────────────
+class _TapIcon extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onTap;
+  const _TapIcon({required this.child, required this.onTap});
+  @override State<_TapIcon> createState() => _TapIconState();
+}
+
+class _TapIconState extends State<_TapIcon> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 100));
+  late final Animation<double> _s = Tween<double>(begin: 1.0, end: 0.80)
+      .animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut));
+  @override void dispose() { _c.dispose(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTapDown:   (_) => _c.forward(),
+    onTapUp:     (_) { _c.reverse(); widget.onTap(); },
+    onTapCancel: () => _c.reverse(),
+    child: ScaleTransition(scale: _s, child: widget.child),
+  );
+}
