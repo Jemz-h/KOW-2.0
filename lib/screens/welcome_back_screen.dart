@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../navigation/route_transitions.dart';
-import '../widgets/chalk_widgets.dart';
+import '../widgets/form_widgets.dart';
+import '../widgets/kow_animated_button.dart';
 import '../widgets/mock_background.dart';
 import 'menu_screen.dart';
 import 'welcome_student_screen.dart';
@@ -20,6 +21,7 @@ class WelcomeBackScreen extends StatefulWidget {
   // Tablet handling
   static const double _maxContentWidth = 560;
   static const double _tabletBreakpoint = 700;
+  static const double _webMaxWidth = 600;
 
   @override
   State<WelcomeBackScreen> createState() => _WelcomeBackScreenState();
@@ -104,67 +106,37 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
     return '$mm/$dd/$yyyy';
   }
 
-  Widget _buildKowInput({
-    required double Function(double) sx,
-    required double Function(double) sy,
-    required String hintText,
-    IconData? icon,
-    Widget? prefixIconWidget,
-    TextEditingController? controller,
-    String? Function(String?)? validator,
-    TextInputType? keyboardType,
-    bool readOnly = false,
-    VoidCallback? onTap,
-    Widget? suffixIcon,
-  }) {
-    assert(icon != null || prefixIconWidget != null,
-        'Provide either icon or prefixIconWidget');
-
-    final inputTextStyle = TextStyle(
-      fontFamily: 'SuperCartoon',
-      fontSize: sx(24),
-      fontWeight: FontWeight.w700,
-      color: const Color(0xFF111111),
-    );
-
-    final borderRadius = BorderRadius.circular(sy(22));
-
-    return TextFormField(
-      controller: controller,
-      validator: validator,
-      keyboardType: keyboardType,
-      readOnly: readOnly,
-      onTap: onTap,
-      style: inputTextStyle,
-      decoration: InputDecoration(
-        filled: true,
-        fillColor: Colors.white,
-        hintText: hintText,
-        hintStyle: inputTextStyle,
-        prefixIcon: prefixIconWidget ??
-            Icon(icon!, color: const Color(0xFF7B7B7B), size: sx(34)),
-        suffixIcon: suffixIcon,
-        contentPadding: EdgeInsets.symmetric(
-          horizontal: sx(16),
-          vertical: sy(22),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: borderRadius,
-          borderSide: BorderSide(color: const Color(0xFF111111), width: sx(2)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: borderRadius,
-          borderSide: BorderSide(color: const Color(0xFF0C8CE9), width: sx(2.5)),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: borderRadius,
-          borderSide: BorderSide(color: Colors.red.shade700, width: sx(2)),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: borderRadius,
-          borderSide: BorderSide(color: Colors.red.shade700, width: sx(2.5)),
-        ),
-      ),
+  Future<void> _showSignUpDialog(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black26,
+      builder: (dialogContext) {
+        final media = MediaQuery.of(dialogContext).size;
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: WelcomeBackScreen._maxContentWidth,
+                maxHeight: media.height * 0.92,
+              ),
+              child: SingleChildScrollView(
+                child: WelcomeStudentFormCard(
+                  onClose: () => Navigator.of(dialogContext).pop(),
+                  onSubmit: () {
+                    Navigator.of(dialogContext).pop();
+                    pushFade(context, const MenuScreen());
+                  },
+                  onAlreadyHaveAccountTap: () =>
+                      Navigator.of(dialogContext).pop(),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -183,7 +155,10 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
       body: MockBackground(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final screenW = constraints.maxWidth;
+            final screenW = math.min(
+              constraints.maxWidth,
+              WelcomeBackScreen._webMaxWidth,
+            );
             final screenH = constraints.maxHeight;
 
             final isTablet = screenW >= WelcomeBackScreen._tabletBreakpoint;
@@ -204,12 +179,17 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
 
             return SafeArea(
               child: Center(
-                child: SizedBox(
-                  width: designW,
-                  height: designH,
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: WelcomeBackScreen._webMaxWidth,
+                  ),
+                  child: SingleChildScrollView(
+                    child: SizedBox(
+                      width: designW,
+                      height: designH,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
                       // Logos (group)
                       Positioned(
                         left: sx(20),
@@ -374,55 +354,55 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              SizedBox(
-                                height: sy(84),
-                                child: _buildKowInput(
-                                  sx: sx,
-                                  sy: sy,
-                                  hintText: 'NICKNAME',
-                                  icon: Icons.person,
-                                ),
+                              KowTextField(
+                                hintText: 'NICKNAME',
+                                prefixIcon: Icons.person,
+                                height: sy(76).clamp(60.0, 80.0),
+                                fontSize: sx(24).clamp(18.0, 28.0),
+                                borderRadius: sy(22).clamp(16.0, 24.0),
+                                fillColor: Colors.white,
                               ),
                               SizedBox(height: sy(18)),
-                              SizedBox(
-                                height: sy(84),
-                                child: _buildKowInput(
-                                  sx: sx,
-                                  sy: sy,
-                                  hintText: 'BIRTHDAY',
-                                  readOnly: true,
-                                  onTap: () => _pickBirthday(context),
-                                  controller: _birthdayController,
-                                  suffixIcon: Icon(
-                                    Icons.arrow_drop_down,
-                                    size: sx(40),
-                                    color: const Color(0xFF111111),
-                                  ),
-                                  prefixIconWidget: Padding(
-                                    padding: EdgeInsets.all(sx(10)),
-                                    child: SvgPicture.asset(
-                                      'assets/Icons/KOWICONS/4.svg',
-                                      width: sx(50),
-                                      height: sy(50),
-                                      fit: BoxFit.contain,
-                                    ),
-                                  ),
-                                  validator: (value) {
-                                    if (value == null || value.trim().isEmpty) {
-                                      return 'Required';
-                                    }
-                                    return null;
-                                  },
+                              KowTextField(
+                                hintText: 'BIRTHDAY',
+                                readOnly: true,
+                                onTap: () => _pickBirthday(context),
+                                controller: _birthdayController,
+                                suffixIcon: Icon(
+                                  Icons.arrow_drop_down,
+                                  size: sx(40),
+                                  color: const Color(0xFF111111),
                                 ),
+                                prefixIconWidget: Padding(
+                                  padding: EdgeInsets.all(sx(10)),
+                                  child: SvgPicture.asset(
+                                    'assets/Icons/KOWICONS/4.svg',
+                                    width: sx(50),
+                                    height: sy(50),
+                                    fit: BoxFit.contain,
+                                  ),
+                                ),
+                                validator: (value) {
+                                  if (value == null || value.trim().isEmpty) {
+                                    return 'Required';
+                                  }
+                                  return null;
+                                },
+                                height: sy(76).clamp(60.0, 80.0),
+                                fontSize: sx(24).clamp(18.0, 28.0),
+                                borderRadius: sy(22).clamp(16.0, 24.0),
+                                fillColor: Colors.white,
                               ),
                               SizedBox(height: sy(22)),
                               SizedBox(
-                                height: sy(66),
-                                child: ChalkButton(
+                                height: sy(66).clamp(56.0, 76.0),
+                                child: KowAnimatedButton(
                                   label: 'START',
-                                  color: const Color(0xFF5C87E5),
+                                  backgroundColor: const Color(0xFF5C87E5),
                                   textColor: Colors.white,
                                   onPressed: () => _handleStart(context),
+                                  height: sy(66).clamp(56.0, 76.0),
+                                  fontSize: sx(25).clamp(20.0, 28.0),
                                 ),
                               ),
                               SizedBox(height: sy(18)),
@@ -459,16 +439,16 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
                               ),
                               SizedBox(height: sy(14)),
                               SizedBox(
-                                width: sy(150),
-                                height: sy(60),
-                                child: ChalkButton(
+                                width: sy(150).clamp(140.0, 180.0),
+                                height: sy(60).clamp(56.0, 70.0),
+                                child: KowAnimatedButton(
                                   label: 'SIGN UP',
-                                  color: const Color(0xFFF2F089),
+                                  backgroundColor: const Color(0xFFF2F089),
                                   textColor: const Color(0xFF2B2B2B),
-                                  onPressed: () => pushFade(
-                                    context,
-                                    const WelcomeStudentScreen(),
-                                  ),
+                                  onPressed: () => _showSignUpDialog(context),
+                                  height: sy(60).clamp(56.0, 70.0),
+                                  fontSize: sx(22).clamp(18.0, 26.0),
+                                  width: sy(150).clamp(140.0, 180.0),
                                 ),
                               ),
                             ],
@@ -476,7 +456,9 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
                         ),
                       ),
 
-                    ],
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),

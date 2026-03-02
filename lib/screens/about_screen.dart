@@ -1,125 +1,171 @@
 import 'package:flutter/material.dart';
+
 import '../widgets/mock_background.dart';
 
-/// About screen – currently under development.
+/// About screen – displays project information, institutional logos,
+/// and a description inside a dark rounded card (matching tutorial design).
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
+
+  // Maximum content width for tablet / Chrome desktop constraint
+  static const double _maxContentWidth = 560;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: MockBackground(
         child: SafeArea(
-          child: Column(
-            children: [
-              // Top bar
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white, size: 28),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                    const Expanded(
-                      child: Text(
-                        'ABOUT',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontFamily: 'SuperCartoon',
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          shadows: [
-                            Shadow(blurRadius: 4, color: Colors.black45, offset: Offset(1, 1)),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 48), // balance the back button
-                  ],
-                ),
-              ),
-              // Coming-soon content
-              Expanded(
-                child: Center(
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 40),
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFB8F0F7),
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black26, blurRadius: 12, offset: Offset(0, 6)),
-                      ],
-                    ),
+          child: Center(
+            // Constrain width for tablet / desktop Chrome
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: _maxContentWidth),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final screenW = constraints.maxWidth;
+
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                     child: Column(
-                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text(
-                          'OOPS!',
-                          style: TextStyle(
-                            fontFamily: 'SuperCartoon',
-                            fontSize: 36,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF2D2D2D),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Image.asset(
-                          'assets/images/Bunny_construction.png',
-                          height: 130,
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, _, _) => Image.asset(
-                            'assets/images/oyo.png',
-                            height: 130,
-                            fit: BoxFit.contain,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        const Text(
-                          'THAT FEATURE IS\nUNDER DEVELOPMENT.\nSTAY TUNED!',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontFamily: 'SuperCartoon',
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            height: 1.3,
-                            color: Color(0xFF2D2D2D),
-                          ),
-                        ),
-                        const SizedBox(height: 22),
-                        SizedBox(
-                          width: 160,
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFFFCC44),
-                              foregroundColor: const Color(0xFF2D2D2D),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(24),
-                              ),
-                              elevation: 4,
+                        // ── Main dark card containing the about content ──
+                        Expanded(
+                          child: Container(
+                            width: double.infinity,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: screenW * 0.06,
+                              vertical: 28,
                             ),
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text(
-                              'RETURN',
-                              style: TextStyle(
-                                fontFamily: 'SuperCartoon',
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
+                            decoration: BoxDecoration(
+                              // Dark gradient background matching the design
+                              gradient: const LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Color(0xFF1A1A2E),
+                                  Color(0xFF16213E),
+                                  Color(0xFF0F3460),
+                                ],
                               ),
+                              borderRadius: BorderRadius.circular(28),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black38,
+                                  blurRadius: 14,
+                                  offset: Offset(0, 6),
+                                ),
+                              ],
+                            ),
+                            child: SingleChildScrollView(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const SizedBox(height: 8),
+
+                                  // ── "ABOUT" title ──
+                                  const Text(
+                                    'ABOUT',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontFamily: 'SuperCartoon',
+                                      fontSize: 40,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.white,
+                                      shadows: [
+                                        Shadow(
+                                          blurRadius: 6,
+                                          color: Colors.black54,
+                                          offset: Offset(2, 2),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+
+                                  // ── Institutional logos row ──
+                                  Image.asset(
+                                    'assets/images/Group_Logos.png',
+                                    height: 60,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      // Fallback: show individual logos in a row
+                                      return Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          _buildLogo('assets/images/lg_sauyo.png'),
+                                          const SizedBox(width: 8),
+                                          _buildLogo('assets/images/lg_bctpoc.png'),
+                                          const SizedBox(width: 8),
+                                          _buildLogo('assets/images/lg_qcu.png'),
+                                        ],
+                                      );
+                                    },
+                                  ),
+                                  const SizedBox(height: 24),
+
+                                  // ── About description text ──
+                                  const Text(
+                                    'LOREM IPSUM DOLOR SIT AMET, CONSECTETUR ADIPISCING ELIT, '
+                                    'SED DO EIUSMOD TEMPOR INCIDIDUNT UT LABORE ET DOLORE MAGNA ALIQUA. '
+                                    'UT ENIM AD MINIM VENIAM, QUIS NOSTRUD EXERCITATION ULLAMCO LABORIS '
+                                    'NISI UT ALIQUIP EX EA COMMODO CONSEQUAT. NULLA PROIDENT, SUNT IN CULPA '
+                                    'QUI OFFICIA DESERUNT MOLLIT ANIM ID EST LABORUM.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontFamily: 'SuperCartoon',
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w800,
+                                      height: 1.35,
+                                      color: Color(0xFFFFE34D), // gold/yellow
+                                      shadows: [
+                                        Shadow(
+                                          blurRadius: 3,
+                                          color: Colors.black38,
+                                          offset: Offset(1, 1),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+
+                        // ── Back arrow button at the bottom-left ──
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: GestureDetector(
+                            onTap: () => Navigator.of(context).pop(),
+                            child: const Icon(
+                              Icons.arrow_back,
+                              color: Color(0xFF3A7BD5), // blue arrow
+                              size: 40,
                             ),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
-            ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// Builds a circular logo image widget (fallback for individual logos).
+  static Widget _buildLogo(String assetPath) {
+    return ClipOval(
+      child: Image.asset(
+        assetPath,
+        width: 50,
+        height: 50,
+        fit: BoxFit.cover,
       ),
     );
   }
