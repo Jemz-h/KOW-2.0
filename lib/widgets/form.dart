@@ -31,6 +31,7 @@ class LightField extends StatelessWidget {
     this.suffixIcon,
     this.readOnly = false,
     this.onTap,
+    this.controller,
   });
 
   final String hintText;
@@ -39,6 +40,7 @@ class LightField extends StatelessWidget {
   final Widget? suffixIcon;
   final bool readOnly;
   final VoidCallback? onTap;
+  final TextEditingController? controller;
 
   @override
   Widget build(BuildContext context) {
@@ -49,6 +51,7 @@ class LightField extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
       ),
       child: TextField(
+        controller: controller,
         readOnly: readOnly,
         onTap: onTap,
         keyboardType: keyboardType,

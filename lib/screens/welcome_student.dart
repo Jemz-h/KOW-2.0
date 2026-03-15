@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 
+import '../api_service.dart';
 import '../navigation/route_transitions.dart';
 import '../widgets/form.dart';
 import '../widgets/mock_background.dart';
@@ -16,7 +17,62 @@ class WelcomeStudentScreen extends StatefulWidget {
 }
 
 class _WelcomeStudentScreenState extends State<WelcomeStudentScreen> {
+  final _firstNameCtrl  = TextEditingController();
+  final _lastNameCtrl   = TextEditingController();
+  final _nicknameCtrl   = TextEditingController();
+  final _birthdayCtrl   = TextEditingController();
+  final _areaCtrl       = TextEditingController();
   String? _selectedSex;
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _firstNameCtrl.dispose();
+    _lastNameCtrl.dispose();
+    _nicknameCtrl.dispose();
+    _birthdayCtrl.dispose();
+    _areaCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleSubmit() async {
+    if (_firstNameCtrl.text.trim().isEmpty ||
+        _lastNameCtrl.text.trim().isEmpty  ||
+        _nicknameCtrl.text.trim().isEmpty  ||
+        _birthdayCtrl.text.trim().isEmpty  ||
+        _selectedSex == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill in all required fields.')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      await ApiService.register(
+        firstName: _firstNameCtrl.text.trim(),
+        lastName:  _lastNameCtrl.text.trim(),
+        nickname:  _nicknameCtrl.text.trim(),
+        birthday:  _birthdayCtrl.text.trim(),
+        sex:       _selectedSex!,
+        area:      _areaCtrl.text.trim().isEmpty ? null : _areaCtrl.text.trim(),
+      );
+      if (!mounted) return;
+      pushFade(context, const MenuScreen());
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not connect to server. Try again.')),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -81,19 +137,20 @@ class _WelcomeStudentScreenState extends State<WelcomeStudentScreen> {
                       ),
                       const SizedBox(height: 12),
                       const FormLabel(text: 'FIRST NAME'),
-                      const LightField(hintText: 'Example: Sisa'),
+                      LightField(hintText: 'Example: Sisa', controller: _firstNameCtrl),
                       const SizedBox(height: 10),
                       const FormLabel(text: 'LAST NAME'),
-                      const LightField(hintText: 'Example: Antido'),
+                      LightField(hintText: 'Example: Antido', controller: _lastNameCtrl),
                       const SizedBox(height: 10),
                       const FormLabel(text: 'NICKNAME'),
-                      const LightField(hintText: 'Example: Sample'),
+                      LightField(hintText: 'Example: Sample', controller: _nicknameCtrl),
                       const SizedBox(height: 10),
                       const FormLabel(text: 'BIRTHDAY'),
-                      const LightField(
+                      LightField(
                         hintText: '10/22/2004',
                         keyboardType: TextInputType.datetime,
                         prefixIcon: Icons.calendar_month,
+                        controller: _birthdayCtrl,
                       ),
                       const SizedBox(height: 4),
                       const Align(
@@ -107,8 +164,7 @@ class _WelcomeStudentScreenState extends State<WelcomeStudentScreen> {
                       const FormLabel(text: 'AREA'),
                       LightField(
                         hintText: 'Select area',
-                        readOnly: true,
-                        suffixIcon: Icon(Icons.keyboard_arrow_down, color: Color(0xFF2D2D2D)),
+                        controller: _areaCtrl,
                       ),
                       const SizedBox(height: 10),
                       Text(
@@ -150,11 +206,14 @@ class _WelcomeStudentScreenState extends State<WelcomeStudentScreen> {
                               borderRadius: BorderRadius.circular(24),
                             ),
                           ),
-                          onPressed: () => pushFade(
-                            context,
-                            const MenuScreen(),
-                          ),
-                          child: const Text('SUBMIT'),
+                          onPressed: _isLoading ? null : _handleSubmit,
+                          child: _isLoading
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Text('SUBMIT'),
                         ),
                       ),
                       const SizedBox(height: 6),

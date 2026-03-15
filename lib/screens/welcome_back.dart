@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../api_service.dart';
 import '../navigation/route_transitions.dart';
 import '../widgets/chalk.dart';
 import '../widgets/mock_background.dart';
@@ -16,21 +17,45 @@ class WelcomeBackScreen extends StatefulWidget {
 
 class _WelcomeBackScreenState extends State<WelcomeBackScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _birthdayController = TextEditingController();
+  final _nicknameController  = TextEditingController();
+  final _birthdayController  = TextEditingController();
+  bool _isLoading = false;
 
-  void _handleStart(BuildContext context) {
+  Future<void> _handleStart(BuildContext context) async {
     final isValid = _formKey.currentState?.validate() ?? false;
     if (!isValid) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter your birthday before continuing.')),
+        const SnackBar(content: Text('Please enter your nickname and birthday.')),
       );
       return;
     }
-    pushFade(context, const MenuScreen());
+
+    setState(() => _isLoading = true);
+    try {
+      await ApiService.login(
+        nickname: _nicknameController.text.trim(),
+        birthday: _birthdayController.text.trim(),
+      );
+      if (!mounted) return;
+      pushFade(context, const MenuScreen());
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not connect to server. Try again.')),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
   void dispose() {
+    _nicknameController.dispose();
     _birthdayController.dispose();
     super.dispose();
   }
@@ -150,9 +175,16 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen> {
                               ),
                             ),
                             SizedBox(height: h * 0.03),
-                            const ChalkTextField(
+                            ChalkTextField(
                               hintText: 'NICKNAME',
                               icon: Icons.person,
+                              controller: _nicknameController,
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) {
+                                  return 'Required';
+                                }
+                                return null;
+                              },
                             ),
                             const SizedBox(height: 12),
                             ChalkTextField(
@@ -169,10 +201,10 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen> {
                             ),
                             const SizedBox(height: 16),
                             ChalkButton(
-                              label: 'START',
+                              label: _isLoading ? 'LOADING...' : 'START',
                               color: const Color(0xFF5C87E5),
                               textColor: Colors.white,
-                              onPressed: () => _handleStart(context),
+                              onPressed: _isLoading ? () {} : () => _handleStart(context),
                             ),
                             const SizedBox(height: 12),
                             Text(
