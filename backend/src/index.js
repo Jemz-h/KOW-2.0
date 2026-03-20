@@ -7,10 +7,6 @@ require('dotenv').config();
 const db = require('./config/db');
 const { errorHandler, notFound } = require('./middleware/errorMiddleware');
 
-const userRoutes = require('./routes/userRoutes');
-const levelRoutes = require('./routes/levelRoutes');
-const progressRoutes = require('./routes/progressRoutes');
-
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -28,6 +24,14 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // Routes
+const authRoutes = require('./routes/authRoutes');
+const quizRoutes = require('./routes/quizRoutes');
+const userRoutes = require('./routes/userRoutes');
+const levelRoutes = require('./routes/levelRoutes');
+const progressRoutes = require('./routes/progressRoutes');
+
+app.use('/api/auth', authRoutes);
+app.use('/api/quiz', quizRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/levels', levelRoutes);
 app.use('/api/progress', progressRoutes);

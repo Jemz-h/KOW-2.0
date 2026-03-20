@@ -8,6 +8,7 @@ const errorHandler = (err, req, res, next) => {
   // Respond with a consistent JSON format
   res.json({
     success: false,
+    error: err.message || 'Internal Server Error',
     message: err.message || 'Internal Server Error',
     // Only show stack trace in development mode for security
     stack: process.env.NODE_ENV === 'production' ? null : err.stack,
