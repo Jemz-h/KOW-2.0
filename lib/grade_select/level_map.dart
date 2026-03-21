@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import '../screens/settings.dart'; // ← adjust path to match where settings.dart lives
 
 // ── Grade → planet image paths ────────────────────────────────
 const _gradePlanets = {
   'PUNLA':  ['assets/themes/earth.png',   'assets/themes/mars.png',    'assets/themes/neptune.png'],
-  'BINHI':  ['assets/themes/earth.png',   'assets/themes/mars.png',    'assets/themes/neptune.png'],
+  'BINHI': ['assets/themes/earth.png',   'assets/themes/mars.png',    'assets/themes/neptune.png'],
   'COMING': ['assets/themes/earth.png',   'assets/themes/mars.png',    'assets/themes/neptune.png'],
 };
 
@@ -152,6 +153,16 @@ class _LevelMapScreenState extends State<LevelMapScreen>
     super.dispose();
   }
 
+  // ── Navigate to settings ──────────────────────────────────
+  void _goToSettings() {
+    Navigator.of(context).push(PageRouteBuilder(
+      pageBuilder: (_, animation, _) => const SettingsScreen(),
+      transitionsBuilder: (_, animation, _, child) =>
+          FadeTransition(opacity: animation, child: child),
+      transitionDuration: const Duration(milliseconds: 300),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final size    = MediaQuery.of(context).size;
@@ -247,7 +258,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
               width:  sw * kGojoSize,
               height: sw * kGojoSize,
               fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) =>
+              errorBuilder: (_, _, _) =>
                   const Icon(Icons.person, color: Colors.white, size: 32),
             ),
           ),
@@ -299,7 +310,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
               island,
               width: sw * kIslandSize,
               fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              errorBuilder: (_, _, _) => const SizedBox.shrink(),
             ),
           ),
 
@@ -334,7 +345,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
 
                   // ⚙ Settings
                   _TapIcon(
-                    onTap: () {},
+                    onTap: _goToSettings, // ← navigates to SettingsScreen
                     child: SvgPicture.asset(
                       'assets/icons/setting.svg',
                       width: kSettingsSize, height: kSettingsSize,
