@@ -18,8 +18,8 @@ void showAchievementDialog(BuildContext context) {
       final sectionTitleFontSize = 18.0 * scale * hFactor;
       final bodyFontSize = 13.0 * scale * hFactor;
       final nicknameFontSize = 22.0 * scale * hFactor;
-      final coinSize = 62.0 * scale * hFactor;
-      final coinCountFontSize = 16.0 * scale * hFactor;
+      // final coinSize = 62.0 * scale * hFactor;
+      // final coinCountFontSize = 16.0 * scale * hFactor;
       final sectionVertPad = 12.0 * scale * hFactor;
       final sectionMargin = 6.0 * scale * hFactor;
 
