@@ -12,7 +12,7 @@ class StartScreen extends StatefulWidget {
 
   // Breakpoint for tablet layout (in pixels)
   static const double _tabletBreakpoint = 700;
-  // Maximum content width for tablets (prevents stretching)
+  // Maximum content width for tablets
   static const double _maxContentWidth = 560.0;
 
   @override
@@ -21,19 +21,15 @@ class StartScreen extends StatefulWidget {
 
 class _StartScreenState extends State<StartScreen>
     with TickerProviderStateMixin {
-  // Animation controller for blinking tap hint
   late final AnimationController _blinkController;
-  // Animation for tap hint opacity
   late final Animation<double> _blinkOpacity;
 
-  // Entrance animation for title/subtitle
   late final AnimationController _introController;
   late final Animation<double> _titleOpacity;
   late final Animation<double> _subtitleOpacity;
   late final Animation<Offset> _titleSlide;
   late final Animation<Offset> _subtitleSlide;
 
-  // Continuous subtle floating animation so text never appears static
   late final AnimationController _idleController;
   late final Animation<double> _idleTitleScale;
   late final Animation<double> _idleSubtitleScale;
@@ -51,12 +47,12 @@ class _StartScreenState extends State<StartScreen>
   @override
   void initState() {
     super.initState();
-    // Set up blinking animation for tap hint
+
     _blinkController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
-      animationBehavior: AnimationBehavior.preserve,
     )..repeat(reverse: true);
+
     _blinkOpacity = CurvedAnimation(
       parent: _blinkController,
       curve: Curves.easeInOut,
@@ -65,18 +61,17 @@ class _StartScreenState extends State<StartScreen>
     _introController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
-      animationBehavior: AnimationBehavior.preserve,
     );
 
     _idleController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 3200),
-      animationBehavior: AnimationBehavior.preserve,
     );
 
     _idleTitleScale = Tween<double>(begin: 1.0, end: 1.014).animate(
       CurvedAnimation(parent: _idleController, curve: Curves.easeInOut),
     );
+
     _idleSubtitleScale = Tween<double>(begin: 1.0, end: 1.008).animate(
       CurvedAnimation(parent: _idleController, curve: Curves.easeInOut),
     );
@@ -85,6 +80,7 @@ class _StartScreenState extends State<StartScreen>
       parent: _introController,
       curve: const Interval(0.0, 0.65, curve: Curves.easeOut),
     );
+
     _subtitleOpacity = CurvedAnimation(
       parent: _introController,
       curve: const Interval(0.3, 1.0, curve: Curves.easeOut),
@@ -122,15 +118,7 @@ class _StartScreenState extends State<StartScreen>
   }
 
   @override
-  void reassemble() {
-    super.reassemble();
-    _idleController.stop();
-    _playIntro();
-  }
-
-  @override
   void dispose() {
-    // Clean up animation controller
     _blinkController.dispose();
     _introController.dispose();
     _idleController.dispose();
@@ -139,67 +127,67 @@ class _StartScreenState extends State<StartScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Entire screen is tappable to start the app
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => pushFade(context, const WelcomeBackScreen()), // Go to login
+      onTap: () => pushFade(context, const WelcomeBackScreen()),
       child: MockBackground(
         child: LayoutBuilder(
           builder: (context, constraints) {
             final w = constraints.maxWidth;
             final h = constraints.maxHeight;
 
-            // Responsive layout: cap content width for tablets
             final isTablet = w >= StartScreen._tabletBreakpoint;
-            final contentW = isTablet ? StartScreen._maxContentWidth : w;
-
-            // Figma-style scaling helpers
-            double sx(double px) => px * (contentW / 412);
-            double sy(double px) => px * (h / 917);
+            final contentW =
+                isTablet ? StartScreen._maxContentWidth : w;
 
             return SafeArea(
               child: Center(
-                child: SizedBox(
-                  width: contentW,
-                  height: h,
-                  child: Stack(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: contentW,
+                  ),
+                  child: Column(
                     children: [
-                      // Logos (group) - precise placement
-                      Positioned(
-                        left: sx(20),
-                        top: sy(10),
-                        width: sx(372),
-                        height: sy(110),
-                        child: LogoRow(top: 0, width: sx(372)),
+                      // 🔝 Logos
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: h * 0.02,
+                        ),
+                        child: LogoRow(top: 0, width: contentW),
                       ),
 
-                      // Main title — fade-in + slide-up entrance
-                      Positioned(
-                        top: h * 0.14,
-                        left: 20,
-                        right: 20,
-                        child: FadeTransition(
-                          opacity: _titleOpacity,
-                          child: SlideTransition(
-                            position: _titleSlide,
-                            child: ScaleTransition(
-                              scale: _idleTitleScale,
-                              child: Text(
-                                'KARUNUNGAN\nON WHEELS',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontFamily: 'SuperCartoon',
-                                  fontSize: contentW * 0.15,
-                                  fontWeight: FontWeight.w900,
-                                  height: 1.0,
-                                  color: Colors.white,
-                                  shadows: const [
-                                    Shadow(
-                                      blurRadius: 4,
-                                      color: Colors.black54,
-                                      offset: Offset(2, 2),
+                      // 🧠 Title
+                      Expanded(
+                        flex: 3,
+                        child: Center(
+                          child: FadeTransition(
+                            opacity: _titleOpacity,
+                            child: SlideTransition(
+                              position: _titleSlide,
+                              child: ScaleTransition(
+                                scale: _idleTitleScale,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                                  child: Text(
+                                    'KARUNUNGAN\nON WHEELS',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontFamily: 'SuperCartoon',
+                                      fontSize:
+                                          isTablet ? 70 : contentW * 0.15,
+                                      fontWeight: FontWeight.w900,
+                                      height: 1.0,
+                                      color: Colors.white,
+                                      shadows: const [
+                                        Shadow(
+                                          blurRadius: 4,
+                                          color: Colors.black54,
+                                          offset: Offset(2, 2),
+                                        ),
+                                      ],
                                     ),
-                                  ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -207,34 +195,47 @@ class _StartScreenState extends State<StartScreen>
                         ),
                       ),
 
-                      // Owl mascot (Figma-style absolute placement)
-                      Positioned(
-                        left: sx(-80),
-                        top: sy(242),
-                        width: sx(460),
-                        height: sy(575),
-                        child: Image.asset(
-                          'assets/sisa_oyo/oyo.png',
-                          fit: BoxFit.contain,
+                      // 🦉 Mascots
+                      Expanded(
+                        flex: 5,
+                        child: Stack(
+                          children: [
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: FractionallySizedBox(
+                                widthFactor: isTablet ? 0.8 : 1.2,
+                                child: Transform.translate(
+                                  offset: Offset(-contentW * 0.2, h * 0.05),
+                                  child: Image.asset(
+                                    'assets/sisa_oyo/oyo.png',
+                                    fit: BoxFit.contain,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Align(
+                              alignment: Alignment.bottomRight,
+                              child: FractionallySizedBox(
+                                widthFactor: 0.6,
+                                child: Transform.translate(
+                                  offset: Offset(contentW * 0.01, h * 0.05),
+                                  child: Image.asset(
+                                    'assets/sisa_oyo/sisa.png',
+                                    fit: BoxFit.contain,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
 
-                      // Sisa mascot (Figma-style absolute placement)
-                      Positioned(
-                        left: sx(128),
-                        top: sy(408),
-                        width: sx(303),
-                        height: sy(379),
-                        child: Image.asset(
-                          'assets/sisa_oyo/sisa.png',
-                          fit: BoxFit.contain,
+                      // 📜 Subtitle
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 40,
+                          vertical: h * 0.015,
                         ),
-                      ),
-                      // Subtitle — fade-in + slide-up entrance (slight delay)
-                      Positioned(
-                        bottom: h * 0.11,
-                        left: 30,
-                        right: 30,
                         child: FadeTransition(
                           opacity: _subtitleOpacity,
                           child: SlideTransition(
@@ -246,7 +247,8 @@ class _StartScreenState extends State<StartScreen>
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontFamily: 'SuperCartoon',
-                                  fontSize: contentW * 0.042,
+                                  fontSize:
+                                      isTablet ? 18 : contentW * 0.042,
                                   fontWeight: FontWeight.w800,
                                   height: 1.2,
                                   color: const Color(0xFFFFE34D),
@@ -264,30 +266,27 @@ class _StartScreenState extends State<StartScreen>
                         ),
                       ),
 
-                      // Flashing tap hint at the bottom
-                      Positioned(
-                        bottom: h * 0.03,
-                        left: 0,
-                        right: 0,
-                        child: IgnorePointer(
-                          child: FadeTransition(
-                            opacity: _blinkOpacity,
-                            child: Text(
-                              'Tap screen to play',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontFamily: 'SuperCartoon',
-                                fontSize: contentW * 0.09,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.white70,
-                                shadows: const [
-                                  Shadow(
-                                    blurRadius: 4,
-                                    color: Colors.black45,
-                                    offset: Offset(1, 1),
-                                  ),
-                                ],
-                              ),
+                      // 👇 Tap hint
+                      Padding(
+                        padding: EdgeInsets.only(bottom: h * 0.03),
+                        child: FadeTransition(
+                          opacity: _blinkOpacity,
+                          child: Text(
+                            'Tap screen to play',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontFamily: 'SuperCartoon',
+                              fontSize:
+                                  isTablet ? 26 : contentW * 0.08,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.white70,
+                              shadows: const [
+                                Shadow(
+                                  blurRadius: 4,
+                                  color: Colors.black45,
+                                  offset: Offset(1, 1),
+                                ),
+                              ],
                             ),
                           ),
                         ),

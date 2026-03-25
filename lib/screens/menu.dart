@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:kow/grade_select/grade.dart';
 
 import '../widgets/menu_button.dart';
 import '../widgets/mock_background.dart';
@@ -243,7 +244,7 @@ class _MenuScreenState extends State<MenuScreen>
                             // START button (currently shows coming soon popup)
                             SizedBox(
                               height: sy(58),
-                              child: MenuButton(label: 'START', onTap: () => showComingSoonPopup(context)),
+                              child: MenuButton(label: 'START', onTap: () => pushFade(context,const GradeApp())),
                             ),
                             SizedBox(height: sy(12)),
                             // TUTORIAL button
