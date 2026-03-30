@@ -1,66 +1,83 @@
-const oracledb = require('oracledb');
 require('dotenv').config();
+
+const oracleProvider = require('./providers/oracleProvider');
+const sqliteProvider = require('./providers/sqliteProvider');
+
+const configuredClient = (process.env.DB_CLIENT || 'sqlite').toLowerCase();
+const allowFallback = (process.env.DB_FALLBACK_SQLITE || 'true').toLowerCase() !== 'false';
+
+let activeClient = configuredClient;
+let provider = configuredClient === 'sqlite' ? sqliteProvider : oracleProvider;
+
+function setProvider(clientName) {
+  activeClient = clientName;
+  provider = clientName === 'sqlite' ? sqliteProvider : oracleProvider;
+}
 
 async function initialize() {
   try {
-    await oracledb.createPool({
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
-      connectString: process.env.DB_CONNECTION_STRING,
-      poolMin: 2,
-      poolMax: 10,
-      poolIncrement: 2
-    });
-    console.log('Oracle Database pool created successfully');
-  } catch (err) {
-    console.error('Error creating Oracle Database pool:', err.message);
-    process.exit(1); // Fail fast if db connection fails on startup
+    await provider.initialize();
+    console.log(`Database provider initialized: ${activeClient}`);
+  } catch (error) {
+    console.error(`Error initializing ${activeClient} database provider:`, error.message);
+
+    if (activeClient === 'oracle' && allowFallback) {
+      console.warn('Falling back to SQLite provider for offline mode');
+      setProvider('sqlite');
+      await provider.initialize();
+      console.log('Database provider initialized: sqlite (fallback)');
+      return;
+    }
+
+    throw error;
   }
 }
 
-/**
- * Utility function to execute a SQL statement. 
- * This abstracts away connection management across all controllers.
- * 
- * @param {string} sql - The raw SQL statement
- * @param {Array|Object} binds - Bind variables for the statement
- * @param {Object} opts - Additional oracledb execution options
- * @returns {Promise<Object>} The execution result
- */
 async function execute(sql, binds = [], opts = {}) {
-  let connection;
   try {
-    connection = await oracledb.getConnection();
-    opts.outFormat = oracledb.OUT_FORMAT_OBJECT; // Consistently return objects, not arrays of arrays
-    
-    const result = await connection.execute(sql, binds, opts);
-    return result;
-  } catch (err) {
-    console.error('Database execution error:', err.message);
-    throw err; // Re-throw to be caught by the route's error handler
-  } finally {
-    if (connection) {
-      try {
-        await connection.close();
-      } catch (err) {
-        console.error('Error closing connection:', err.message);
-      }
-    }
+    return await provider.execute(sql, binds, opts);
+  } catch (error) {
+    console.error('Database execution error:', error.message);
+    throw error;
   }
+}
+
+async function close() {
+  await provider.close();
+}
+
+function isOracle() {
+  return activeClient === 'oracle';
+}
+
+function isSqlite() {
+  return activeClient === 'sqlite';
+}
+
+function getDriver() {
+  return provider.driver;
 }
 
 async function closePoolAndExit() {
-  console.log('\nClosing Database pool');
+  console.log('\nClosing database provider');
   try {
-    await oracledb.getPool().close(10);
-    console.log('Pool closed');
+    await close();
+    console.log('Database provider closed');
     process.exit(0);
-  } catch (err) {
-    console.error(err.message);
+  } catch (error) {
+    console.error(error.message);
     process.exit(1);
   }
 }
 
 process.once('SIGTERM', closePoolAndExit).once('SIGINT', closePoolAndExit);
 
-module.exports = { initialize, execute };
+module.exports = {
+  initialize,
+  execute,
+  close,
+  isOracle,
+  isSqlite,
+  getDriver,
+  client: activeClient
+};

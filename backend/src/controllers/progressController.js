@@ -61,34 +61,71 @@ const saveProgress = asyncHandler(async (req, res) => {
     throw new Error('Please provide subject/subjectId and grade/gradeLevelId');
   }
 
-  const result = await db.execute(
-    `MERGE INTO progressTb p
-     USING (
-       SELECT :studId AS stud_id,
-              :subjectId AS subject_id,
-              :gradeLevelId AS gradelvl_id
-       FROM DUAL
-     ) src
-     ON (
-       p.stud_id = src.stud_id
-       AND p.subject_id = src.subject_id
-       AND p.gradelvl_id = src.gradelvl_id
-     )
-     WHEN MATCHED THEN
-       UPDATE SET
-         p.highest_diff_passed = CASE
-           WHEN :highestDiffPassed IS NOT NULL AND :highestDiffPassed > NVL(p.highest_diff_passed, 0)
-             THEN :highestDiffPassed
-           ELSE p.highest_diff_passed
-         END,
-         p.total_time_played = NVL(p.total_time_played, 0) + NVL(:timeToAdd, 0),
-         p.last_played_at = CASE
-           WHEN :lastPlayedAt IS NULL THEN SYSDATE
-           ELSE TO_DATE(SUBSTR(REPLACE(:lastPlayedAt, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
-         END
-     WHEN NOT MATCHED THEN
-       INSERT (
-         progress_id,
+  const binds = {
+    studId: resolvedStudentId,
+    subjectId: resolvedSubjectId,
+    gradeLevelId: resolvedGradeLevelId,
+    highestDiffPassed: resolvedDiffId,
+    timeToAdd: totalTimePlayed ?? timeSpent ?? 0,
+    lastPlayedAt: lastPlayedAt || null
+  };
+
+  let result;
+
+  if (db.isOracle()) {
+    result = await db.execute(
+      `MERGE INTO progressTb p
+       USING (
+         SELECT :studId AS stud_id,
+                :subjectId AS subject_id,
+                :gradeLevelId AS gradelvl_id
+         FROM DUAL
+       ) src
+       ON (
+         p.stud_id = src.stud_id
+         AND p.subject_id = src.subject_id
+         AND p.gradelvl_id = src.gradelvl_id
+       )
+       WHEN MATCHED THEN
+         UPDATE SET
+           p.highest_diff_passed = CASE
+             WHEN :highestDiffPassed IS NOT NULL AND :highestDiffPassed > NVL(p.highest_diff_passed, 0)
+               THEN :highestDiffPassed
+             ELSE p.highest_diff_passed
+           END,
+           p.total_time_played = NVL(p.total_time_played, 0) + NVL(:timeToAdd, 0),
+           p.last_played_at = CASE
+             WHEN :lastPlayedAt IS NULL THEN SYSDATE
+             ELSE TO_DATE(SUBSTR(REPLACE(:lastPlayedAt, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
+           END
+       WHEN NOT MATCHED THEN
+         INSERT (
+           progress_id,
+           stud_id,
+           subject_id,
+           gradelvl_id,
+           highest_diff_passed,
+           total_time_played,
+           last_played_at
+         )
+         VALUES (
+           seq_score_id.NEXTVAL,
+           :studId,
+           :subjectId,
+           :gradeLevelId,
+           NVL(:highestDiffPassed, 0),
+           NVL(:timeToAdd, 0),
+           CASE
+             WHEN :lastPlayedAt IS NULL THEN SYSDATE
+             ELSE TO_DATE(SUBSTR(REPLACE(:lastPlayedAt, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
+           END
+         )`,
+      binds,
+      { autoCommit: true }
+    );
+  } else {
+    result = await db.execute(
+      `INSERT INTO progressTb (
          stud_id,
          subject_id,
          gradelvl_id,
@@ -97,27 +134,26 @@ const saveProgress = asyncHandler(async (req, res) => {
          last_played_at
        )
        VALUES (
-         seq_score_id.NEXTVAL,
          :studId,
          :subjectId,
          :gradeLevelId,
-         NVL(:highestDiffPassed, 0),
-         NVL(:timeToAdd, 0),
-         CASE
-           WHEN :lastPlayedAt IS NULL THEN SYSDATE
-           ELSE TO_DATE(SUBSTR(REPLACE(:lastPlayedAt, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
-         END
-       )`,
-    {
-      studId: resolvedStudentId,
-      subjectId: resolvedSubjectId,
-      gradeLevelId: resolvedGradeLevelId,
-      highestDiffPassed: resolvedDiffId,
-      timeToAdd: totalTimePlayed ?? timeSpent ?? 0,
-      lastPlayedAt: lastPlayedAt || null
-    },
-    { autoCommit: true }
-  );
+         COALESCE(:highestDiffPassed, 0),
+         COALESCE(:timeToAdd, 0),
+         COALESCE(:lastPlayedAt, CURRENT_TIMESTAMP)
+       )
+       ON CONFLICT (stud_id, subject_id, gradelvl_id)
+       DO UPDATE SET
+         highest_diff_passed = CASE
+           WHEN excluded.highest_diff_passed > COALESCE(progressTb.highest_diff_passed, 0)
+             THEN excluded.highest_diff_passed
+           ELSE progressTb.highest_diff_passed
+         END,
+         total_time_played = COALESCE(progressTb.total_time_played, 0) + COALESCE(excluded.total_time_played, 0),
+         last_played_at = COALESCE(excluded.last_played_at, progressTb.last_played_at)`,
+      binds,
+      { autoCommit: true }
+    );
+  }
 
   res.status(201).json({ 
     success: true,

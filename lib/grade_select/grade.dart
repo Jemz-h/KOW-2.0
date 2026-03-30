@@ -168,12 +168,12 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
     _popupCtrl.reverse().then((_) {
       _showPopup.value = false;
       Navigator.of(context).push(PageRouteBuilder(
-        pageBuilder: (_, animation, __) => LevelMapScreen(
+        pageBuilder: (_, animation, _) => LevelMapScreen(
           grade:    _kGrades[_currentIndex]['label']!,
           subject:  subject,
           gradeImg: _kGrades[_currentIndex]['img']!,
         ),
-        transitionsBuilder: (_, animation, __, child) =>
+        transitionsBuilder: (_, animation, _, child) =>
             FadeTransition(opacity: animation, child: child),
         transitionDuration: const Duration(milliseconds: 350),
       ));
@@ -183,8 +183,8 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
   // ── Navigate to settings ──────────────────────────────────────
   void _goToSettings() {
     Navigator.of(context).push(PageRouteBuilder(
-      pageBuilder: (_, animation, __) => const SettingsScreen(),
-      transitionsBuilder: (_, animation, __, child) =>
+      pageBuilder: (_, animation, _) => const SettingsScreen(),
+      transitionsBuilder: (_, animation, _, child) =>
           FadeTransition(opacity: animation, child: child),
       transitionDuration: const Duration(milliseconds: 300),
     ));
@@ -275,7 +275,7 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
               // AnimatedBuilder scope is limited to carousel + bob only
               child: AnimatedBuilder(
                 animation: _bobCtrl,
-                builder: (_, __) {
+                builder: (_, _) {
                   final animOffset = _position - _currentIndex;
                   return Stack(
                     alignment: Alignment.center,
@@ -429,7 +429,7 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
           // ── Subject popup — driven by ValueNotifier ─────────────
           ValueListenableBuilder<bool>(
             valueListenable: _showPopup,
-            builder: (_, visible, __) {
+            builder: (_, visible, _) {
               if (!visible) return const SizedBox.shrink();
               return Stack(
                 fit: StackFit.expand,
@@ -555,7 +555,7 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
                                           width: r.sw(120),
                                           height: r.sw(120),
                                           fit: BoxFit.contain,
-                                          errorBuilder: (_, __, ___) =>
+                                          errorBuilder: (context, error, stackTrace) =>
                                               const SizedBox.shrink(),
                                         ),
                                       ),

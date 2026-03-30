@@ -13,7 +13,7 @@ const port = process.env.PORT || 3000;
 // Security and utility Middlewares
 app.use(helmet()); // Secure HTTP headers
 app.use(cors()); // Enable Cross-Origin Resource Sharing
-app.use(express.json()); // Parse incoming JSON requests
+app.use(express.json({ limit: '1mb' })); // Parse incoming JSON requests
 app.use(express.urlencoded({ extended: false })); // Parse URL-encoded data
 
 // HTTP request logger middleware
@@ -51,4 +51,7 @@ async function startServer() {
   });
 }
 
-startServer();
+startServer().catch((error) => {
+  console.error('Fatal startup error:', error.message);
+  process.exit(1);
+});

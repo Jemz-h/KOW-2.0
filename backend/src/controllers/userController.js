@@ -6,21 +6,35 @@ const UserModel = require('../models/userModel');
 // @route   GET /api/users
 // @access  Public
 const getUsers = asyncHandler(async (req, res) => {
-  const result = await db.execute(`
-    SELECT s.stud_id,
-      s.first_name,
-      s.last_name,
-      s.nickname,
-      TO_CHAR(s.birthday, 'YYYY-MM-DD') AS birthday,
-      x.sex,
-      b.barangay_nm,
-      TO_CHAR(s.created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at,
-      TO_CHAR(s.updated_at, 'YYYY-MM-DD HH24:MI:SS') AS updated_at
-    FROM studentTb s
-    LEFT JOIN sexTb x ON s.sex_id = x.sex_id
-    LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
-    ORDER BY s.stud_id
-  `);
+  const query = db.isOracle()
+    ? `SELECT s.stud_id,
+              s.first_name,
+              s.last_name,
+              s.nickname,
+              TO_CHAR(s.birthday, 'YYYY-MM-DD') AS birthday,
+              x.sex,
+              b.barangay_nm,
+              TO_CHAR(s.created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at,
+              TO_CHAR(s.updated_at, 'YYYY-MM-DD HH24:MI:SS') AS updated_at
+       FROM studentTb s
+       LEFT JOIN sexTb x ON s.sex_id = x.sex_id
+       LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
+       ORDER BY s.stud_id`
+    : `SELECT s.stud_id,
+              s.first_name,
+              s.last_name,
+              s.nickname,
+              date(s.birthday) AS birthday,
+              x.sex,
+              b.barangay_nm,
+              s.created_at,
+              s.updated_at
+       FROM studentTb s
+       LEFT JOIN sexTb x ON s.sex_id = x.sex_id
+       LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
+       ORDER BY s.stud_id`;
+
+  const result = await db.execute(query);
   
   res.status(200).json({
     success: true,
@@ -33,23 +47,39 @@ const getUsers = asyncHandler(async (req, res) => {
 // @access  Public
 const getUserById = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const result = await db.execute(`
-    SELECT s.stud_id,
-           s.first_name,
-           s.last_name,
-           s.nickname,
-           TO_CHAR(s.birthday, 'YYYY-MM-DD') AS birthday,
-           x.sex,
-           b.barangay_nm,
-           TO_CHAR(s.created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at,
-           TO_CHAR(s.updated_at, 'YYYY-MM-DD HH24:MI:SS') AS updated_at,
-           s.device_origin,
-           s.tmp_local_id
-    FROM studentTb s
-    LEFT JOIN sexTb x ON s.sex_id = x.sex_id
-    LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
-    WHERE s.stud_id = :id
-  `, { id });
+  const query = db.isOracle()
+    ? `SELECT s.stud_id,
+              s.first_name,
+              s.last_name,
+              s.nickname,
+              TO_CHAR(s.birthday, 'YYYY-MM-DD') AS birthday,
+              x.sex,
+              b.barangay_nm,
+              TO_CHAR(s.created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at,
+              TO_CHAR(s.updated_at, 'YYYY-MM-DD HH24:MI:SS') AS updated_at,
+              s.device_origin,
+              s.tmp_local_id
+       FROM studentTb s
+       LEFT JOIN sexTb x ON s.sex_id = x.sex_id
+       LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
+       WHERE s.stud_id = :id`
+    : `SELECT s.stud_id,
+              s.first_name,
+              s.last_name,
+              s.nickname,
+              date(s.birthday) AS birthday,
+              x.sex,
+              b.barangay_nm,
+              s.created_at,
+              s.updated_at,
+              s.device_origin,
+              s.tmp_local_id
+       FROM studentTb s
+       LEFT JOIN sexTb x ON s.sex_id = x.sex_id
+       LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
+       WHERE s.stud_id = :id`;
+
+  const result = await db.execute(query, { id });
   
   if (result.rows.length === 0) {
     res.status(404);
@@ -105,13 +135,15 @@ const updateUserBirthday = asyncHandler(async (req, res) => {
     throw new Error('Birthday is required');
   }
 
-  const result = await db.execute(
-    `UPDATE studentTb
-     SET birthday = TO_DATE(:birthday, 'YYYY-MM-DD')
-     WHERE stud_id = :id`,
-    { id, birthday },
-    { autoCommit: true }
-  );
+  const query = db.isOracle()
+    ? `UPDATE studentTb
+       SET birthday = TO_DATE(:birthday, 'YYYY-MM-DD')
+       WHERE stud_id = :id`
+    : `UPDATE studentTb
+       SET birthday = :birthday
+       WHERE stud_id = :id`;
+
+  const result = await db.execute(query, { id, birthday }, { autoCommit: true });
 
   if (result.rowsAffected === 0) {
     res.status(404);

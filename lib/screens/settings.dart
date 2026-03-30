@@ -20,7 +20,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       activeTrackColor: const Color(0xFF2FAE2C),
       inactiveTrackColor: const Color(0xFFBFEBC0),
       thumbColor: const Color(0xFF2F6EB5),
-      overlayColor: const Color(0xFF2F6EB5).withOpacity(0.12),
+      overlayColor: const Color(0xFF2F6EB5).withValues(alpha: 0.12),
       thumbShape: const _PillThumbShape(),
     );
   }
@@ -557,7 +557,7 @@ class _ThemeCard extends StatelessWidget {
                       errorBuilder: (c, e, s) => Container(color: Colors.grey[200], alignment: Alignment.center, child: const Icon(Icons.broken_image, color: Colors.grey))),
                 ),
               ),
-              if (selected) Positioned.fill(child: Container(decoration: BoxDecoration(color: Colors.black.withOpacity(0.35), borderRadius: BorderRadius.circular(10)))),
+              if (selected) Positioned.fill(child: Container(decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.35), borderRadius: BorderRadius.circular(10)))),
               if (selected) Positioned.fill(child: Center(child: Image.asset('assets/icons/check.png', width: width * 0.5, height: width * 0.5, fit: BoxFit.contain))),
             ],
           ),

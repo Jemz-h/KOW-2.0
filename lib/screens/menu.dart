@@ -5,7 +5,6 @@ import 'package:kow/grade_select/grade.dart';
 
 import '../widgets/menu_button.dart';
 import '../widgets/mock_background.dart';
-import '../widgets/coming_soon.dart';
 import '../navigation/route_transitions.dart';
 import 'tutorial.dart';
 import 'settings.dart';
@@ -162,7 +161,7 @@ class _MenuScreenState extends State<MenuScreen>
                       Positioned(
                         left: sx(20), top: sy(20),
                         width: sx(372), height: sy(110),
-                        child: LogoRow(top: 0, width: sx(372)),
+                        child: LogoRow(width: sx(372)),
                       ),
                       // Main title — animated fade-in, slide-up, and idle floating
                       Positioned(

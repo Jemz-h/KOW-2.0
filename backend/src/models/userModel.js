@@ -43,48 +43,91 @@ class UserModel {
     const { firstName, lastName, nickname, birthday, sex, area, teacherId, deviceUuid } = userData;
     const sexId = await this.resolveSexId(sex);
     const barangayId = await this.resolveBarangayId(area);
-    
-    const query = `
-      INSERT INTO studentTb (
-        first_name,
-        last_name,
+
+    if (db.isOracle()) {
+      const driver = db.getDriver();
+      const query = `
+        INSERT INTO studentTb (
+          first_name,
+          last_name,
+          nickname,
+          birthday,
+          sex_id,
+          teacher_id,
+          barangay_id,
+          device_origin
+        )
+        VALUES (
+          :firstName,
+          :lastName,
+          :nickname,
+          TO_DATE(:birthday, 'YYYY-MM-DD'),
+          :sexId,
+          :teacherId,
+          :barangayId,
+          :deviceUuid
+        )
+        RETURNING stud_id INTO :outId
+      `;
+
+      const binds = {
+        firstName,
+        lastName,
         nickname,
         birthday,
-        sex_id,
-        teacher_id,
-        barangay_id,
-        device_origin
-      )
-      VALUES (
-        :firstName,
-        :lastName,
-        :nickname,
-        TO_DATE(:birthday, 'YYYY-MM-DD'),
-        :sexId,
-        :teacherId,
-        :barangayId,
-        :deviceUuid
-      )
-      RETURNING stud_id INTO :outId
-    `;
+        sexId,
+        teacherId: teacherId || null,
+        barangayId,
+        deviceUuid: deviceUuid || null,
+        outId: { dir: driver.BIND_OUT, type: driver.NUMBER }
+      };
 
-    const binds = {
-      firstName: firstName,
-      lastName: lastName,
-      nickname: nickname,
-      birthday: birthday,
-      sexId,
-      teacherId: teacherId || null,
-      barangayId,
-      deviceUuid: deviceUuid || null,
-      outId: { dir: require('oracledb').BIND_OUT, type: require('oracledb').NUMBER }
-    };
+      const result = await db.execute(query, binds, { autoCommit: true });
+      return result.outBinds.outId[0];
+    }
 
-    const result = await db.execute(query, binds, { autoCommit: true });
+    const result = await db.execute(
+      `INSERT INTO studentTb (
+         first_name,
+         last_name,
+         nickname,
+         birthday,
+         sex_id,
+         teacher_id,
+         barangay_id,
+         device_origin
+       )
+       VALUES (
+         :firstName,
+         :lastName,
+         :nickname,
+         :birthday,
+         :sexId,
+         :teacherId,
+         :barangayId,
+         :deviceUuid
+       )`,
+      {
+        firstName,
+        lastName,
+        nickname,
+        birthday,
+        sexId,
+        teacherId: teacherId || null,
+        barangayId,
+        deviceUuid: deviceUuid || null
+      },
+      { autoCommit: true, returning: 'lastId' }
+    );
+
     return result.outBinds.outId[0];
   }
 
   static async findUserByNicknameAndBirthday(nickname, birthday) {
+    const dateFilter = db.isOracle()
+      ? `TRUNC(s.birthday) = TO_DATE(:birthday, 'YYYY-MM-DD')`
+      : `date(s.birthday) = date(:birthday)`;
+
     const query = `
       SELECT s.stud_id AS "STUDENT_ID",
              s.first_name AS "FIRST_NAME",
@@ -96,7 +139,7 @@ class UserModel {
       LEFT JOIN sexTb x ON s.sex_id = x.sex_id
       LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
       WHERE s.nickname = :nickname
-        AND TRUNC(s.birthday) = TO_DATE(:birthday, 'YYYY-MM-DD')
+        AND ${dateFilter}
     `;
     const result = await db.execute(query, { nickname, birthday });
     
@@ -108,11 +151,13 @@ class UserModel {
   }
 
   static async updateUserBirthday(userID, newBirthday) {
-    const query = `
-      UPDATE studentTb
-      SET birthday = TO_DATE(:birthday, 'YYYY-MM-DD')
-      WHERE stud_id = :userID
-    `;
+    const query = db.isOracle()
+      ? `UPDATE studentTb
+         SET birthday = TO_DATE(:birthday, 'YYYY-MM-DD')
+         WHERE stud_id = :userID`
+      : `UPDATE studentTb
+         SET birthday = :birthday
+         WHERE stud_id = :userID`;
     
     const result = await db.execute(
       query, 

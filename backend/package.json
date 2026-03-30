@@ -19,7 +19,9 @@
     "express-async-handler": "^1.2.0",
     "helmet": "^8.1.0",
     "morgan": "^1.10.1",
-    "oracledb": "^6.10.0"
+    "oracledb": "^6.10.0",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7"
   },
   "devDependencies": {
     "cross-env": "^10.1.0",

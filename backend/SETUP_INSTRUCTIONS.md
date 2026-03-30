@@ -1,11 +1,13 @@
-# Backend Setup Instructions (Oracle 11g Schema)
+# Backend Setup Instructions (Oracle + SQLite)
 
 ## 1. Database Schema
 
-Use this schema file:
-- `backend/src/config/setup.sql`
+Oracle schema file:
+- `backend/src/KOW.sql`
 
-It already contains:
+SQLite schema is bootstrapped automatically by the backend when `DB_CLIENT=sqlite`.
+
+Oracle schema contains:
 - cleanup block
 - sequences
 - lookup + core tables (`studentTb`, `scoreTb`, `questionTb`, etc.)
@@ -18,7 +20,7 @@ It already contains:
 ### SQL*Plus
 ```bash
 sqlplus system/<SYSTEM_PASSWORD>@localhost:1521/XE
-@backend/src/config/setup.sql
+@backend/src/KOW.sql
 ```
 
 Note:
@@ -30,10 +32,22 @@ Note:
 Set `backend/.env`:
 ```env
 PORT=3000
+DB_CLIENT=oracle
 DB_USER=kow_admin
 DB_PASSWORD=KOW_Password_2026!
 DB_CONNECTION_STRING=localhost:1521/XE
 ```
+
+SQLite mode (`backend/.env`):
+```env
+PORT=3000
+DB_CLIENT=sqlite
+SQLITE_DB_PATH=./backend/data/kow_offline.db
+```
+
+Notes:
+- `DB_CLIENT` defaults to `oracle` when omitted.
+- `SQLITE_DB_PATH` is optional; default is `./backend/data/kow_offline.db`.
 
 ## 4. Install and Run
 

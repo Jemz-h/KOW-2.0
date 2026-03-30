@@ -336,7 +336,11 @@ class _LevelMapScreenState extends State<LevelMapScreen>
 
                   // ▶ Play
                   _TapIcon(
-                    onTap: () { /* TODO: navigate to game */ },
+                    onTap: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Game mode is coming soon.')),
+                      );
+                    },
                     child: SvgPicture.asset(
                       'assets/icons/play.svg',
                       width: kPlaySize, height: kPlaySize,

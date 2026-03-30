@@ -31,12 +31,9 @@ class WelcomeBackScreen extends StatefulWidget {
 class _WelcomeBackScreenState extends State<WelcomeBackScreen>
   with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
-<<<<<<< HEAD
-  final _nicknameController  = TextEditingController();
-  final _birthdayController  = TextEditingController();
-  bool _isLoading = false;
-=======
+  final _nicknameController = TextEditingController();
   final _birthdayController = TextEditingController();
+  bool _isLoading = false;
   DateTime? _selectedBirthday;
   late final AnimationController _introController;
   late final AnimationController _emphasisController;
@@ -76,9 +73,8 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
       ),
     );
   }
->>>>>>> 011806aaf1fa75099e1fb82548ee75fdecae6365
 
-  Future<void> _handleStart(BuildContext context) async {
+  Future<void> _handleStart() async {
     final isValid = _formKey.currentState?.validate() ?? false;
     if (!isValid) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -170,12 +166,9 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
 
   @override
   void dispose() {
-<<<<<<< HEAD
     _nicknameController.dispose();
-=======
     _emphasisController.dispose();
     _introController.dispose();
->>>>>>> 011806aaf1fa75099e1fb82548ee75fdecae6365
     _birthdayController.dispose();
     super.dispose();
   }
@@ -216,108 +209,6 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
                     maxWidth: WelcomeBackScreen._webMaxWidth,
                   ),
                   child: SingleChildScrollView(
-<<<<<<< HEAD
-                    padding: EdgeInsets.symmetric(horizontal: w * 0.08),
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 420),
-                      child: Form(
-                        key: _formKey,
-                        autovalidateMode: AutovalidateMode.onUserInteraction,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'WELCOME\nBACK!',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: w * 0.12,
-                                color: Colors.white,
-                                height: 0.9,
-                                shadows: const [
-                                  Shadow(
-                                    blurRadius: 8,
-                                    color: Colors.black45,
-                                    offset: Offset(2, 2),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              'LOGIN TO CONTINUE\nYOUR ADVENTURE!',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: w * 0.04,
-                                color: const Color(0xFFFFE34D),
-                                shadows: const [
-                                  Shadow(
-                                    blurRadius: 4,
-                                    color: Colors.black38,
-                                    offset: Offset(1, 1),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            SizedBox(height: h * 0.03),
-                            ChalkTextField(
-                              hintText: 'NICKNAME',
-                              icon: Icons.person,
-                              controller: _nicknameController,
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'Required';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 12),
-                            ChalkTextField(
-                              hintText: '10/22/2004',
-                              icon: Icons.cake,
-                              keyboardType: TextInputType.datetime,
-                              controller: _birthdayController,
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'Required';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                            ChalkButton(
-                              label: _isLoading ? 'LOADING...' : 'START',
-                              color: const Color(0xFF5C87E5),
-                              textColor: Colors.white,
-                              onPressed: _isLoading ? () {} : () => _handleStart(context),
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              'NO NICKNAME YET? CLICK THE BUTTON BELOW',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: w * 0.03,
-                                color: const Color(0xFFFFE34D),
-                                shadows: const [
-                                  Shadow(
-                                    blurRadius: 3,
-                                    color: Colors.black38,
-                                    offset: Offset(1, 1),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            ChalkButton(
-                              label: 'SIGN UP',
-                              color: const Color(0xFFF2F089),
-                              textColor: const Color(0xFF2B2B2B),
-                              onPressed: () => pushFade(
-                                context,
-                                const WelcomeStudentScreen(),
-                              ),
-                            ),
-                          ],
-=======
                     child: SizedBox(
                       width: designW,
                       height: designH,
@@ -330,7 +221,7 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
                         top: sy(10),
                         width: sx(372),
                         height: sy(110),
-                        child: LogoRow(top: 0, width: sx(372)),
+                        child: LogoRow(width: sx(372)),
                       ),
                       // Planet (Figma shows an extra planet near the lower-left area)
                       Positioned(
@@ -341,7 +232,6 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
                         child: Image.asset(
                           'assets/themes/planets_spc.png',
                           fit: BoxFit.contain,
->>>>>>> 011806aaf1fa75099e1fb82548ee75fdecae6365
                         ),
                       ),
 
@@ -491,7 +381,14 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
                             children: [
                               KowTextField(
                                 hintText: 'NICKNAME',
+                                controller: _nicknameController,
                                 prefixIcon: Icons.person,
+                                validator: (value) {
+                                  if (value == null || value.trim().isEmpty) {
+                                    return 'Required';
+                                  }
+                                  return null;
+                                },
                                 height: sy(76).clamp(60.0, 80.0),
                                 fontSize: sx(24).clamp(18.0, 28.0),
                                 borderRadius: sy(22).clamp(16.0, 24.0),
@@ -532,10 +429,12 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
                               SizedBox(
                                 height: sy(66).clamp(56.0, 76.0),
                                 child: KowAnimatedButton(
-                                  label: 'START',
+                                  label: _isLoading ? 'LOADING...' : 'START',
                                   backgroundColor: const Color(0xFF5C87E5),
                                   textColor: Colors.white,
-                                  onPressed: () => _handleStart(context),
+                                  onPressed: _isLoading
+                                      ? null
+                                      : _handleStart,
                                   height: sy(66).clamp(56.0, 76.0),
                                   fontSize: sx(25).clamp(20.0, 28.0),
                                 ),

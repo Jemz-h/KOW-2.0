@@ -4,7 +4,11 @@ class ApiConfig {
   ApiConfig._();
 
   /// Base URL of the KOW Node.js backend.
-  /// For Android emulator use http://10.0.2.2:3000
-  /// For iOS simulator / physical device use your machine's LAN IP.
-  static const String baseUrl = 'http://10.0.2.2:3000';
+  /// Default is Android emulator host (10.0.2.2).
+  /// For physical devices, pass --dart-define=API_BASE_URL=http://LAN_IP:3000
+  /// Example: flutter run --dart-define=API_BASE_URL=http://192.168.1.10:3000
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://10.0.2.2:3000',
+  );
 }

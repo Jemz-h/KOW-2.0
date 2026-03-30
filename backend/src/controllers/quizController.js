@@ -12,6 +12,7 @@ const getQuestions = asyncHandler(async (req, res) => {
     throw new Error('Please provide grade, subject, and difficulty query parameters');
   }
 
+  const activeFilter = db.isOracle() ? 'NVL(q.is_active, 1) = 1' : 'COALESCE(q.is_active, 1) = 1';
   const result = await db.execute(`
     SELECT q.question_id,
            q.question_txt,
@@ -29,7 +30,7 @@ const getQuestions = asyncHandler(async (req, res) => {
     WHERE UPPER(g.gradelvl) = UPPER(:grade)
       AND UPPER(s.subject) = UPPER(:subject)
       AND UPPER(d.difficulty) = UPPER(:difficulty)
-      AND NVL(q.is_active, 1) = 1
+      AND ${activeFilter}
     ORDER BY q.question_id
   `, { grade, subject, difficulty });
 
@@ -60,7 +61,7 @@ const getQuestions = asyncHandler(async (req, res) => {
 });
 
 // @desc    Submit quiz score for a student
-// @route   POST /api/quiz/submit-score
+// @route   POST /api/quiz/score
 // @access  Public
 const submitScore = asyncHandler(async (req, res) => {
   const { studentId, grade, subject, difficulty, score, total, playedAt, deviceUuid } = req.body;
@@ -101,41 +102,120 @@ const submitScore = asyncHandler(async (req, res) => {
   const scoreValue = Number(score);
   const passed = scoreValue / maxScore >= 0.7 ? 1 : 0;
 
-  await db.execute(
-    `BEGIN
-       sp_upload_score(
-         p_stud_id      => :studentId,
-         p_subject_id   => :subjectId,
-         p_gradelvl_id  => :gradeLevelId,
-         p_diff_id      => :diffId,
-         p_score        => :score,
-         p_max_score    => :maxScore,
-         p_passed       => :passed,
-         p_played_at    => CASE
-                             WHEN :playedAt IS NULL THEN SYSDATE
-                             ELSE TO_DATE(SUBSTR(REPLACE(:playedAt, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
-                           END,
-         p_device_uuid  => :deviceUuid
-       );
-       sp_refresh_analytics(
-         p_stud_id      => :studentId,
-         p_subject_id   => :subjectId,
-         p_gradelvl_id  => :gradeLevelId
-       );
-     END;`,
-    {
-      studentId,
-      subjectId: row.SUBJECT_ID,
-      gradeLevelId: row.GRADELVL_ID,
-      diffId: row.DIFF_ID,
-      score: scoreValue,
-      maxScore,
-      passed,
-      playedAt: playedAt || null,
-      deviceUuid: deviceUuid || null
-    },
-    { autoCommit: true }
-  );
+  if (db.isOracle()) {
+    await db.execute(
+      `BEGIN
+         sp_upload_score(
+           p_stud_id      => :studentId,
+           p_subject_id   => :subjectId,
+           p_gradelvl_id  => :gradeLevelId,
+           p_diff_id      => :diffId,
+           p_score        => :score,
+           p_max_score    => :maxScore,
+           p_passed       => :passed,
+           p_played_at    => CASE
+                               WHEN :playedAt IS NULL THEN SYSDATE
+                               ELSE TO_DATE(SUBSTR(REPLACE(:playedAt, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
+                             END,
+           p_device_uuid  => :deviceUuid
+         );
+         sp_refresh_analytics(
+           p_stud_id      => :studentId,
+           p_subject_id   => :subjectId,
+           p_gradelvl_id  => :gradeLevelId
+         );
+       END;`,
+      {
+        studentId,
+        subjectId: row.SUBJECT_ID,
+        gradeLevelId: row.GRADELVL_ID,
+        diffId: row.DIFF_ID,
+        score: scoreValue,
+        maxScore,
+        passed,
+        playedAt: playedAt || null,
+        deviceUuid: deviceUuid || null
+      },
+      { autoCommit: true }
+    );
+  } else {
+    const playedAtValue = playedAt || new Date().toISOString();
+
+    await db.execute(
+      `INSERT INTO scoreTb (
+         stud_id,
+         subject_id,
+         gradelvl_id,
+         diff_id,
+         score,
+         max_score,
+         passed,
+         played_at,
+         device_uuid,
+         synced_at
+       )
+       VALUES (
+         :studentId,
+         :subjectId,
+         :gradeLevelId,
+         :diffId,
+         :score,
+         :maxScore,
+         :passed,
+         :playedAt,
+         :deviceUuid,
+         CURRENT_TIMESTAMP
+       )`,
+      {
+        studentId,
+        subjectId: row.SUBJECT_ID,
+        gradeLevelId: row.GRADELVL_ID,
+        diffId: row.DIFF_ID,
+        score: scoreValue,
+        maxScore,
+        passed,
+        playedAt: playedAtValue,
+        deviceUuid: deviceUuid || null
+      },
+      { autoCommit: true }
+    );
+
+    await db.execute(
+      `INSERT INTO progressTb (
+         stud_id,
+         subject_id,
+         gradelvl_id,
+         highest_diff_passed,
+         total_time_played,
+         last_played_at
+       )
+       VALUES (
+         :studentId,
+         :subjectId,
+         :gradeLevelId,
+         CASE WHEN :passed = 1 THEN :diffId ELSE 0 END,
+         0,
+         :playedAt
+       )
+       ON CONFLICT (stud_id, subject_id, gradelvl_id)
+       DO UPDATE SET
+         highest_diff_passed = CASE
+           WHEN excluded.highest_diff_passed > COALESCE(progressTb.highest_diff_passed, 0)
+             THEN excluded.highest_diff_passed
+           ELSE progressTb.highest_diff_passed
+         END,
+         last_played_at = excluded.last_played_at`,
+      {
+        studentId,
+        subjectId: row.SUBJECT_ID,
+        gradeLevelId: row.GRADELVL_ID,
+        diffId: row.DIFF_ID,
+        passed,
+        playedAt: playedAtValue
+      },
+      { autoCommit: true }
+    );
+  }
 
   res.status(201).json({ 
     success: true, 

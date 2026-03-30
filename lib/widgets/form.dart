@@ -142,34 +142,9 @@ class LightField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-<<<<<<< HEAD
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: const Color(0xFFE0E0E0),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: TextField(
-        controller: controller,
-        readOnly: readOnly,
-        onTap: onTap,
-        keyboardType: keyboardType,
-        style: const TextStyle(fontSize: 12, color: Color(0xFF2D2D2D)),
-        decoration: InputDecoration(
-          hintText: hintText,
-          hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF9B9B9B)),
-          border: InputBorder.none,
-          isDense: true,
-          prefixIcon: prefixIcon == null
-              ? null
-              : Icon(prefixIcon, size: 18, color: const Color(0xFF6B6B6B)),
-          suffixIcon: suffixIcon,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        ),
-      ),
-=======
     return KowTextField(
       hintText: hintText,
+      controller: controller,
       keyboardType: keyboardType,
       prefixIcon: prefixIcon,
       suffixIcon: suffixIcon,
@@ -178,7 +153,6 @@ class LightField extends StatelessWidget {
       height: 62,
       fontSize: 30,
       borderRadius: 12,
->>>>>>> 011806aaf1fa75099e1fb82548ee75fdecae6365
     );
   }
 }

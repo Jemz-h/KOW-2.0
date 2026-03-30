@@ -2,6 +2,7 @@ const db = require('../config/db');
 
 class QuizModel {
   static async getQuestions(gradeName, subjectName, difficultyName) {
+    const activeFilter = db.isOracle() ? 'NVL(q.is_active, 1) = 1' : 'COALESCE(q.is_active, 1) = 1';
     const query = `
       SELECT q.question_id,
              q.question_txt,
@@ -17,7 +18,7 @@ class QuizModel {
       WHERE UPPER(g.gradelvl) = UPPER(:gradeName)
         AND UPPER(s.subject) = UPPER(:subjectName)
         AND UPPER(d.difficulty) = UPPER(:difficultyName)
-        AND NVL(q.is_active, 1) = 1
+        AND ${activeFilter}
       ORDER BY q.question_id
     `;
 
@@ -61,25 +62,63 @@ class QuizModel {
     const maxScore = Number(total) > 0 ? Number(total) : 10;
     const passed = Number(score) / maxScore >= 0.7 ? 1 : 0;
 
+    if (db.isOracle()) {
+      await db.execute(
+        `BEGIN
+           sp_upload_score(
+             p_stud_id      => :studentId,
+             p_subject_id   => :subjectId,
+             p_gradelvl_id  => :gradeLevelId,
+             p_diff_id      => :diffId,
+             p_score        => :score,
+             p_max_score    => :maxScore,
+             p_passed       => :passed,
+             p_played_at    => SYSDATE,
+             p_device_uuid  => NULL
+           );
+           sp_refresh_analytics(
+             p_stud_id      => :studentId,
+             p_subject_id   => :subjectId,
+             p_gradelvl_id  => :gradeLevelId
+           );
+         END;`,
+        {
+          studentId,
+          subjectId: ids.SUBJECT_ID,
+          gradeLevelId: ids.GRADELVL_ID,
+          diffId: ids.DIFF_ID,
+          score,
+          maxScore,
+          passed
+        },
+        { autoCommit: true }
+      );
+      return;
+    }
+
     await db.execute(
-      `BEGIN
-         sp_upload_score(
-           p_stud_id      => :studentId,
-           p_subject_id   => :subjectId,
-           p_gradelvl_id  => :gradeLevelId,
-           p_diff_id      => :diffId,
-           p_score        => :score,
-           p_max_score    => :maxScore,
-           p_passed       => :passed,
-           p_played_at    => SYSDATE,
-           p_device_uuid  => NULL
-         );
-         sp_refresh_analytics(
-           p_stud_id      => :studentId,
-           p_subject_id   => :subjectId,
-           p_gradelvl_id  => :gradeLevelId
-         );
-       END;`,
+      `INSERT INTO scoreTb (
+         stud_id,
+         subject_id,
+         gradelvl_id,
+         diff_id,
+         score,
+         max_score,
+         passed,
+         played_at,
+         synced_at
+       )
+       VALUES (
+         :studentId,
+         :subjectId,
+         :gradeLevelId,
+         :diffId,
+         :score,
+         :maxScore,
+         :passed,
+         CURRENT_TIMESTAMP,
+         CURRENT_TIMESTAMP
+       )`,
       {
         studentId,
         subjectId: ids.SUBJECT_ID,

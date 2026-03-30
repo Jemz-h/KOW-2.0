@@ -154,7 +154,7 @@ class _StartScreenState extends State<StartScreen>
                           horizontal: 20,
                           vertical: h * 0.02,
                         ),
-                        child: LogoRow(top: 0, width: contentW),
+                        child: LogoRow(width: contentW),
                       ),
 
                       // 🧠 Title
