@@ -44,7 +44,7 @@ async function runTests() {
 
   console.log('\\n[1] POST /api/auth/register');
   const regRes = await doFetch('/api/auth/register', 'POST', {
-    firstName: 'Test', lastName: 'User', nickname, birthday, sex: 'Male', area: 'Local'
+    firstName: 'Test', lastName: 'User', nickname, birthday, sex: 'Male', area: 'Barangay Sauyo', deviceUuid: 'DEV-TEST-001'
   });
   console.log(`Status: ${regRes.status} ${resultOk(regRes.status)}`);
   if (regRes.status === 201) testUserId = regRes.body.userId;
@@ -73,12 +73,12 @@ async function runTests() {
   console.log(`Status: ${levelsGradeRes.status} ${resultOk(levelsGradeRes.status)}`);
 
   console.log('\\n[7] GET /api/quiz/questions');
-  const qRes = await doFetch('/api/quiz/questions?grade=Grade%201&subject=Science&difficulty=Easy', 'GET');
+  const qRes = await doFetch('/api/quiz/questions?grade=Punla&subject=Mathematics&difficulty=Easy', 'GET');
   console.log(`Status: ${qRes.status} ${resultOk(qRes.status)}`);
 
   console.log('\\n[8] POST /api/quiz/score');
   const scoreRes = await doFetch('/api/quiz/score', 'POST', {
-    studentId: testUserId || 1, grade: 'Grade 1', subject: 'Science', difficulty: 'Easy', score: 8, total: 10
+    studentId: testUserId || 1001, grade: 'Punla', subject: 'Mathematics', difficulty: 'Easy', score: 8, total: 10, deviceUuid: 'DEV-TEST-001'
   });
   console.log(`Status: ${scoreRes.status} ${resultOk(scoreRes.status)}`);
 
@@ -90,7 +90,7 @@ async function runTests() {
 
   console.log('\\n[10] POST /api/progress');
   const progRes = await doFetch('/api/progress', 'POST', {
-    userID: testUserId || 1, levelID: 1, score: 100, completionStatus: 'COMPLETED', timeSpent: 120
+    studentId: testUserId || 1001, subject: 'Mathematics', grade: 'Punla', highestDiffPassed: 1, totalTimePlayed: 120
   });
   console.log(`Status: ${progRes.status} ${resultOk(progRes.status)}`);
 }

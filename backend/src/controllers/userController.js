@@ -1,20 +1,25 @@
-const oracledb = require('oracledb');
 const db = require('../config/db');
 const asyncHandler = require('express-async-handler');
-const { hashBirthday } = require('../middleware/passwordHelper');
+const UserModel = require('../models/userModel');
 
-// @desc    Get all active users (excluding passwords)
+// @desc    Get all students
 // @route   GET /api/users
 // @access  Public
 const getUsers = asyncHandler(async (req, res) => {
   const result = await db.execute(`
-    SELECT userID, username, firstName, lastName, nickName, 
-           TO_CHAR(birthday, 'YYYY-MM-DD') AS birthday, 
-           barangay, gender, 
-           TO_CHAR(dateCreated, 'YYYY-MM-DD HH24:MI:SS') AS dateCreated
-    FROM Users
-    WHERE isDeleted = 0
-    ORDER BY userID
+    SELECT s.stud_id,
+      s.first_name,
+      s.last_name,
+      s.nickname,
+      TO_CHAR(s.birthday, 'YYYY-MM-DD') AS birthday,
+      x.sex,
+      b.barangay_nm,
+      TO_CHAR(s.created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at,
+      TO_CHAR(s.updated_at, 'YYYY-MM-DD HH24:MI:SS') AS updated_at
+    FROM studentTb s
+    LEFT JOIN sexTb x ON s.sex_id = x.sex_id
+    LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
+    ORDER BY s.stud_id
   `);
   
   res.status(200).json({
@@ -23,23 +28,32 @@ const getUsers = asyncHandler(async (req, res) => {
   });
 });
 
-// @desc    Get user by ID (excluding password)
+// @desc    Get student by ID
 // @route   GET /api/users/:id
 // @access  Public
 const getUserById = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const result = await db.execute(`
-    SELECT userID, username, firstName, lastName, nickName, 
-           TO_CHAR(birthday, 'YYYY-MM-DD') AS birthday, 
-           barangay, gender,
-           TO_CHAR(dateCreated, 'YYYY-MM-DD HH24:MI:SS') AS dateCreated
-    FROM Users 
-    WHERE userID = :id AND isDeleted = 0
-  `, [id]);
+    SELECT s.stud_id,
+           s.first_name,
+           s.last_name,
+           s.nickname,
+           TO_CHAR(s.birthday, 'YYYY-MM-DD') AS birthday,
+           x.sex,
+           b.barangay_nm,
+           TO_CHAR(s.created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at,
+           TO_CHAR(s.updated_at, 'YYYY-MM-DD HH24:MI:SS') AS updated_at,
+           s.device_origin,
+           s.tmp_local_id
+    FROM studentTb s
+    LEFT JOIN sexTb x ON s.sex_id = x.sex_id
+    LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
+    WHERE s.stud_id = :id
+  `, { id });
   
   if (result.rows.length === 0) {
     res.status(404);
-    throw new Error(`User not found with ID of ${id}`);
+    throw new Error(`Student not found with ID of ${id}`);
   }
   
   res.status(200).json({
@@ -48,58 +62,34 @@ const getUserById = asyncHandler(async (req, res) => {
   });
 });
 
-// @desc    Create a new user (password will be birthday)
+// @desc    Create a new student
 // @route   POST /api/users
 // @access  Public
 const createUser = asyncHandler(async (req, res) => {
-  const { username, firstName, lastName, birthday, gender, nickName, barangay } = req.body;
+  const { firstName, lastName, birthday, gender, nickName, nickname, barangay, area, teacherId, deviceUuid } = req.body;
+  const resolvedNickname = nickname || nickName;
 
   // Basic validation
-  if (!username || !firstName || !lastName || !birthday) {
+  if (!firstName || !lastName || !resolvedNickname || !birthday) {
     res.status(400);
-    throw new Error('Please provide all required fields (username, firstName, lastName, birthday)');
+    throw new Error('Please provide all required fields (firstName, lastName, nickname, birthday)');
   }
 
-  // Validate gender if provided (M/F/O format)
-  if (gender && !['M', 'F', 'O'].includes(gender)) {
-    res.status(400);
-    throw new Error('Gender must be M (Male), F (Female), or O (Other)');
-  }
-
-  // Password is always the birthday (hashed)
-  const hashedPassword = await hashBirthday(birthday);
-
-  const result = await db.execute(
-    `INSERT INTO Users (username, password, firstName, lastName, birthday, gender, nickName, barangay, isDeleted) 
-     VALUES (:username, :password, :firstName, :lastName, TO_DATE(:birthday, 'YYYY-MM-DD'), :gender, :nickName, :barangay, 0)
-     RETURNING userID INTO :userID`,
-    {
-      username,
-      password: hashedPassword,
-      firstName,
-      lastName,
-      birthday,
-      gender: gender || null,
-      nickName: nickName || null,
-      barangay: barangay || null,
-      userID: { type: oracledb.NUMBER, dir: oracledb.BIND_OUT }
-    },
-    { autoCommit: true }
-  );
-
-  const userId = result.outBinds.userID[0];
-
-  // Create Achievement record for new user
-  await db.execute(
-    `INSERT INTO Achievement (userID) VALUES (:userID)`,
-    { userID: userId },
-    { autoCommit: true }
-  );
+  const userId = await UserModel.createUser({
+    firstName,
+    lastName,
+    nickname: resolvedNickname,
+    birthday,
+    sex: gender || null,
+    area: barangay || area || null,
+    teacherId: teacherId || null,
+    deviceUuid: deviceUuid || null
+  });
 
   res.status(201).json({ 
     success: true,
-    message: 'User created successfully (password set to birthday)',
-    data: { userID: userId }
+    message: 'Student created successfully',
+    data: { stud_id: userId }
   });
 });
 
@@ -115,53 +105,46 @@ const updateUserBirthday = asyncHandler(async (req, res) => {
     throw new Error('Birthday is required');
   }
 
-  // Hash the new birthday as the new password
-  const hashedPassword = await hashBirthday(birthday);
-
   const result = await db.execute(
-    `UPDATE Users 
-     SET birthday = TO_DATE(:birthday, 'YYYY-MM-DD'),
-         password = :password
-     WHERE userID = :id AND isDeleted = 0`,
-    { id, birthday, password: hashedPassword },
+    `UPDATE studentTb
+     SET birthday = TO_DATE(:birthday, 'YYYY-MM-DD')
+     WHERE stud_id = :id`,
+    { id, birthday },
     { autoCommit: true }
   );
 
   if (result.rowsAffected === 0) {
     res.status(404);
-    throw new Error(`User not found with ID of ${id}`);
+    throw new Error(`Student not found with ID of ${id}`);
   }
 
   res.status(200).json({
     success: true,
-    message: 'Birthday and password updated successfully'
+    message: 'Birthday updated successfully'
   });
 });
 
-// @desc    Soft delete a user
+// @desc    Hard delete a student
 // @route   DELETE /api/users/:id
 // @access  Public
 const deleteUser = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   const result = await db.execute(
-    `UPDATE Users 
-     SET isDeleted = 1,
-         deletedAt = SYSDATE,
-         deletedBy = :deletedBy
-     WHERE userID = :id AND isDeleted = 0`,
-    { id, deletedBy: id },
+    `DELETE FROM studentTb
+     WHERE stud_id = :id`,
+    { id },
     { autoCommit: true }
   );
 
   if (result.rowsAffected === 0) {
     res.status(404);
-    throw new Error(`User not found with ID of ${id}`);
+    throw new Error(`Student not found with ID of ${id}`);
   }
 
   res.status(200).json({
     success: true,
-    message: 'User deleted successfully'
+    message: 'Student deleted successfully'
   });
 });
 

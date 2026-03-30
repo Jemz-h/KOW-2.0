@@ -3,24 +3,22 @@ const db = require('../config/db');
 class QuizModel {
   static async getQuestions(gradeName, subjectName, difficultyName) {
     const query = `
-      SELECT q.questionID,
-             q.questionText,
-             q.questionImageURL,
-             q.correctAnswer,
-             q.points,
-             ac.choiceID,
-             ac.choiceText,
-             ac.isCorrect
-      FROM Question q
-      JOIN Level_Table l ON q.levelID = l.levelID
-      JOIN Grade g ON l.gradeID = g.gradeID
-      JOIN Subject s ON g.subjectID = s.subjectID
-      JOIN Difficulty d ON l.difficultyID = d.difficultyID
-      LEFT JOIN Answer_Choice ac ON q.questionID = ac.questionID
-      WHERE UPPER(g.gradeName) = UPPER(:gradeName)
-        AND UPPER(s.subjectName) = UPPER(:subjectName)
-        AND UPPER(d.difficultyName) = UPPER(:difficultyName)
-      ORDER BY q.orderNumber, ac.orderNumber
+      SELECT q.question_id,
+             q.question_txt,
+             q.option_a,
+             q.option_b,
+             q.option_c,
+             q.option_d,
+             q.correct_opt
+      FROM questionTb q
+      JOIN gradelvlTb g ON q.gradelvl_id = g.gradelvl_id
+      JOIN subjectTb s ON q.subject_id = s.subject_id
+      JOIN diffTb d ON q.diff_id = d.diff_id
+      WHERE UPPER(g.gradelvl) = UPPER(:gradeName)
+        AND UPPER(s.subject) = UPPER(:subjectName)
+        AND UPPER(d.difficulty) = UPPER(:difficultyName)
+        AND NVL(q.is_active, 1) = 1
+      ORDER BY q.question_id
     `;
 
     const result = await db.execute(query, {
@@ -29,83 +27,87 @@ class QuizModel {
       difficultyName
     });
 
-    // Group answers by question
-    const questionsMap = {};
-    for (const row of result.rows) {
-      if (!questionsMap[row.QUESTIONID]) {
-        questionsMap[row.QUESTIONID] = {
-          id: row.QUESTIONID,
-          prompt: row.QUESTIONTEXT,
-          imagePath: row.QUESTIONIMAGEURL,
-          funFact: row.CORRECTANSWER, // assuming this maps
-          points: row.POINTS,
-          choices: [],
-          correctIndex: 0
-        };
-      }
-      
-      if (row.CHOICETEXT) {
-        questionsMap[row.QUESTIONID].choices.push(row.CHOICETEXT);
-        if (row.ISCORRECT === 1) {
-          questionsMap[row.QUESTIONID].correctIndex = questionsMap[row.QUESTIONID].choices.length - 1;
-        }
-      }
-    }
+    const letterToIndex = { A: 0, B: 1, C: 2, D: 3 };
 
-    return Object.values(questionsMap);
+    return result.rows.map((row) => ({
+      id: row.QUESTION_ID,
+      prompt: row.QUESTION_TXT,
+      imagePath: null,
+      funFact: null,
+      points: 1,
+      choices: [row.OPTION_A, row.OPTION_B, row.OPTION_C, row.OPTION_D],
+      correctIndex: letterToIndex[String(row.CORRECT_OPT || '').toUpperCase()] ?? 0
+    }));
   }
 
   static async submitScore(studentId, grade, subject, difficulty, score, total) {
-    // Attempt to find the specific levelID
-    const levelQuery = `
-      SELECT l.levelID
-      FROM Level_Table l
-      JOIN Grade g ON l.gradeID = g.gradeID
-      JOIN Subject s ON g.subjectID = s.subjectID
-      JOIN Difficulty d ON l.difficultyID = d.difficultyID
-      WHERE UPPER(g.gradeName) = UPPER(:grade)
-        AND UPPER(s.subjectName) = UPPER(:subject)
-        AND UPPER(d.difficultyName) = UPPER(:difficulty)
-      FETCH FIRST 1 ROWS ONLY
+    const idQuery = `
+      SELECT g.gradelvl_id,
+             s.subject_id,
+             d.diff_id
+      FROM gradelvlTb g
+      CROSS JOIN subjectTb s
+      CROSS JOIN diffTb d
+      WHERE UPPER(g.gradelvl) = UPPER(:grade)
+        AND UPPER(s.subject) = UPPER(:subject)
+        AND UPPER(d.difficulty) = UPPER(:difficulty)
     `;
-    const levelRes = await db.execute(levelQuery, { grade, subject, difficulty });
-    if (!levelRes.rows || levelRes.rows.length === 0) {
-      throw new Error('Level not found for the given grade, subject, and difficulty');
+    const idRes = await db.execute(idQuery, { grade, subject, difficulty });
+    if (!idRes.rows || idRes.rows.length === 0) {
+      throw new Error('Grade/subject/difficulty mapping not found');
     }
-    
-    const levelId = levelRes.rows[0].LEVELID;
 
-    // Insert progress
-    const insertQuery = `
-      INSERT INTO User_Progress (userID, levelID, score, completionStatus, dateCompleted)
-      VALUES (:userId, :levelId, :score, :status, SYSDATE)
-    `;
-    
-    const status = score >= Math.floor(total / 2) ? 'PASSED' : 'FAILED';
-    
-    await db.execute(insertQuery, {
-      userId: studentId,
-      levelId: levelId,
-      score: score,
-      status: status
-    }, { autoCommit: true });
+    const ids = idRes.rows[0];
+    const maxScore = Number(total) > 0 ? Number(total) : 10;
+    const passed = Number(score) / maxScore >= 0.7 ? 1 : 0;
+
+    await db.execute(
+      `BEGIN
+         sp_upload_score(
+           p_stud_id      => :studentId,
+           p_subject_id   => :subjectId,
+           p_gradelvl_id  => :gradeLevelId,
+           p_diff_id      => :diffId,
+           p_score        => :score,
+           p_max_score    => :maxScore,
+           p_passed       => :passed,
+           p_played_at    => SYSDATE,
+           p_device_uuid  => NULL
+         );
+         sp_refresh_analytics(
+           p_stud_id      => :studentId,
+           p_subject_id   => :subjectId,
+           p_gradelvl_id  => :gradeLevelId
+         );
+       END;`,
+      {
+        studentId,
+        subjectId: ids.SUBJECT_ID,
+        gradeLevelId: ids.GRADELVL_ID,
+        diffId: ids.DIFF_ID,
+        score,
+        maxScore,
+        passed
+      },
+      { autoCommit: true }
+    );
   }
 
   static async getScores(studentId) {
     const query = `
-      SELECT up.score,
-             up.completionStatus,
-             up.dateCompleted,
-             g.gradeName,
-             s.subjectName,
-             d.difficultyName
-      FROM User_Progress up
-      JOIN Level_Table l ON up.levelID = l.levelID
-      JOIN Grade g ON l.gradeID = g.gradeID
-      JOIN Subject s ON g.subjectID = s.subjectID
-      JOIN Difficulty d ON l.difficultyID = d.difficultyID
-      WHERE up.userID = :studentId
-      ORDER BY up.dateCompleted DESC
+      SELECT sc.score,
+             sc.max_score,
+             sc.passed,
+             sc.played_at,
+             g.gradelvl,
+             s.subject,
+             d.difficulty
+      FROM scoreTb sc
+      JOIN gradelvlTb g ON sc.gradelvl_id = g.gradelvl_id
+      JOIN subjectTb s ON sc.subject_id = s.subject_id
+      JOIN diffTb d ON sc.diff_id = d.diff_id
+      WHERE sc.stud_id = :studentId
+      ORDER BY sc.played_at DESC
     `;
     const result = await db.execute(query, { studentId });
     return result.rows;

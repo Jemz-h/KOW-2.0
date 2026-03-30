@@ -1,4 +1,3 @@
-const oracledb = require('oracledb');
 const db = require('../config/db');
 const asyncHandler = require('express-async-handler');
 
@@ -6,48 +5,57 @@ const asyncHandler = require('express-async-handler');
 // @route   GET /api/quiz/questions
 // @access  Public
 const getQuestions = asyncHandler(async (req, res) => {
-  const { gradeId, levelId } = req.query;
+  const { grade, subject, difficulty } = req.query;
 
-  if (!gradeId || !levelId) {
+  if (!grade || !subject || !difficulty) {
     res.status(400);
-    throw new Error('Please provide gradeId and levelId query parameters');
+    throw new Error('Please provide grade, subject, and difficulty query parameters');
   }
 
-  // Get questions for the level
   const result = await db.execute(`
-    SELECT q.questionID, q.questionText, q.questionImageURL, q.points, q.orderNumber,
-           qt.typeName, qt.questionTypeID
-    FROM Question q
-    JOIN QuestionType qt ON q.questionTypeID = qt.questionTypeID
-    WHERE q.levelID = :levelId AND q.isDeleted = 0
-    ORDER BY q.orderNumber
-  `, [levelId]);
+    SELECT q.question_id,
+           q.question_txt,
+           q.option_a,
+           q.option_b,
+           q.option_c,
+           q.option_d,
+           q.correct_opt,
+           q.is_active,
+           q.updated_at
+    FROM questionTb q
+    JOIN subjectTb s ON q.subject_id = s.subject_id
+    JOIN gradelvlTb g ON q.gradelvl_id = g.gradelvl_id
+    JOIN diffTb d ON q.diff_id = d.diff_id
+    WHERE UPPER(g.gradelvl) = UPPER(:grade)
+      AND UPPER(s.subject) = UPPER(:subject)
+      AND UPPER(d.difficulty) = UPPER(:difficulty)
+      AND NVL(q.is_active, 1) = 1
+    ORDER BY q.question_id
+  `, { grade, subject, difficulty });
 
   if (result.rows.length === 0) {
-    return res.status(404).json({ success: false, message: 'No questions found for this level' });
+    return res.status(404).json({ success: false, message: 'No questions found for the provided filters' });
   }
 
-  // Fetch answer choices for each question
-  const questionsWithAnswers = await Promise.all(
-    result.rows.map(async (question) => {
-      const answersResult = await db.execute(
-        `SELECT choiceID, choiceText, isCorrect, orderNumber
-         FROM Answer_Choice
-         WHERE questionID = :questionID AND isDeleted = 0
-         ORDER BY orderNumber`,
-        [question.QUESTIONID]
-      );
-      return {
-        ...question,
-        answers: answersResult.rows
-      };
-    })
-  );
+  const letterToIndex = { A: 0, B: 1, C: 2, D: 3 };
+  const questions = result.rows.map((row) => {
+    const correctOpt = String(row.CORRECT_OPT || '').toUpperCase();
+    return {
+      id: row.QUESTION_ID,
+      prompt: row.QUESTION_TXT,
+      imagePath: null,
+      funFact: null,
+      points: 1,
+      choices: [row.OPTION_A, row.OPTION_B, row.OPTION_C, row.OPTION_D],
+      correctIndex: letterToIndex[correctOpt] ?? 0,
+      updatedAt: row.UPDATED_AT
+    };
+  });
 
   res.status(200).json({ 
     success: true, 
-    count: questionsWithAnswers.length,
-    questions: questionsWithAnswers 
+    count: questions.length,
+    questions
   });
 });
 
@@ -55,80 +63,83 @@ const getQuestions = asyncHandler(async (req, res) => {
 // @route   POST /api/quiz/submit-score
 // @access  Public
 const submitScore = asyncHandler(async (req, res) => {
-  const { userID, levelID, answers, score, timeSpent } = req.body;
+  const { studentId, grade, subject, difficulty, score, total, playedAt, deviceUuid } = req.body;
 
-  if (!userID || !levelID || !answers || score === undefined) {
+  if (!studentId || !grade || !subject || !difficulty || score === undefined) {
     res.status(400);
-    throw new Error('Please provide userID, levelID, answers array, and score');
+    throw new Error('Please provide studentId, grade, subject, difficulty, and score');
   }
 
-  // Verify user is active
   const userCheck = await db.execute(
-    `SELECT userID FROM Users WHERE userID = :userID AND isDeleted = 0`,
-    [userID]
+    `SELECT stud_id FROM studentTb WHERE stud_id = :studentId`,
+    { studentId }
   );
   
   if (userCheck.rows.length === 0) {
     res.status(404);
-    throw new Error(`Active user not found with ID of ${userID}`);
+    throw new Error(`Student not found with ID of ${studentId}`);
   }
 
-  // Save progress
-  const progressResult = await db.execute(
-    `INSERT INTO User_Progress (userID, levelID, score, completionStatus, timeSpent, attemptsCount) 
-     VALUES (:userID, :levelID, :score, 'Completed', :timeSpent, 1)
-     RETURNING progressID INTO :progressID`,
-    {
-      userID,
-      levelID,
-      score,
-      timeSpent,
-      progressID: { type: oracledb.NUMBER, dir: oracledb.BIND_OUT }
-    },
-    { autoCommit: true }
+  const mapping = await db.execute(
+    `SELECT g.gradelvl_id, s.subject_id, d.diff_id
+     FROM gradelvlTb g
+     CROSS JOIN subjectTb s
+     CROSS JOIN diffTb d
+     WHERE UPPER(g.gradelvl) = UPPER(:grade)
+       AND UPPER(s.subject) = UPPER(:subject)
+       AND UPPER(d.difficulty) = UPPER(:difficulty)`,
+    { grade, subject, difficulty }
   );
 
-  const progressID = progressResult.outBinds.progressID[0];
-
-  // Save individual answers
-  for (const answer of answers) {
-    await db.execute(
-      `INSERT INTO User_answer (userID, questionID, progressID, submittedAnswer, isCorrect, pointsEarned, timeSpent)
-       VALUES (:userID, :questionID, :progressID, :submittedAnswer, :isCorrect, :pointsEarned, :timeSpent)`,
-      {
-        userID,
-        questionID: answer.questionID,
-        progressID,
-        submittedAnswer: answer.submittedAnswer,
-        isCorrect: answer.isCorrect ? 1 : 0,
-        pointsEarned: answer.pointsEarned || 0,
-        timeSpent: answer.timeSpent || 0
-      },
-      { autoCommit: true }
-    );
+  if (mapping.rows.length === 0) {
+    res.status(404);
+    throw new Error('Grade, subject, or difficulty not found');
   }
 
-  // Update user achievement
+  const row = mapping.rows[0];
+  const maxScore = Number(total) > 0 ? Number(total) : 10;
+  const scoreValue = Number(score);
+  const passed = scoreValue / maxScore >= 0.7 ? 1 : 0;
+
   await db.execute(
-    `UPDATE Achievement 
-     SET totalQuestionsAnswered = totalQuestionsAnswered + :answerCount,
-         totalCorrectAnswers = totalCorrectAnswers + :correctCount,
-         totalLevelsCompleted = totalLevelsCompleted + 1,
-         timeSpent = timeSpent + :timeSpent
-     WHERE userID = :userID`,
+    `BEGIN
+       sp_upload_score(
+         p_stud_id      => :studentId,
+         p_subject_id   => :subjectId,
+         p_gradelvl_id  => :gradeLevelId,
+         p_diff_id      => :diffId,
+         p_score        => :score,
+         p_max_score    => :maxScore,
+         p_passed       => :passed,
+         p_played_at    => CASE
+                             WHEN :playedAt IS NULL THEN SYSDATE
+                             ELSE TO_DATE(SUBSTR(REPLACE(:playedAt, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
+                           END,
+         p_device_uuid  => :deviceUuid
+       );
+       sp_refresh_analytics(
+         p_stud_id      => :studentId,
+         p_subject_id   => :subjectId,
+         p_gradelvl_id  => :gradeLevelId
+       );
+     END;`,
     {
-      userID,
-      answerCount: answers.length,
-      correctCount: answers.filter(a => a.isCorrect).length,
-      timeSpent: timeSpent || 0
+      studentId,
+      subjectId: row.SUBJECT_ID,
+      gradeLevelId: row.GRADELVL_ID,
+      diffId: row.DIFF_ID,
+      score: scoreValue,
+      maxScore,
+      passed,
+      playedAt: playedAt || null,
+      deviceUuid: deviceUuid || null
     },
     { autoCommit: true }
   );
 
   res.status(201).json({ 
     success: true, 
-    message: 'Score submitted successfully',
-    data: { progressID }
+    message: 'Score submitted successfully'
   });
 });
 
@@ -144,15 +155,23 @@ const getScores = asyncHandler(async (req, res) => {
   }
 
   const result = await db.execute(`
-    SELECT up.progressID, up.levelID, up.score, up.completionStatus, 
-           up.timeSpent, up.dateCompleted, (COUNT(ua.userAnswerID)) as totalAnswers,
-           (SUM(CASE WHEN ua.isCorrect = 1 THEN 1 ELSE 0 END)) as correctAnswers
-    FROM User_Progress up
-    LEFT JOIN User_answer ua ON up.progressID = ua.progressID
-    WHERE up.userID = :studentId
-    GROUP BY up.progressID, up.levelID, up.score, up.completionStatus, up.timeSpent, up.dateCompleted
-    ORDER BY up.dateCompleted DESC
-  `, [studentId]);
+      SELECT sc.score_id,
+        sc.score,
+        sc.max_score,
+        sc.passed,
+        sc.played_at,
+        sc.synced_at,
+        sc.device_uuid,
+        sub.subject,
+        gl.gradelvl,
+        d.difficulty
+      FROM scoreTb sc
+      JOIN subjectTb sub ON sc.subject_id = sub.subject_id
+      JOIN gradelvlTb gl ON sc.gradelvl_id = gl.gradelvl_id
+      JOIN diffTb d ON sc.diff_id = d.diff_id
+      WHERE sc.stud_id = :studentId
+      ORDER BY sc.played_at DESC
+    `, { studentId });
   
   res.status(200).json({ 
     success: true, 

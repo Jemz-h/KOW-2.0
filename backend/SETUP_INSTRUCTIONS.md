@@ -1,117 +1,70 @@
-# Setup Instructions for Birthday-Based Password System
+# Backend Setup Instructions (Oracle 11g Schema)
 
-## Overview
-The system uses each user's **birthday as their password**. The birthday is stored in hashed format for security.
+## 1. Database Schema
 
-## Installation Steps
+Use this schema file:
+- `backend/src/config/setup.sql`
 
-### 1. Install bcrypt dependency
-Open Command Prompt or PowerShell in the backend folder:
+It already contains:
+- cleanup block
+- sequences
+- lookup + core tables (`studentTb`, `scoreTb`, `questionTb`, etc.)
+- procedures (`sp_upsert_student`, `sp_upload_score`, `sp_refresh_analytics`, `sp_bump_content_version`)
+- triggers for Oracle 11g auto-increment behavior
+- views, roles, synonyms, and seed data
+
+## 2. Apply Schema
+
+### SQL*Plus
 ```bash
-cd "c:\Users\Administrator\Desktop\2E KOW\KOW-True.worktrees\copilot-worktree-2026-03-22T02-03-04\backend"
-npm install bcrypt
+sqlplus system/<SYSTEM_PASSWORD>@localhost:1521/XE
+@backend/src/config/setup.sql
 ```
 
-### 2. Apply the SQL Schema
-Choose one of these methods:
+Note:
+- The script includes `CREATE USER kow_admin ...`.
+- If the user already exists, either drop it first or comment that section before re-running.
 
-#### Method A: Using SQL*Plus (Command Line)
-```bash
-sqlplus kow_admin/admin123@localhost:1521/XEPDB1
-@c:\Users\Administrator\Desktop\2E KOW\KOW-True.worktrees\copilot-worktree-2026-03-22T02-03-04\backend\src\config\setup.sql
-EXIT;
+## 3. Backend Environment
+
+Set `backend/.env`:
+```env
+PORT=3000
+DB_USER=kow_admin
+DB_PASSWORD=KOW_Password_2026!
+DB_CONNECTION_STRING=localhost:1521/XE
 ```
 
-#### Method B: Using SQL Developer (GUI)
-1. Connect to: `kow_admin/admin123@localhost:1521/XEPDB1`
-2. Open file: `backend\src\config\setup.sql`
-3. Click "Run Script" button (F5)
+## 4. Install and Run
 
-### 3. Start the backend
 ```bash
+cd backend
+npm install
 npm run dev
 ```
 
-## How It Works
+## 5. Quick Smoke Test
 
-### User Registration
-- When a user registers with birthday `2010-05-15`
-- The system automatically hashes `2010-05-15` and stores it as the password
-- The birthday is also stored in the `birthday` field
-
-### User Login
-- User enters their nickname/username and birthday (format: YYYY-MM-DD)
-- System hashes the entered birthday and compares it with stored password hash
-- If match, user is authenticated
-
-### Birthday Changes
-- If a user's birthday is updated, their password is automatically updated too
-- Use endpoint: `PUT /api/users/:id/birthday` with `{ "birthday": "YYYY-MM-DD" }`
-
-## Security Notes
-
-⚠️ **WARNING**: Using birthday as password is inherently insecure because:
-- Birthdays are often public information
-- They are easy to guess
-- No password complexity
-
-### Mitigations in place:
-✅ Passwords are hashed using bcrypt (10 salt rounds)
-✅ Plain text passwords are NEVER stored
-✅ Password field has database comment warning about hashing requirement
-✅ GET endpoints exclude password from responses
-
-### Recommended additional security:
-- Add account lockout after failed login attempts
-- Implement rate limiting on login endpoint
-- Add CAPTCHA for login
-- Consider two-factor authentication
-- Log all authentication attempts
-
-## API Examples
-
-### Create User
+With backend running:
 ```bash
-POST /api/users
-Content-Type: application/json
-
-{
-  "username": "juan123",
-  "firstName": "Juan",
-  "lastName": "Dela Cruz",
-  "birthday": "2010-05-15"
-}
-```
-Password is automatically set to hashed version of `2010-05-15`
-
-### Login (Using UserModel)
-```javascript
-const UserModel = require('./models/userModel');
-const user = await UserModel.findUserByNicknameAndBirthday("juan123", "2010-05-15");
-if (user) {
-  // Login successful
-} else {
-  // Invalid credentials
-}
+node test_all.js
 ```
 
-### Update Birthday (and password)
-```bash
-PUT /api/users/1/birthday
-Content-Type: application/json
+## 6. API Notes (Current Contract)
 
-{
-  "birthday": "2010-05-16"
-}
-```
-Both birthday and password are updated together.
+- `POST /api/auth/register`
+  - body: `firstName`, `lastName`, `nickname`, `birthday`, optional `sex`, `area`, `teacherId`, `deviceUuid`
+- `POST /api/auth/login`
+  - body: `nickname`, `birthday`
+- `GET /api/quiz/questions?grade=Punla&subject=Mathematics&difficulty=Easy`
+- `POST /api/quiz/score`
+  - body: `studentId`, `grade`, `subject`, `difficulty`, `score`, optional `total`, `playedAt`, `deviceUuid`
+- `GET /api/quiz/scores/:studentId`
+- `POST /api/progress`
+  - body: `studentId` (or `userID`), plus subject/grade identifiers
 
-## Birthday Format
-**Always use: YYYY-MM-DD** (e.g., `2010-05-15`)
+## 7. Troubleshooting
 
-## Files Changed
-- ✅ `backend/src/config/setup.sql` - Enhanced with foreign keys, indexes, constraints, comments, and triggers
-- ✅ `backend/src/middleware/passwordHelper.js` - New file for password hashing
-- ✅ `backend/src/models/userModel.js` - Updated to hash passwords
-- ✅ `backend/src/controllers/userController.js` - Updated to hash passwords and exclude them from responses
-
+- ORA-01017: verify `DB_USER`/`DB_PASSWORD`.
+- ORA-12514 / ORA-12154: verify `DB_CONNECTION_STRING` (`localhost:1521/XE`).
+- ORA-01920/ORA-01918 on re-run: user/role exists; clean up first or comment create statements.

@@ -1,29 +1,82 @@
 const db = require('../config/db');
-const { hashBirthday, verifyBirthday } = require('../middleware/passwordHelper');
 
 class UserModel {
+  static async resolveSexId(sex) {
+    if (!sex) {
+      return null;
+    }
+
+    const normalized = String(sex).trim().toLowerCase();
+    const byName = await db.execute(
+      `SELECT sex_id
+       FROM sexTb
+       WHERE LOWER(sex) = :sexName`,
+      { sexName: normalized }
+    );
+
+    if (byName.rows.length > 0) {
+      return byName.rows[0].SEX_ID;
+    }
+
+    if (normalized === 'm') return 1;
+    if (normalized === 'f') return 2;
+
+    return null;
+  }
+
+  static async resolveBarangayId(area) {
+    if (!area) {
+      return 1;
+    }
+
+    const result = await db.execute(
+      `SELECT barangay_id
+       FROM barangayTb
+       WHERE LOWER(barangay_nm) = :areaName`,
+      { areaName: String(area).trim().toLowerCase() }
+    );
+
+    return result.rows.length > 0 ? result.rows[0].BARANGAY_ID : 1;
+  }
+
   static async createUser(userData) {
-    const { firstName, lastName, nickname, birthday, sex, area } = userData;
-    // Password is always the birthday (hashed for security)
-    // We use nickname as username and birthday as password
-    
-    const hashedPassword = await hashBirthday(birthday);
+    const { firstName, lastName, nickname, birthday, sex, area, teacherId, deviceUuid } = userData;
+    const sexId = await this.resolveSexId(sex);
+    const barangayId = await this.resolveBarangayId(area);
     
     const query = `
-      INSERT INTO Users (username, password, firstName, lastName, nickName, birthday, gender, barangay)
-      VALUES (:username, :password, :firstName, :lastName, :nickName, TO_DATE(:birthday, 'YYYY-MM-DD'), :gender, :barangay)
-      RETURNING userID INTO :outId
+      INSERT INTO studentTb (
+        first_name,
+        last_name,
+        nickname,
+        birthday,
+        sex_id,
+        teacher_id,
+        barangay_id,
+        device_origin
+      )
+      VALUES (
+        :firstName,
+        :lastName,
+        :nickname,
+        TO_DATE(:birthday, 'YYYY-MM-DD'),
+        :sexId,
+        :teacherId,
+        :barangayId,
+        :deviceUuid
+      )
+      RETURNING stud_id INTO :outId
     `;
 
     const binds = {
-      username: nickname,
-      password: hashedPassword,
       firstName: firstName,
       lastName: lastName,
-      nickName: nickname,
+      nickname: nickname,
       birthday: birthday,
-      gender: sex,
-      barangay: area,
+      sexId,
+      teacherId: teacherId || null,
+      barangayId,
+      deviceUuid: deviceUuid || null,
       outId: { dir: require('oracledb').BIND_OUT, type: require('oracledb').NUMBER }
     };
 
@@ -32,52 +85,38 @@ class UserModel {
   }
 
   static async findUserByNicknameAndBirthday(nickname, birthday) {
-    // First get user by nickname
     const query = `
-      SELECT userID AS "STUDENT_ID",
-             firstName AS "FIRST_NAME",
-             lastName AS "LAST_NAME",
-             nickName AS "NICKNAME",
-             gender AS "SEX",
-             barangay AS "AREA",
-             password AS "PASSWORD"
-      FROM Users
-      WHERE nickName = :nickname
+      SELECT s.stud_id AS "STUDENT_ID",
+             s.first_name AS "FIRST_NAME",
+             s.last_name AS "LAST_NAME",
+             s.nickname AS "NICKNAME",
+             x.sex AS "SEX",
+             b.barangay_nm AS "AREA"
+      FROM studentTb s
+      LEFT JOIN sexTb x ON s.sex_id = x.sex_id
+      LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
+      WHERE s.nickname = :nickname
+        AND TRUNC(s.birthday) = TO_DATE(:birthday, 'YYYY-MM-DD')
     `;
-    const result = await db.execute(query, [nickname]);
+    const result = await db.execute(query, { nickname, birthday });
     
     if (!result.rows[0]) {
       return null;
     }
-    
-    const user = result.rows[0];
-    
-    // Verify birthday against hashed password
-    const isValid = await verifyBirthday(birthday, user.PASSWORD);
-    
-    if (!isValid) {
-      return null;
-    }
-    
-    // Remove password from returned user object
-    delete user.PASSWORD;
-    return user;
+
+    return result.rows[0];
   }
 
   static async updateUserBirthday(userID, newBirthday) {
-    // When birthday changes, password must change too
-    const hashedPassword = await hashBirthday(newBirthday);
-    
     const query = `
-      UPDATE Users 
-      SET birthday = TO_DATE(:birthday, 'YYYY-MM-DD'),
-          password = :password
-      WHERE userID = :userID
+      UPDATE studentTb
+      SET birthday = TO_DATE(:birthday, 'YYYY-MM-DD')
+      WHERE stud_id = :userID
     `;
     
     const result = await db.execute(
       query, 
-      { userID, birthday: newBirthday, password: hashedPassword },
+      { userID, birthday: newBirthday },
       { autoCommit: true }
     );
     

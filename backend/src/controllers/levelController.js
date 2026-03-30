@@ -6,12 +6,18 @@ const asyncHandler = require('express-async-handler');
 // @access  Public
 const getLevels = asyncHandler(async (req, res) => {
   const result = await db.execute(`
-    SELECT lt.*, g.gradeNumber, g.gradeName, d.difficultyName, s.subjectName
-    FROM Level_Table lt
-    JOIN Grade g ON lt.gradeID = g.gradeID
-    JOIN Difficulty d ON lt.difficultyID = d.difficultyID
-    JOIN Subject s ON g.subjectID = s.subjectID
-    ORDER BY g.gradeNumber, d.difficultyID, lt.levelNumber
+    SELECT g.gradelvl_id,
+           g.gradelvl,
+           g.age_min,
+           g.age_max,
+           s.subject_id,
+           s.subject,
+           d.diff_id,
+           d.difficulty
+    FROM gradelvlTb g
+    CROSS JOIN subjectTb s
+    CROSS JOIN diffTb d
+    ORDER BY g.gradelvl_id, s.subject_id, d.diff_id
   `);
   
   res.status(200).json({
@@ -22,19 +28,25 @@ const getLevels = asyncHandler(async (req, res) => {
 });
 
 // @desc    Get levels by gradeID
-// @desc    Get levels by gradeID
 // @route   GET /api/levels/grade/:gradeId
 // @access  Public
 const getLevelsByGrade = asyncHandler(async (req, res) => {
   const { gradeId } = req.params;
   const result = await db.execute(
-    `SELECT lt.*, d.difficultyName, g.gradeName
-     FROM Level_Table lt
-     JOIN Difficulty d ON lt.difficultyID = d.difficultyID
-     JOIN Grade g ON lt.gradeID = g.gradeID
-     WHERE lt.gradeID = :gradeId
-     ORDER BY lt.levelNumber`, 
-    [gradeId]
+    `SELECT g.gradelvl_id,
+            g.gradelvl,
+            g.age_min,
+            g.age_max,
+            s.subject_id,
+            s.subject,
+            d.diff_id,
+            d.difficulty
+     FROM gradelvlTb g
+     CROSS JOIN subjectTb s
+     CROSS JOIN diffTb d
+     WHERE g.gradelvl_id = :gradeId
+     ORDER BY s.subject_id, d.diff_id`,
+    { gradeId }
   );
   
   res.status(200).json({
