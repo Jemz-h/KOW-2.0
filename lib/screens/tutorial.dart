@@ -172,7 +172,7 @@ class TutorialScreen extends StatelessWidget {
                                             },
                                             radius: micSize * 0.7,
                                             child: SvgPicture.asset(
-                                              'assets/Icons/KOWICONS/megaphone.svg',
+                                              'assets/icons/megaphone.svg',
                                               width: micSize * scale,
                                               height: micSize * scale,
                                               fit: BoxFit.contain,
@@ -217,7 +217,7 @@ class TutorialScreen extends StatelessWidget {
                           child: GestureDetector(
                             onTap: () => Navigator.of(context).pop(),
                             child: SvgPicture.asset(
-                              'assets/Icons/KOWICONS/6.svg',
+                              'assets/icons/back.svg',
                               width: 80,
                               height: 80,
                               fit: BoxFit.contain,
