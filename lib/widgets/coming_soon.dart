@@ -49,11 +49,11 @@ void showComingSoonPopup(BuildContext context) {
 
               // Mascot image
               Image.asset(
-                'assets/images/Bunny_construction.png',
+                'assets/sisa_oyo/coming_soon.png',
                 height: 140,
                 fit: BoxFit.contain,
                 errorBuilder: (_, _, _) => Image.asset(
-                  'assets/images/oyo.png',
+                  'assets/sisa_oyo/oyo.png',
                   height: 140,
                   fit: BoxFit.contain,
                 ),

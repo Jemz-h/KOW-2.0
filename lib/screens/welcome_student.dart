@@ -7,7 +7,7 @@ import '../navigation/route_transitions.dart';
 import '../widgets/form.dart';
 import '../widgets/kow_animated_button.dart';
 import '../widgets/mock_background.dart';
-import 'menu_screen.dart';
+import 'menu.dart';
 import 'welcome_back.dart';
 
 /// Student registration form screen.

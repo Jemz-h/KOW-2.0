@@ -8,7 +8,7 @@ import '../navigation/route_transitions.dart';
 import '../widgets/form.dart';
 import '../widgets/kow_animated_button.dart';
 import '../widgets/mock_background.dart';
-import 'menu_screen.dart';
+import 'menu.dart';
 import 'welcome_student.dart';
 
 /// Login screen that leads to menu or sign-up flow.
@@ -339,7 +339,7 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
                         width: sx(300),
                         height: sx(300),
                         child: Image.asset(
-                          'assets/images/planets_spc.png',
+                          'assets/themes/planets_spc.png',
                           fit: BoxFit.contain,
 >>>>>>> 011806aaf1fa75099e1fb82548ee75fdecae6365
                         ),
@@ -352,7 +352,7 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
                         width: sx(110),      // slightly bigger
                         height: sy(210),
                         child: Image.asset(
-                          'assets/images/oyo.png',
+                          'assets/sisa_oyo/oyo.png',
                           fit: BoxFit.contain,
                         ),
                       ),
@@ -364,7 +364,7 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
                         width: sx(110),      // slightly bigger
                         height: sy(210),
                         child: Image.asset(
-                          'assets/images/sisa.png',
+                          'assets/sisa_oyo/sisa.png',
                           fit: BoxFit.contain,
                         ),
                       ),
@@ -511,7 +511,7 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
                                 prefixIconWidget: Padding(
                                   padding: EdgeInsets.all(sx(10)),
                                   child: SvgPicture.asset(
-                                    'assets/Icons/bday.svg',
+                                    'assets/icons/bday.svg',
                                     width: sx(50),
                                     height: sy(50),
                                     fit: BoxFit.contain,

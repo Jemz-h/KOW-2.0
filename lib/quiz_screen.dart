@@ -817,8 +817,11 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                 final String nextDifficulty;
                 if (widget.difficulty == 'EASY') {
                   nextDifficulty = 'AVERAGE';
-                } else if (widget.difficulty == 'AVERAGE') nextDifficulty = 'HARD';
-                else                                     nextDifficulty = 'HARD';
+                } else if (widget.difficulty == 'AVERAGE') {
+                  nextDifficulty = 'HARD';
+                }else{
+                  nextDifficulty = 'HARD';
+                }                                     
 
                 Navigator.pushReplacement(
                   context,

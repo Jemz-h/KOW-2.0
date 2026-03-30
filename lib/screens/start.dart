@@ -144,7 +144,6 @@ class _StartScreenState extends State<StartScreen>
       behavior: HitTestBehavior.opaque,
       onTap: () => pushFade(context, const WelcomeBackScreen()), // Go to login
       child: MockBackground(
-        backgroundImage: 'assets/themes/bg_spc_phone.png',
         child: LayoutBuilder(
           builder: (context, constraints) {
             final w = constraints.maxWidth;
@@ -215,7 +214,7 @@ class _StartScreenState extends State<StartScreen>
                         width: sx(460),
                         height: sy(575),
                         child: Image.asset(
-                          'assets/images/oyo.png',
+                          'assets/sisa_oyo/oyo.png',
                           fit: BoxFit.contain,
                         ),
                       ),
@@ -227,7 +226,7 @@ class _StartScreenState extends State<StartScreen>
                         width: sx(303),
                         height: sy(379),
                         child: Image.asset(
-                          'assets/images/sisa.png',
+                          'assets/sisa_oyo/sisa.png',
                           fit: BoxFit.contain,
                         ),
                       ),

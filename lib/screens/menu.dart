@@ -7,7 +7,7 @@ import '../widgets/mock_background.dart';
 import '../widgets/coming_soon.dart';
 import '../navigation/route_transitions.dart';
 import 'tutorial.dart';
-import 'settings_screen.dart';
+import 'settings.dart';
 import 'about.dart';
 
 /// Main menu screen showing the title and primary navigation buttons.
@@ -233,7 +233,7 @@ class _MenuScreenState extends State<MenuScreen>
                       // Mascot/character image in the center
                       Positioned(
                         left: sx(80), right: sx(80), top: sy(320), height: sy(280),
-                        child: Image.asset('assets/images/sisa.png', fit: BoxFit.contain),
+                        child: Image.asset('assets/sisa_oyo/sisa.png', fit: BoxFit.contain),
                       ),
                       // Main menu buttons (START, TUTORIAL, SETTINGS, ABOUT)
                       Positioned(

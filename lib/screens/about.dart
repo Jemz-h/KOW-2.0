@@ -93,11 +93,11 @@ class AboutScreen extends StatelessWidget {
                                       return Row(
                                         mainAxisAlignment: MainAxisAlignment.center,
                                         children: [
-                                          _buildLogo('assets/images/lg_sauyo.png'),
+                                          _buildLogo('assets/misc/sauyo.png'),
                                           const SizedBox(width: 8),
-                                          _buildLogo('assets/images/lg_bctpoc.png'),
+                                          _buildLogo('assets/misc/bctpoc.png'),
                                           const SizedBox(width: 8),
-                                          _buildLogo('assets/images/lg_qcu.png'),
+                                          _buildLogo('assets/misc/qcu.png'),
                                         ],
                                       );
                                     },
