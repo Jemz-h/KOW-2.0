@@ -124,10 +124,10 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
   }
 
   String _formatBirthday(DateTime date) {
+    final yyyy = date.year.toString();
     final mm = date.month.toString().padLeft(2, '0');
     final dd = date.day.toString().padLeft(2, '0');
-    final yyyy = date.year.toString();
-    return '$mm/$dd/$yyyy';
+    return '$yyyy-$mm-$dd';
   }
 
   Future<void> _showSignUpDialog(BuildContext context) async {

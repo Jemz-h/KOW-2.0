@@ -14,6 +14,9 @@ router.get('/:id', userController.getUserById);
 // PUT /api/users/:id/birthday
 router.put('/:id/birthday', userController.updateUserBirthday);
 
+// PUT /api/users/:id/profile
+router.put('/:id/profile', userController.updateUserProfile);
+
 // DELETE /api/users/:id
 router.delete('/:id', userController.deleteUser);
 

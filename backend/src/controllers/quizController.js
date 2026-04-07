@@ -64,7 +64,21 @@ const getQuestions = asyncHandler(async (req, res) => {
 // @route   POST /api/quiz/score
 // @access  Public
 const submitScore = asyncHandler(async (req, res) => {
-  const { studentId, grade, subject, difficulty, score, total, playedAt, deviceUuid } = req.body;
+  const {
+    studentId,
+    grade,
+    subject,
+    difficulty,
+    score,
+    total,
+    playedAt,
+    played_at,
+    deviceUuid,
+    device_uuid
+  } = req.body;
+
+  const playedAtValue = playedAt || played_at || null;
+  const deviceUuidValue = deviceUuid || device_uuid || null;
 
   if (!studentId || !grade || !subject || !difficulty || score === undefined) {
     res.status(400);
@@ -102,29 +116,77 @@ const submitScore = asyncHandler(async (req, res) => {
   const scoreValue = Number(score);
   const passed = scoreValue / maxScore >= 0.7 ? 1 : 0;
 
+  // Idempotency guard: skip duplicate score events on retry/replay.
+  if (playedAtValue) {
+    const duplicateCheckSql = db.isOracle()
+      ? `SELECT COUNT(*) AS CNT
+         FROM scoreTb
+         WHERE stud_id = :studentId
+           AND subject_id = :subjectId
+           AND gradelvl_id = :gradeLevelId
+           AND diff_id = :diffId
+           AND played_at = TO_DATE(SUBSTR(REPLACE(:playedAt, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
+           AND (:deviceUuid IS NULL OR NVL(device_uuid, '__NONE__') = NVL(:deviceUuid, '__NONE__'))`
+      : `SELECT COUNT(*) AS CNT
+         FROM scoreTb
+         WHERE stud_id = :studentId
+           AND subject_id = :subjectId
+           AND gradelvl_id = :gradeLevelId
+           AND diff_id = :diffId
+           AND played_at = :playedAt
+           AND (:deviceUuid IS NULL OR COALESCE(device_uuid, '__NONE__') = COALESCE(:deviceUuid, '__NONE__'))`;
+
+    const duplicateCheck = await db.execute(
+      duplicateCheckSql,
+      {
+        studentId,
+        subjectId: row.SUBJECT_ID,
+        gradeLevelId: row.GRADELVL_ID,
+        diffId: row.DIFF_ID,
+        playedAt: playedAtValue,
+        deviceUuid: deviceUuidValue
+      }
+    );
+
+    const duplicateCount = Number(duplicateCheck.rows?.[0]?.CNT || 0);
+    if (duplicateCount > 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'Duplicate score event skipped',
+        duplicate: true
+      });
+    }
+  }
+
   if (db.isOracle()) {
     await db.execute(
-      `BEGIN
-         sp_upload_score(
-           p_stud_id      => :studentId,
-           p_subject_id   => :subjectId,
-           p_gradelvl_id  => :gradeLevelId,
-           p_diff_id      => :diffId,
-           p_score        => :score,
-           p_max_score    => :maxScore,
-           p_passed       => :passed,
-           p_played_at    => CASE
-                               WHEN :playedAt IS NULL THEN SYSDATE
-                               ELSE TO_DATE(SUBSTR(REPLACE(:playedAt, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
-                             END,
-           p_device_uuid  => :deviceUuid
-         );
-         sp_refresh_analytics(
-           p_stud_id      => :studentId,
-           p_subject_id   => :subjectId,
-           p_gradelvl_id  => :gradeLevelId
-         );
-       END;`,
+      `INSERT INTO scoreTb (
+         stud_id,
+         subject_id,
+         gradelvl_id,
+         diff_id,
+         score,
+         max_score,
+         passed,
+         played_at,
+         device_uuid,
+         synced_at
+       )
+       VALUES (
+         :studentId,
+         :subjectId,
+         :gradeLevelId,
+         :diffId,
+         :score,
+         :maxScore,
+         :passed,
+         CASE
+           WHEN :playedAt IS NULL THEN SYSDATE
+           ELSE TO_DATE(SUBSTR(REPLACE(:playedAt, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
+         END,
+         :deviceUuid,
+         SYSDATE
+       )`,
       {
         studentId,
         subjectId: row.SUBJECT_ID,
@@ -133,13 +195,68 @@ const submitScore = asyncHandler(async (req, res) => {
         score: scoreValue,
         maxScore,
         passed,
-        playedAt: playedAt || null,
-        deviceUuid: deviceUuid || null
+        playedAt: playedAtValue,
+        deviceUuid: deviceUuidValue
+      },
+      { autoCommit: true }
+    );
+
+    await db.execute(
+      `MERGE INTO progressTb p
+       USING (
+         SELECT :studentId AS stud_id,
+                :subjectId AS subject_id,
+                :gradeLevelId AS gradelvl_id
+         FROM DUAL
+       ) src
+       ON (
+         p.stud_id = src.stud_id
+         AND p.subject_id = src.subject_id
+         AND p.gradelvl_id = src.gradelvl_id
+       )
+       WHEN MATCHED THEN
+         UPDATE SET
+           p.highest_diff_passed = CASE
+             WHEN :passed = 1 AND :diffId > NVL(p.highest_diff_passed, 0)
+               THEN :diffId
+             ELSE NVL(p.highest_diff_passed, 0)
+           END,
+           p.last_played_at = CASE
+             WHEN :playedAt IS NULL THEN SYSDATE
+             ELSE TO_DATE(SUBSTR(REPLACE(:playedAt, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
+           END
+       WHEN NOT MATCHED THEN
+         INSERT (
+           stud_id,
+           subject_id,
+           gradelvl_id,
+           highest_diff_passed,
+           total_time_played,
+           last_played_at
+         )
+         VALUES (
+           :studentId,
+           :subjectId,
+           :gradeLevelId,
+           CASE WHEN :passed = 1 THEN :diffId ELSE 0 END,
+           0,
+           CASE
+             WHEN :playedAt IS NULL THEN SYSDATE
+             ELSE TO_DATE(SUBSTR(REPLACE(:playedAt, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
+           END
+         )`,
+      {
+        studentId,
+        subjectId: row.SUBJECT_ID,
+        gradeLevelId: row.GRADELVL_ID,
+        diffId: row.DIFF_ID,
+        passed,
+        playedAt: playedAtValue
       },
       { autoCommit: true }
     );
   } else {
-    const playedAtValue = playedAt || new Date().toISOString();
+    const sqlitePlayedAtValue = playedAtValue || new Date().toISOString();
 
     await db.execute(
       `INSERT INTO scoreTb (
@@ -174,8 +291,8 @@ const submitScore = asyncHandler(async (req, res) => {
         score: scoreValue,
         maxScore,
         passed,
-        playedAt: playedAtValue,
-        deviceUuid: deviceUuid || null
+        playedAt: sqlitePlayedAtValue,
+        deviceUuid: deviceUuidValue
       },
       { autoCommit: true }
     );
@@ -211,7 +328,7 @@ const submitScore = asyncHandler(async (req, res) => {
         gradeLevelId: row.GRADELVL_ID,
         diffId: row.DIFF_ID,
         passed,
-        playedAt: playedAtValue
+        playedAt: sqlitePlayedAtValue
       },
       { autoCommit: true }
     );

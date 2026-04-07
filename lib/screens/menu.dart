@@ -174,22 +174,25 @@ class _MenuScreenState extends State<MenuScreen>
                             position: _titleSlide,
                             child: ScaleTransition(
                               scale: _idleTitleScale,
-                              child: Text(
-                                'KARUNUNGAN\nON WHEELS',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontFamily: 'SuperCartoon',
-                                  fontSize: contentW * 0.15,
-                                  fontWeight: FontWeight.w900,
-                                  height: 1.0,
-                                  color: Colors.white,
-                                  shadows: const [
-                                    Shadow(
-                                      blurRadius: 4,
-                                      color: Colors.black54,
-                                      offset: Offset(2, 2),
-                                    ),
-                                  ],
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  'KARUNUNGAN\nON WHEELS',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontFamily: 'SuperCartoon',
+                                    fontSize: contentW * 0.15,
+                                    fontWeight: FontWeight.w900,
+                                    height: 1.0,
+                                    color: Colors.white,
+                                    shadows: const [
+                                      Shadow(
+                                        blurRadius: 4,
+                                        color: Colors.black54,
+                                        offset: Offset(2, 2),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),

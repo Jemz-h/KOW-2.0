@@ -40,7 +40,7 @@ class UserModel {
   }
 
   static async createUser(userData) {
-    const { firstName, lastName, nickname, birthday, sex, area, teacherId, deviceUuid } = userData;
+    const { firstName, lastName, nickname, birthday, sex, area, teacherId, deviceUuid, tmpLocalId } = userData;
     const sexId = await this.resolveSexId(sex);
     const barangayId = await this.resolveBarangayId(area);
 
@@ -55,7 +55,8 @@ class UserModel {
           sex_id,
           teacher_id,
           barangay_id,
-          device_origin
+          device_origin,
+          tmp_local_id
         )
         VALUES (
           :firstName,
@@ -65,7 +66,8 @@ class UserModel {
           :sexId,
           :teacherId,
           :barangayId,
-          :deviceUuid
+          :deviceUuid,
+          :tmpLocalId
         )
         RETURNING stud_id INTO :outId
       `;
@@ -79,6 +81,7 @@ class UserModel {
         teacherId: teacherId || null,
         barangayId,
         deviceUuid: deviceUuid || null,
+        tmpLocalId: tmpLocalId || null,
         outId: { dir: driver.BIND_OUT, type: driver.NUMBER }
       };
 
@@ -95,7 +98,8 @@ class UserModel {
          sex_id,
          teacher_id,
          barangay_id,
-         device_origin
+         device_origin,
+         tmp_local_id
        )
        VALUES (
          :firstName,
@@ -105,7 +109,8 @@ class UserModel {
          :sexId,
          :teacherId,
          :barangayId,
-         :deviceUuid
+         :deviceUuid,
+         :tmpLocalId
        )`,
       {
         firstName,
@@ -115,7 +120,8 @@ class UserModel {
         sexId,
         teacherId: teacherId || null,
         barangayId,
-        deviceUuid: deviceUuid || null
+        deviceUuid: deviceUuid || null,
+        tmpLocalId: tmpLocalId || null
       },
       { autoCommit: true, returning: 'lastId' }
     );
@@ -165,6 +171,55 @@ class UserModel {
       { autoCommit: true }
     );
     
+    return result.rowsAffected > 0;
+  }
+
+  static async updateUserProfile({
+    userId,
+    firstName,
+    lastName,
+    nickname,
+    birthday,
+    sex,
+    area,
+  }) {
+    const sexId = await this.resolveSexId(sex);
+    const barangayId = await this.resolveBarangayId(area);
+
+    const query = db.isOracle()
+      ? `UPDATE studentTb
+         SET first_name = :firstName,
+             last_name = :lastName,
+             nickname = :nickname,
+             birthday = TO_DATE(:birthday, 'YYYY-MM-DD'),
+             sex_id = :sexId,
+             barangay_id = :barangayId,
+             updated_at = SYSTIMESTAMP
+         WHERE stud_id = :userId`
+      : `UPDATE studentTb
+         SET first_name = :firstName,
+             last_name = :lastName,
+             nickname = :nickname,
+             birthday = :birthday,
+             sex_id = :sexId,
+             barangay_id = :barangayId,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE stud_id = :userId`;
+
+    const result = await db.execute(
+      query,
+      {
+        userId,
+        firstName,
+        lastName,
+        nickname,
+        birthday,
+        sexId,
+        barangayId,
+      },
+      { autoCommit: true }
+    );
+
     return result.rowsAffected > 0;
   }
 }

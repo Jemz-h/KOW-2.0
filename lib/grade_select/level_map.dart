@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../screens/settings.dart'; // ← adjust path to match where settings.dart lives
+import '../quiz_screen.dart';
+import '../api_service.dart';
 
 // ── Grade → planet image paths ────────────────────────────────
 const _gradePlanets = {
@@ -128,23 +132,40 @@ class _LevelMapScreenState extends State<LevelMapScreen>
   // Inline init guarantees fields are ready before build() is ever called
 
   // ── Gojo float animation ──────────────────────────────────
-  late final AnimationController _gojoCtrl =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 1800))
-        ..repeat(reverse: true);
+  late final AnimationController _gojoCtrl;
   late final Animation<double> _gojoAnim =
       Tween<double>(begin: -6, end: 6)
           .animate(CurvedAnimation(parent: _gojoCtrl, curve: Curves.easeInOut));
 
   // ── Island float animation ────────────────────────────────
-  late final AnimationController _islandCtrl =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 2100))
-        ..repeat(reverse: true);
+  late final AnimationController _islandCtrl;
   late final Animation<double> _islandAnim =
       Tween<double>(begin: -5, end: 5)
           .animate(CurvedAnimation(parent: _islandCtrl, curve: Curves.easeInOut));
 
   @override
-  void initState() { super.initState(); }
+  void initState() {
+    super.initState();
+
+    _gojoCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat(reverse: true);
+
+    _islandCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2100),
+    )..repeat(reverse: true);
+
+    // Warm the first question payload while user is on the map.
+    unawaited(
+      ApiService.getQuestions(
+        grade: widget.grade,
+        subject: widget.subject,
+        difficulty: 'EASY',
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -337,9 +358,17 @@ class _LevelMapScreenState extends State<LevelMapScreen>
                   // ▶ Play
                   _TapIcon(
                     onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Game mode is coming soon.')),
-                      );
+                      Navigator.of(context).push(PageRouteBuilder(
+                        pageBuilder: (_, animation, _) => QuizScreen(
+                          difficulty: 'EASY',
+                          grade: widget.grade,
+                          subject: widget.subject,
+                          gradeImg: widget.gradeImg,
+                        ),
+                        transitionsBuilder: (_, animation, _, child) =>
+                            FadeTransition(opacity: animation, child: child),
+                        transitionDuration: const Duration(milliseconds: 300),
+                      ));
                     },
                     child: SvgPicture.asset(
                       'assets/icons/play.svg',
@@ -455,10 +484,20 @@ class _TapIcon extends StatefulWidget {
 }
 
 class _TapIconState extends State<_TapIcon> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 100));
-  late final Animation<double> _s = Tween<double>(begin: 1.0, end: 0.80)
-      .animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut));
+  late final AnimationController _c;
+  late final Animation<double> _s;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 100),
+    );
+    _s = Tween<double>(begin: 1.0, end: 0.80).animate(
+      CurvedAnimation(parent: _c, curve: Curves.easeInOut),
+    );
+  }
   @override void dispose() { _c.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) => GestureDetector(

@@ -3,7 +3,7 @@
 ## 1. Database Schema
 
 Oracle schema file:
-- `backend/src/KOW.sql`
+- `backend/src/config/KOW.sql`
 
 SQLite schema is bootstrapped automatically by the backend when `DB_CLIENT=sqlite`.
 
@@ -20,7 +20,7 @@ Oracle schema contains:
 ### SQL*Plus
 ```bash
 sqlplus system/<SYSTEM_PASSWORD>@localhost:1521/XE
-@backend/src/KOW.sql
+@backend/src/config/KOW.sql
 ```
 
 Note:
@@ -46,8 +46,9 @@ SQLITE_DB_PATH=./backend/data/kow_offline.db
 ```
 
 Notes:
-- `DB_CLIENT` defaults to `oracle` when omitted.
+- `DB_CLIENT` defaults to `sqlite` when omitted.
 - `SQLITE_DB_PATH` is optional; default is `./backend/data/kow_offline.db`.
+- If `DB_CLIENT=oracle` fails to initialize, backend falls back to SQLite unless `DB_FALLBACK_SQLITE=false`.
 
 ## 4. Install and Run
 

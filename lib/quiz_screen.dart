@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'api_service.dart';
 import 'grade_select/level_map.dart';
 
 // ╔══════════════════════════════════════════════════════════════════════════╗
@@ -495,12 +496,23 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
   int? _selectedIdx;
   bool _showResult    = false;
   bool _showDonePopup = false;
+  bool _isSubmittingScore = false;
+  bool _hasQuestionInteraction = false;
+  List<QuizQuestion>? _remoteQuestions;
+  late final DateTime _sessionStartedAt;
 
-  late final AnimationController _fadeCtrl =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
+  late final AnimationController _fadeCtrl;
 
-  // ── _qs returns the correct question list for ALL three difficulties ──────
+  // ── _qs returns API questions when available, otherwise local fallback ────
   List<QuizQuestion> get _qs {
+    if (_remoteQuestions != null && _remoteQuestions!.isNotEmpty) {
+      return _remoteQuestions!;
+    }
+
+    return _fallbackQuestions;
+  }
+
+  List<QuizQuestion> get _fallbackQuestions {
     switch (widget.difficulty) {
       case 'AVERAGE': return kAverageQuestions;
       case 'HARD':    return kHardQuestions;   // ← HARD now has its own 5 questions
@@ -529,12 +541,115 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
   }
 
   @override
-  void dispose() { _fadeCtrl.dispose(); super.dispose(); }
+  void initState() {
+    super.initState();
+    _fadeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    ApiService.beginLearningSession();
+    _sessionStartedAt = DateTime.now();
+    _loadQuestions();
+  }
+
+  @override
+  void dispose() {
+    ApiService.endLearningSession();
+    _fadeCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadQuestions() async {
+    try {
+      final rows = await ApiService.getQuestions(
+        grade: widget.grade,
+        subject: widget.subject,
+        difficulty: widget.difficulty,
+      );
+
+      if (!mounted) return;
+
+      // Keep quiz progression stable if user already started interacting.
+      if (_hasQuestionInteraction || _qi > 0 || _showResult) {
+        return;
+      }
+
+      setState(() {
+        _remoteQuestions = List.generate(rows.length, (index) {
+          final row = rows[index];
+          final choices = List<String>.from(row['choices'] as List<dynamic>);
+
+          return QuizQuestion(
+            questionNumber: 'QUESTION ${index + 1}',
+            imagePath: null,
+            prompt: (row['prompt'] as String?) ?? '',
+            wordType: null,
+            subPrompt: (row['prompt'] as String?) ?? '',
+            choices: choices,
+            correctIndex: (row['correctIndex'] as num?)?.toInt() ?? 0,
+            funFact: (row['funFact'] as String?) ?? '',
+          );
+        });
+      });
+    } catch (_) {
+      // Keep local fallback questions without interrupting gameplay.
+    }
+  }
+
+  Future<void> _submitFinalScore() async {
+    if (_isSubmittingScore) {
+      return;
+    }
+
+    final studentId = ApiService.currentStudentId;
+    if (studentId == null || studentId <= 0) {
+      return;
+    }
+
+    _isSubmittingScore = true;
+    try {
+      final playedAt = DateTime.now().toIso8601String();
+      await ApiService.submitScore(
+        studentId: studentId,
+        grade: widget.grade,
+        subject: widget.subject,
+        difficulty: widget.difficulty,
+        score: _score,
+        total: _qs.length,
+        playedAt: playedAt,
+      );
+
+      final maxScore = _qs.isNotEmpty ? _qs.length : 1;
+      final passed = (_score / maxScore) >= 0.7;
+      final diffId = switch (widget.difficulty) {
+        'EASY' => 1,
+        'AVERAGE' => 2,
+        'HARD' => 3,
+        _ => null,
+      };
+
+      final timeSpentSeconds = DateTime.now().difference(_sessionStartedAt).inSeconds;
+
+      await ApiService.saveProgress(
+        studentId: studentId,
+        grade: widget.grade,
+        subject: widget.subject,
+        highestDiffPassed: passed ? diffId : null,
+        totalTimePlayed: timeSpentSeconds < 0 ? 0 : timeSpentSeconds,
+        lastPlayedAt: playedAt,
+      );
+    } catch (_) {
+      // Keep gameplay uninterrupted if score sync fails.
+    } finally {
+      _isSubmittingScore = false;
+    }
+  }
 
   // ── Game logic ────────────────────────────────────────────────────────────
   void _onAnswer(int idx) {
     if (_selectedIdx != null) return;
     setState(() {
+      _hasQuestionInteraction = true;
       _selectedIdx = idx;
       if (idx == _q.correctIndex) _score++;
     });
@@ -547,7 +662,10 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
 
   void _onSkip() {
     if (_skipsLeft <= 0 || _selectedIdx != null) return;
-    setState(() => _skipsLeft--);
+    setState(() {
+      _hasQuestionInteraction = true;
+      _skipsLeft--;
+    });
     _advance();
   }
 
@@ -565,6 +683,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
       });
       _fadeCtrl.reset();
     } else {
+      _submitFinalScore();
       setState(() => _showDonePopup = true);  // ← popup fires for all difficulties
     }
   }
@@ -826,7 +945,12 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => QuizScreen(difficulty: nextDifficulty),
+                    builder: (_) => QuizScreen(
+                      difficulty: nextDifficulty,
+                      grade: widget.grade,
+                      subject: widget.subject,
+                      gradeImg: widget.gradeImg,
+                    ),
                   ),
                 );
               },
@@ -998,17 +1122,23 @@ class _LevelCompletePopup extends StatefulWidget {
 class _LevelCompletePopupState extends State<_LevelCompletePopup>
     with SingleTickerProviderStateMixin {
 
-  late final AnimationController _ctrl = AnimationController(
-      vsync: this, duration: Duration(milliseconds: kPopSlideMs));
-
-  late final Animation<double> _fade = CurvedAnimation(
-      parent: _ctrl, curve: Curves.easeOut);
-
-  late final Animation<double> _scaleAnim = Tween<double>(begin: 0.88, end: 1.0)
-      .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
+  late final AnimationController _ctrl;
+  late final Animation<double> _fade;
+  late final Animation<double> _scaleAnim;
 
   @override
-  void initState() { super.initState(); _ctrl.forward(); }
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: kPopSlideMs),
+    );
+    _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
+    _scaleAnim = Tween<double>(begin: 0.88, end: 1.0).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack),
+    );
+    _ctrl.forward();
+  }
 
   @override
   void dispose() { _ctrl.dispose(); super.dispose(); }
@@ -1332,11 +1462,17 @@ class _PopButton extends StatefulWidget {
 class _PopButtonState extends State<_PopButton>
     with SingleTickerProviderStateMixin {
 
-  late final AnimationController _ctrl =
-      AnimationController(vsync: this, duration: kTapPressDur);
-  late final Animation<double> _scale =
-      Tween<double>(begin: 1.0, end: kTapPressScale)
-          .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: kTapPressDur);
+    _scale = Tween<double>(begin: 1.0, end: kTapPressScale).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+  }
 
   @override void dispose() { _ctrl.dispose(); super.dispose(); }
 
@@ -1430,15 +1566,22 @@ class _SkipButton extends StatefulWidget {
 
 class _SkipButtonState extends State<_SkipButton>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl =
-      AnimationController(vsync: this, duration: kTapPressDur);
-  late final Animation<double> _scale =
-      Tween<double>(begin: 1.0, end: kTapPressScale)
-          .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
-  late final Animation<Color?> _color = ColorTween(
-    begin: const Color(0xFFB6D5F0),
-    end:   const Color(0xFF8BBFE8),
-  ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+  late final Animation<Color?> _color;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: kTapPressDur);
+    _scale = Tween<double>(begin: 1.0, end: kTapPressScale).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+    _color = ColorTween(
+      begin: const Color(0xFFB6D5F0),
+      end: const Color(0xFF8BBFE8),
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+  }
 
   @override void dispose() { _ctrl.dispose(); super.dispose(); }
   bool get _canSkip => widget.skipsLeft > 0 && !widget.disabled;
@@ -1488,15 +1631,22 @@ class _ContinueButton extends StatefulWidget {
 
 class _ContinueButtonState extends State<_ContinueButton>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl =
-      AnimationController(vsync: this, duration: kTapPressDur);
-  late final Animation<double> _scale =
-      Tween<double>(begin: 1.0, end: kTapPressScale)
-          .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
-  late final Animation<Color?> _color = ColorTween(
-    begin: const Color.fromARGB(255, 117, 240, 117),
-    end:   const Color.fromARGB(255, 147, 199, 147),
-  ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+  late final Animation<Color?> _color;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: kTapPressDur);
+    _scale = Tween<double>(begin: 1.0, end: kTapPressScale).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+    _color = ColorTween(
+      begin: const Color.fromARGB(255, 117, 240, 117),
+      end: const Color.fromARGB(255, 147, 199, 147),
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+  }
 
   @override void dispose() { _ctrl.dispose(); super.dispose(); }
 
@@ -1540,11 +1690,17 @@ class _TapIcon extends StatefulWidget {
 
 class _TapIconState extends State<_TapIcon>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: kTapPressDur);
-  late final Animation<double> _s =
-      Tween<double>(begin: 1.0, end: kTapPressScale)
-          .animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut));
+  late final AnimationController _c;
+  late final Animation<double> _s;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(vsync: this, duration: kTapPressDur);
+    _s = Tween<double>(begin: 1.0, end: kTapPressScale).animate(
+      CurvedAnimation(parent: _c, curve: Curves.easeInOut),
+    );
+  }
   @override void dispose() { _c.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) => GestureDetector(

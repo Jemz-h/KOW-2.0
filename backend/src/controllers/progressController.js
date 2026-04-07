@@ -14,9 +14,12 @@ const saveProgress = asyncHandler(async (req, res) => {
     grade,
     difficultyId,
     highestDiffPassed,
+    highest_diff_passed,
     totalTimePlayed,
+    total_time_played,
     timeSpent,
-    lastPlayedAt
+    lastPlayedAt,
+    last_played_at
   } = req.body;
 
   const resolvedStudentId = studentId || userID;
@@ -38,7 +41,7 @@ const saveProgress = asyncHandler(async (req, res) => {
 
   let resolvedSubjectId = subjectId || null;
   let resolvedGradeLevelId = gradeLevelId || null;
-  let resolvedDiffId = highestDiffPassed || difficultyId || null;
+  let resolvedDiffId = highestDiffPassed || highest_diff_passed || difficultyId || null;
 
   if (!resolvedSubjectId && subject) {
     const subjectRes = await db.execute(
@@ -66,9 +69,43 @@ const saveProgress = asyncHandler(async (req, res) => {
     subjectId: resolvedSubjectId,
     gradeLevelId: resolvedGradeLevelId,
     highestDiffPassed: resolvedDiffId,
-    timeToAdd: totalTimePlayed ?? timeSpent ?? 0,
-    lastPlayedAt: lastPlayedAt || null
+    timeToAdd: totalTimePlayed ?? total_time_played ?? timeSpent ?? 0,
+    lastPlayedAt: lastPlayedAt || last_played_at || null
   };
+
+  // Idempotency guard: skip exact replay events for the same last_played_at marker.
+  if (binds.lastPlayedAt) {
+    const duplicateCheckSql = db.isOracle()
+      ? `SELECT COUNT(*) AS CNT
+         FROM progressTb
+         WHERE stud_id = :studId
+           AND subject_id = :subjectId
+           AND gradelvl_id = :gradeLevelId
+           AND last_played_at = TO_DATE(SUBSTR(REPLACE(:lastPlayedAt, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')`
+      : `SELECT COUNT(*) AS CNT
+         FROM progressTb
+         WHERE stud_id = :studId
+           AND subject_id = :subjectId
+           AND gradelvl_id = :gradeLevelId
+           AND last_played_at = :lastPlayedAt`;
+
+    const duplicateCheck = await db.execute(duplicateCheckSql, {
+      studId: binds.studId,
+      subjectId: binds.subjectId,
+      gradeLevelId: binds.gradeLevelId,
+      lastPlayedAt: binds.lastPlayedAt
+    });
+
+    const duplicateCount = Number(duplicateCheck.rows?.[0]?.CNT || 0);
+    if (duplicateCount > 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'Duplicate progress event skipped',
+        duplicate: true,
+        rowsAffected: 0
+      });
+    }
+  }
 
   let result;
 
@@ -100,7 +137,6 @@ const saveProgress = asyncHandler(async (req, res) => {
            END
        WHEN NOT MATCHED THEN
          INSERT (
-           progress_id,
            stud_id,
            subject_id,
            gradelvl_id,
@@ -109,7 +145,6 @@ const saveProgress = asyncHandler(async (req, res) => {
            last_played_at
          )
          VALUES (
-           seq_score_id.NEXTVAL,
            :studId,
            :subjectId,
            :gradeLevelId,

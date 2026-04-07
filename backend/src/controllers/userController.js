@@ -156,11 +156,80 @@ const updateUserBirthday = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc    Update student profile
+// @route   PUT /api/users/:id/profile
+// @access  Public
+const updateUserProfile = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const {
+    firstName,
+    lastName,
+    nickname,
+    birthday,
+    sex,
+    area,
+  } = req.body;
+
+  if (!firstName || !lastName || !nickname || !birthday || !sex) {
+    res.status(400);
+    throw new Error('Missing required profile fields');
+  }
+
+  const updated = await UserModel.updateUserProfile({
+    userId: id,
+    firstName,
+    lastName,
+    nickname,
+    birthday,
+    sex,
+    area: area || null,
+  });
+
+  if (!updated) {
+    res.status(404);
+    throw new Error(`Student not found with ID of ${id}`);
+  }
+
+  res.status(200).json({
+    success: true,
+    message: 'Profile updated successfully',
+  });
+});
+
 // @desc    Hard delete a student
 // @route   DELETE /api/users/:id
 // @access  Public
 const deleteUser = asyncHandler(async (req, res) => {
   const { id } = req.params;
+
+  const dependencyQuery = db.isOracle()
+    ? `SELECT 'customTb' AS dep_name, COUNT(*) AS ref_count FROM customTb WHERE stud_id = :id
+       UNION ALL
+       SELECT 'scoreTb' AS dep_name, COUNT(*) AS ref_count FROM scoreTb WHERE stud_id = :id
+       UNION ALL
+       SELECT 'timeplTb' AS dep_name, COUNT(*) AS ref_count FROM timeplTb WHERE stud_id = :id
+       UNION ALL
+       SELECT 'progressTb' AS dep_name, COUNT(*) AS ref_count FROM progressTb WHERE stud_id = :id
+       UNION ALL
+       SELECT 'analyticsTb' AS dep_name, COUNT(*) AS ref_count FROM analyticsTb WHERE stud_id = :id
+       UNION ALL
+       SELECT 'syncLogTb' AS dep_name, COUNT(*) AS ref_count FROM syncLogTb WHERE stud_id = :id`
+    : `SELECT 'scoreTb' AS dep_name, COUNT(*) AS ref_count FROM scoreTb WHERE stud_id = :id
+       UNION ALL
+       SELECT 'progressTb' AS dep_name, COUNT(*) AS ref_count FROM progressTb WHERE stud_id = :id`;
+
+  const dependencyCheck = await db.execute(dependencyQuery, { id });
+  const blockers = dependencyCheck.rows
+    .filter((row) => Number(row.REF_COUNT || 0) > 0)
+    .map((row) => ({ table: row.DEP_NAME, count: Number(row.REF_COUNT) }));
+
+  if (blockers.length > 0) {
+    return res.status(409).json({
+      success: false,
+      message: 'Cannot delete student with related records',
+      dependencies: blockers
+    });
+  }
 
   const result = await db.execute(
     `DELETE FROM studentTb
@@ -180,5 +249,12 @@ const deleteUser = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { getUsers, getUserById, createUser, updateUserBirthday, deleteUser };
+module.exports = {
+  getUsers,
+  getUserById,
+  createUser,
+  updateUserBirthday,
+  updateUserProfile,
+  deleteUser,
+};
 

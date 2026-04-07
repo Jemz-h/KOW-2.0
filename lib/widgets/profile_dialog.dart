@@ -1,15 +1,39 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-void showProfileDialog(BuildContext context) {
-  final firstNameController = TextEditingController(text: 'SISA');
-  final lastNameController = TextEditingController(text: 'ANTIDO');
-  final nicknameController = TextEditingController(text: 'SISA SISIW');
-  final birthdayController = TextEditingController(text: 'JANUARY 1, 1999');
-  final areaController = TextEditingController(text: 'SAUYO');
-  int selectedSex = 1;
+import '../api_service.dart';
 
-  showDialog(
+Future<void> showProfileDialog(BuildContext context) async {
+  final profile = await ApiService.getCurrentProfile();
+  if (!context.mounted) {
+    return;
+  }
+
+  final storedBirthday = (profile?['birthday'] as String?)?.trim() ?? '';
+  final parsedBirthday = _parseBirthday(storedBirthday);
+
+  final firstNameController = TextEditingController(
+    text: (profile?['first_name'] as String?) ?? '',
+  );
+  final lastNameController = TextEditingController(
+    text: (profile?['last_name'] as String?) ?? '',
+  );
+  final nicknameController = TextEditingController(
+    text: (profile?['nickname'] as String?) ?? '',
+  );
+  final birthdayController = TextEditingController(
+    text: parsedBirthday != null
+        ? _formatBirthdayDisplay(parsedBirthday)
+        : storedBirthday,
+  );
+  final areaController = TextEditingController(
+    text: (profile?['area'] as String?) ?? '',
+  );
+  int selectedSex = _sexIndexFromValue(profile?['sex'] as String?);
+  bool isSaving = false;
+  DateTime selectedBirthday = parsedBirthday ?? DateTime(1999, 1, 1);
+
+  await showDialog(
     context: context,
     barrierDismissible: true,
     builder: (context) {
@@ -121,12 +145,13 @@ void showProfileDialog(BuildContext context) {
                     onTap: () async {
                       final picked = await showDatePicker(
                         context: context,
-                        initialDate: DateTime(1999, 1, 1),
+                        initialDate: selectedBirthday,
                         firstDate: DateTime(1900),
                         lastDate: DateTime.now(),
                       );
                       if (picked != null) {
-                        birthdayController.text = '${_monthName(picked.month)} ${picked.day}, ${picked.year}';
+                        selectedBirthday = picked;
+                        birthdayController.text = _formatBirthdayDisplay(picked);
                       }
                     },
                   ),
@@ -163,8 +188,53 @@ void showProfileDialog(BuildContext context) {
                           ),
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25))),
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: Text('CONFIRM', style: TextStyle(fontWeight: FontWeight.w900, fontSize: buttonFontSize, letterSpacing: 1.5)),
+                            onPressed: isSaving ? null : () async {
+                              if (firstNameController.text.trim().isEmpty ||
+                                  lastNameController.text.trim().isEmpty ||
+                                  nicknameController.text.trim().isEmpty ||
+                                  birthdayController.text.trim().isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Please fill all required fields.')),
+                                );
+                                return;
+                              }
+
+                              setState(() => isSaving = true);
+                              try {
+                                await ApiService.updateProfile(
+                                  firstName: firstNameController.text.trim(),
+                                  lastName: lastNameController.text.trim(),
+                                  nickname: nicknameController.text.trim(),
+                                  birthday: _toApiBirthday(
+                                    birthdayController.text.trim(),
+                                  ),
+                                  sex: selectedSex == 0 ? 'MALE' : 'FEMALE',
+                                  area: areaController.text.trim().isEmpty ? null : areaController.text.trim(),
+                                );
+
+                                if (context.mounted) {
+                                  Navigator.of(context).pop();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Profile updated successfully!')),
+                                  );
+                                }
+                              } on ApiException catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(e.message)),
+                                  );
+                                  setState(() => isSaving = false);
+                                }
+                              } catch (_) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Could not update profile. Try again.')),
+                                  );
+                                  setState(() => isSaving = false);
+                                }
+                              }
+                            },
+                            child: Text(isSaving ? 'SAVING...' : 'CONFIRM', style: TextStyle(fontWeight: FontWeight.w900, fontSize: buttonFontSize, letterSpacing: 1.5)),
                           ),
                         ),
                       ),
@@ -181,7 +251,7 @@ void showProfileDialog(BuildContext context) {
                           ),
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25))),
-                            onPressed: () => Navigator.of(context).pop(),
+                            onPressed: isSaving ? null : () => Navigator.of(context).pop(),
                             child: Text('CANCEL', style: TextStyle(fontWeight: FontWeight.w900, fontSize: buttonFontSize, letterSpacing: 1.5)),
                           ),
                         ),
@@ -201,6 +271,78 @@ void showProfileDialog(BuildContext context) {
 String _monthName(int month) {
   const months = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
   return months[month - 1];
+}
+
+int _sexIndexFromValue(String? sex) {
+  final normalized = (sex ?? '').trim().toUpperCase();
+  if (normalized == 'MALE' || normalized == 'M') {
+    return 0;
+  }
+  return 1;
+}
+
+DateTime? _parseBirthday(String? value) {
+  final raw = (value ?? '').trim();
+  if (raw.isEmpty) return null;
+
+  final iso = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(raw);
+  if (iso != null) {
+    return DateTime(
+      int.parse(iso.group(1)!),
+      int.parse(iso.group(2)!),
+      int.parse(iso.group(3)!),
+    );
+  }
+
+  final long = RegExp(r'^([A-Z]+)\s+(\d{1,2}),\s*(\d{4})$').firstMatch(
+    raw.toUpperCase(),
+  );
+  if (long != null) {
+    final month = _monthIndex(long.group(1)!);
+    if (month != null) {
+      return DateTime(
+        int.parse(long.group(3)!),
+        month,
+        int.parse(long.group(2)!),
+      );
+    }
+  }
+
+  return null;
+}
+
+int? _monthIndex(String monthName) {
+  const months = [
+    'JANUARY',
+    'FEBRUARY',
+    'MARCH',
+    'APRIL',
+    'MAY',
+    'JUNE',
+    'JULY',
+    'AUGUST',
+    'SEPTEMBER',
+    'OCTOBER',
+    'NOVEMBER',
+    'DECEMBER',
+  ];
+  final i = months.indexOf(monthName.toUpperCase());
+  return i < 0 ? null : i + 1;
+}
+
+String _formatBirthdayDisplay(DateTime date) {
+  return '${_monthName(date.month)} ${date.day}, ${date.year}';
+}
+
+String _toApiBirthday(String value) {
+  final parsed = _parseBirthday(value);
+  if (parsed == null) {
+    return value;
+  }
+  final yyyy = parsed.year.toString();
+  final mm = parsed.month.toString().padLeft(2, '0');
+  final dd = parsed.day.toString().padLeft(2, '0');
+  return '$yyyy-$mm-$dd';
 }
 
 class _SexAvatar extends StatelessWidget {

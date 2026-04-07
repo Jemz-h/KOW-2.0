@@ -1,6 +1,6 @@
 # KOW Application
 
-This project consists of a **Flutter** frontend interface and a **Node.js / Oracle SQL** backend.
+This project consists of a **Flutter** frontend interface and a **Node.js backend** that supports **Oracle SQL** and **SQLite**.
 
 ##  First Time Setup
 
@@ -21,11 +21,12 @@ The backend provides the API necessary for the Flutter application to interact w
    Inside the `backend` folder, you will notice a `.env` file (or create one if it isn't listed). You need to place your Oracle DB credentials there:
    ```env
    PORT=3000
+   DB_CLIENT=oracle
    DB_USER=your_oracle_username
    DB_PASSWORD=your_oracle_password
    DB_CONNECTION_STRING=localhost:1521/XEPDB1
    ```
-   *Note: Install an Oracle Database locally or use a cloud solution (like Oracle Autonomous Database). Run the provided setup script located at `backend/src/config/setup.sql` in your preferred Oracle SQL client (such as SQL Developer or DataGrip) to initialize the database schema and all associated tables.*
+   *Note: Install an Oracle Database locally or use a cloud solution (like Oracle Autonomous Database). Run the provided setup script located at `backend/src/config/KOW.sql` in your preferred Oracle SQL client (such as SQL Developer or DataGrip) to initialize the database schema and all associated tables. For offline mode, set `DB_CLIENT=sqlite`.*
 5. **Start the Development Server**:
    ```bash
    npm run dev

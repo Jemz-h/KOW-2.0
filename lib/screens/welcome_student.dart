@@ -207,10 +207,10 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
   }
 
   String _formatBirthday(DateTime date) {
+    final yyyy = date.year.toString();
     final mm = date.month.toString().padLeft(2, '0');
     final dd = date.day.toString().padLeft(2, '0');
-    final yyyy = date.year.toString();
-    return '$mm/$dd/$yyyy';
+    return '$yyyy-$mm-$dd';
   }
 
   Future<void> _handleSubmit() async {
@@ -383,6 +383,79 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
     );
   }
 
+  Widget _buildSexAvatar({
+    required String assetPath,
+    required bool selected,
+    required double size,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Stack(
+        children: [
+          Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: selected ? const Color(0xFF3DBE64) : Colors.grey[300]!,
+                width: 3,
+              ),
+              color: Colors.grey[200],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(11),
+              child: assetPath.endsWith('.svg')
+                  ? SvgPicture.asset(
+                      assetPath,
+                      fit: BoxFit.fill,
+                      width: size,
+                      height: size,
+                    )
+                  : Image.asset(
+                      assetPath,
+                      fit: BoxFit.fill,
+                      width: size,
+                      height: size,
+                      errorBuilder: (context, error, stackTrace) => Icon(
+                        Icons.person,
+                        size: size * 0.5,
+                        color: Colors.grey[400],
+                      ),
+                    ),
+            ),
+          ),
+          if (selected)
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          if (selected)
+            Positioned.fill(
+              child: Center(
+                child: Image.asset(
+                  'assets/icons/check.png',
+                  width: size * 0.55,
+                  height: size * 0.55,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) => Icon(
+                    Icons.check_circle,
+                    color: const Color(0xFF3DBE64),
+                    size: size * 0.55,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -397,9 +470,7 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
         final titleSize = 36.0 * scale;
         final subtitleSize = 12.5 * scale;
 
-        final sexWidth = (140.0 * scale).clamp(126.0, 180.0);
-        final sexHeight = (118.0 * scale).clamp(110.0, 150.0);
-        final sexIconHeight = (94.0 * scale).clamp(86.0, 120.0);
+        final avatarSize = (62.0 * scale).clamp(56.0, 80.0);
 
         final promptStyle = TextStyle(
           fontFamily: 'SuperCartoon',
@@ -570,37 +641,22 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
                               color: const Color(0xFF2D2D2D),
                             ),
                           ),
-                          SizedBox(height: 0.01),
+                          SizedBox(height: 6 * scale),
                           Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Expanded(
-                                child: Center(
-                                  child: SexCard(
-                                    iconPath: 'assets/icons/male.svg',
-                                    label: 'MALE',
-                                    selected: _selectedSex == 'MALE',
-                                    width: sexWidth,
-                                    height: sexHeight,
-                                    iconHeight: sexIconHeight,
-                                    onTap: () =>
-                                        setState(() => _selectedSex = 'MALE'),
-                                  ),
-                                ),
+                              _buildSexAvatar(
+                                assetPath: 'assets/misc/boy.png',
+                                selected: _selectedSex == 'MALE',
+                                size: avatarSize,
+                                onTap: () => setState(() => _selectedSex = 'MALE'),
                               ),
-                              SizedBox(width: 4 * scale),
-                              Expanded(
-                                child: Center(
-                                  child: SexCard(
-                                    iconPath: 'assets/icons/female.svg',
-                                    label: 'FEMALE',
-                                    selected: _selectedSex == 'FEMALE',
-                                    width: sexWidth,
-                                    height: sexHeight,
-                                    iconHeight: sexIconHeight,
-                                    onTap: () =>
-                                        setState(() => _selectedSex = 'FEMALE'),
-                                  ),
-                                ),
+                              SizedBox(width: 20 * scale),
+                              _buildSexAvatar(
+                                assetPath: 'assets/misc/girl.png',
+                                selected: _selectedSex == 'FEMALE',
+                                size: avatarSize,
+                                onTap: () => setState(() => _selectedSex = 'FEMALE'),
                               ),
                             ],
                           ),

@@ -1,9 +1,14 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
 
 let sqliteDb;
+
+function sha256(value) {
+  return crypto.createHash('sha256').update(String(value)).digest('hex');
+}
 
 function toSqliteNamedBinds(sql, binds) {
   if (!binds || Array.isArray(binds)) {
@@ -33,6 +38,8 @@ function normalizeRows(rows) {
 }
 
 async function bootstrapSchema() {
+  const defaultAdminHash = `sha256$${sha256(process.env.ADMIN_SEED_PASSWORD || 'admin123')}`;
+
   await sqliteDb.exec(`
     PRAGMA foreign_keys = ON;
 
@@ -68,6 +75,23 @@ async function bootstrapSchema() {
       first_name TEXT NOT NULL,
       last_name TEXT NOT NULL,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS adminTb (
+      admin_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'admin',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      last_login_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS deviceTb (
+      device_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      device_uuid TEXT NOT NULL UNIQUE,
+      device_name TEXT,
+      registered_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      last_synced_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS studentTb (
@@ -117,7 +141,10 @@ async function bootstrapSchema() {
       played_at TEXT NOT NULL,
       synced_at TEXT DEFAULT CURRENT_TIMESTAMP,
       device_uuid TEXT,
-      FOREIGN KEY (stud_id) REFERENCES studentTb(stud_id)
+      FOREIGN KEY (stud_id) REFERENCES studentTb(stud_id),
+      FOREIGN KEY (subject_id) REFERENCES subjectTb(subject_id),
+      FOREIGN KEY (gradelvl_id) REFERENCES gradelvlTb(gradelvl_id),
+      FOREIGN KEY (diff_id) REFERENCES diffTb(diff_id)
     );
 
     CREATE TABLE IF NOT EXISTS progressTb (
@@ -129,7 +156,30 @@ async function bootstrapSchema() {
       total_time_played INTEGER DEFAULT 0,
       last_played_at TEXT,
       UNIQUE (stud_id, subject_id, gradelvl_id),
-      FOREIGN KEY (stud_id) REFERENCES studentTb(stud_id)
+      FOREIGN KEY (stud_id) REFERENCES studentTb(stud_id),
+      FOREIGN KEY (subject_id) REFERENCES subjectTb(subject_id),
+      FOREIGN KEY (gradelvl_id) REFERENCES gradelvlTb(gradelvl_id),
+      FOREIGN KEY (highest_diff_passed) REFERENCES diffTb(diff_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS contentVersionTb (
+      version_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      version_tag TEXT NOT NULL,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_by TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS syncLogTb (
+      sync_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      stud_id INTEGER,
+      device_uuid TEXT,
+      action TEXT,
+      event_type TEXT,
+      payload TEXT,
+      payload_hash TEXT,
+      synced_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      received_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      status TEXT DEFAULT 'processed'
     );
   `);
 
@@ -150,7 +200,27 @@ async function bootstrapSchema() {
     INSERT OR IGNORE INTO subjectTb (subject_id, subject) VALUES (4, 'English');
 
     INSERT OR IGNORE INTO barangayTb (barangay_id, barangay_nm) VALUES (1, 'Barangay Sauyo');
+
+    INSERT OR IGNORE INTO contentVersionTb (version_id, version_tag, updated_by)
+    VALUES (1, 'v1', 'system');
   `);
+
+  await sqliteDb.run(
+    `INSERT OR IGNORE INTO adminTb (admin_id, username, password_hash, role)
+     VALUES (1, 'admin', :defaultAdminHash, 'admin')`,
+    {
+      ':defaultAdminHash': defaultAdminHash,
+    }
+  );
+
+  await sqliteDb.run(
+    `UPDATE adminTb
+     SET password_hash = :defaultAdminHash
+     WHERE username = 'admin' AND (password_hash IS NULL OR password_hash = '')`,
+    {
+      ':defaultAdminHash': defaultAdminHash,
+    }
+  );
 }
 
 async function initialize() {

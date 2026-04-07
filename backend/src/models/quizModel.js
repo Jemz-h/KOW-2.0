@@ -64,24 +64,28 @@ class QuizModel {
 
     if (db.isOracle()) {
       await db.execute(
-        `BEGIN
-           sp_upload_score(
-             p_stud_id      => :studentId,
-             p_subject_id   => :subjectId,
-             p_gradelvl_id  => :gradeLevelId,
-             p_diff_id      => :diffId,
-             p_score        => :score,
-             p_max_score    => :maxScore,
-             p_passed       => :passed,
-             p_played_at    => SYSDATE,
-             p_device_uuid  => NULL
-           );
-           sp_refresh_analytics(
-             p_stud_id      => :studentId,
-             p_subject_id   => :subjectId,
-             p_gradelvl_id  => :gradeLevelId
-           );
-         END;`,
+        `INSERT INTO scoreTb (
+           stud_id,
+           subject_id,
+           gradelvl_id,
+           diff_id,
+           score,
+           max_score,
+           passed,
+           played_at,
+           synced_at
+         )
+         VALUES (
+           :studentId,
+           :subjectId,
+           :gradeLevelId,
+           :diffId,
+           :score,
+           :maxScore,
+           :passed,
+           SYSDATE,
+           SYSDATE
+         )`,
         {
           studentId,
           subjectId: ids.SUBJECT_ID,
