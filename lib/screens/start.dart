@@ -2,8 +2,10 @@
 import 'package:flutter/material.dart';
 
 // Navigation helpers and background widget imports
+import '../api_service.dart';
 import '../navigation/route_transitions.dart';
 import '../widgets/mock_background.dart';
+import 'menu.dart';
 import 'welcome_back.dart';
 
 /// Landing screen that opens the welcome back flow.
@@ -129,7 +131,15 @@ class _StartScreenState extends State<StartScreen>
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => pushFade(context, const WelcomeBackScreen()),
+      onTap: () {
+        final hasActiveSession = ApiService.hasActiveSession;
+        if (hasActiveSession) {
+          pushFadeReplacement(context, const MenuScreen());
+          return;
+        }
+
+        pushFade(context, const WelcomeBackScreen());
+      },
       child: MockBackground(
         child: LayoutBuilder(
           builder: (context, constraints) {

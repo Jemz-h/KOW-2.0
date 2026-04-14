@@ -90,7 +90,7 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
         birthday: _birthdayController.text.trim(),
       );
       if (!mounted) return;
-      pushFade(context, const MenuScreen());
+      pushFadeReplacement(context, const MenuScreen());
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -151,7 +151,7 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
                   onClose: () => Navigator.of(dialogContext).pop(),
                   onSubmit: () {
                     Navigator.of(dialogContext).pop();
-                    pushFade(context, const MenuScreen());
+                    pushFadeReplacement(context, const MenuScreen());
                   },
                   onAlreadyHaveAccountTap: () =>
                       Navigator.of(dialogContext).pop(),

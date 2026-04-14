@@ -1,6 +1,15 @@
 const db = require('../config/db');
 
 class UserModel {
+  static normalizeLowerText(value) {
+    if (value === undefined || value === null) {
+      return null;
+    }
+
+    const normalized = String(value).trim().toLowerCase();
+    return normalized || null;
+  }
+
   static normalizeBirthday(value) {
     if (value === undefined || value === null) {
       return null;
@@ -69,6 +78,9 @@ class UserModel {
 
   static async createUser(userData) {
     const { firstName, lastName, nickname, birthday, sex, area, teacherId, deviceUuid, tmpLocalId } = userData;
+    const normalizedFirstName = this.normalizeLowerText(firstName);
+    const normalizedLastName = this.normalizeLowerText(lastName);
+    const normalizedNickname = this.normalizeLowerText(nickname);
     const sexId = await this.resolveSexId(sex);
     const areaId = await this.resolveAreaId(area);
     const normalizedBirthday = this.normalizeBirthday(birthday);
@@ -102,9 +114,9 @@ class UserModel {
       `;
 
       const binds = {
-        firstName,
-        lastName,
-        nickname,
+        firstName: normalizedFirstName,
+        lastName: normalizedLastName,
+        nickname: normalizedNickname,
         birthday: normalizedBirthday,
         sexId,
         teacherId: teacherId || null,
@@ -142,9 +154,9 @@ class UserModel {
          :tmpLocalId
        )`,
       {
-        firstName,
-        lastName,
-        nickname,
+        firstName: normalizedFirstName,
+        lastName: normalizedLastName,
+        nickname: normalizedNickname,
         birthday: normalizedBirthday,
         sexId,
         teacherId: teacherId || null,
@@ -159,6 +171,7 @@ class UserModel {
   }
 
   static async findUserByNicknameAndBirthday(nickname, birthday) {
+    const normalizedNickname = this.normalizeLowerText(nickname);
     const normalizedBirthday = this.normalizeBirthday(birthday);
     const dateFilter = db.isOracle()
       ? `TRUNC(s.birthday) = TO_DATE(:birthday, 'YYYY-MM-DD')`
@@ -179,10 +192,10 @@ class UserModel {
       LEFT JOIN sexTb x ON s.sex_id = x.sex_id
       LEFT JOIN areaTb a ON s.area_id = a.area_id
       LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
-      WHERE s.nickname = :nickname
+      WHERE LOWER(s.nickname) = LOWER(:nickname)
         AND ${dateFilter}
     `;
-    const result = await db.execute(query, { nickname, birthday: normalizedBirthday });
+    const result = await db.execute(query, { nickname: normalizedNickname, birthday: normalizedBirthday });
     
     if (!result.rows[0]) {
       return null;
@@ -219,6 +232,9 @@ class UserModel {
     sex,
     area,
   }) {
+    const normalizedFirstName = this.normalizeLowerText(firstName);
+    const normalizedLastName = this.normalizeLowerText(lastName);
+    const normalizedNickname = this.normalizeLowerText(nickname);
     const sexId = await this.resolveSexId(sex);
     const areaId = await this.resolveAreaId(area);
     const normalizedBirthday = this.normalizeBirthday(birthday);
@@ -247,9 +263,9 @@ class UserModel {
       query,
       {
         userId,
-        firstName,
-        lastName,
-        nickname,
+        firstName: normalizedFirstName,
+        lastName: normalizedLastName,
+        nickname: normalizedNickname,
         birthday: normalizedBirthday,
         sexId,
         areaId,
@@ -268,6 +284,9 @@ class UserModel {
     birthday,
   }) {
     const normalizedBirthday = this.normalizeBirthday(birthday);
+    const normalizedFirstName = this.normalizeLowerText(firstName);
+    const normalizedLastName = this.normalizeLowerText(lastName);
+    const normalizedNickname = this.normalizeLowerText(nickname);
 
     const query = db.isOracle()
       ? `UPDATE studentTb
@@ -289,9 +308,9 @@ class UserModel {
       query,
       {
         userId,
-        firstName,
-        lastName,
-        nickname,
+        firstName: normalizedFirstName,
+        lastName: normalizedLastName,
+        nickname: normalizedNickname,
         birthday: normalizedBirthday,
       },
       { autoCommit: true }

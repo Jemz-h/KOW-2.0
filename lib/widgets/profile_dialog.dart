@@ -62,6 +62,7 @@ const List<String> _areaOptions = [
 ];
 
 Future<void> showProfileDialog(BuildContext context) async {
+  final parentContext = context;
   final profile = await ApiService.getCurrentProfile();
   if (!context.mounted) {
     return;
@@ -95,9 +96,9 @@ Future<void> showProfileDialog(BuildContext context) async {
     context: context,
     barrierDismissible: true,
     builder: (context) {
-      return StatefulBuilder(builder: (context, setState) {
-        final screenWidth = MediaQuery.of(context).size.width;
-        final screenHeight = MediaQuery.of(context).size.height;
+      return StatefulBuilder(builder: (dialogContext, setState) {
+        final screenWidth = MediaQuery.of(dialogContext).size.width;
+        final screenHeight = MediaQuery.of(dialogContext).size.height;
         final isTablet = screenWidth > 600;
 
         final dialogWidth = isTablet ? screenWidth * 0.65 : screenWidth * 0.75;
@@ -327,7 +328,7 @@ Future<void> showProfileDialog(BuildContext context) async {
                                   lastNameController.text.trim().isEmpty ||
                                   nicknameController.text.trim().isEmpty ||
                                   birthdayController.text.trim().isEmpty) {
-                                ScaffoldMessenger.of(context).showSnackBar(
+                                ScaffoldMessenger.of(parentContext).showSnackBar(
                                   const SnackBar(content: Text('Please fill all required fields.')),
                                 );
                                 return;
@@ -346,22 +347,22 @@ Future<void> showProfileDialog(BuildContext context) async {
                                   area: areaController.text.trim().isEmpty ? null : areaController.text.trim(),
                                 );
 
-                                if (context.mounted) {
-                                  Navigator.of(context).pop();
-                                  ScaffoldMessenger.of(context).showSnackBar(
+                                if (parentContext.mounted) {
+                                  Navigator.of(dialogContext).pop();
+                                  ScaffoldMessenger.of(parentContext).showSnackBar(
                                     const SnackBar(content: Text('Profile updated successfully!')),
                                   );
                                 }
                               } on ApiException catch (e) {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
+                                if (parentContext.mounted) {
+                                  ScaffoldMessenger.of(parentContext).showSnackBar(
                                     SnackBar(content: Text(e.message)),
                                   );
                                   setState(() => isSaving = false);
                                 }
                               } catch (_) {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
+                                if (parentContext.mounted) {
+                                  ScaffoldMessenger.of(parentContext).showSnackBar(
                                     const SnackBar(content: Text('Could not update profile. Try again.')),
                                   );
                                   setState(() => isSaving = false);

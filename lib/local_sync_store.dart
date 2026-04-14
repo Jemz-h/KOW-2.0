@@ -56,6 +56,10 @@ class LocalSyncStore {
     return '${match.group(1)}-$mm-$dd';
   }
 
+  String _normalizeLowerText(String value) {
+    return value.trim().toLowerCase();
+  }
+
   Future<Database> _database() async {
     if (_db != null) return _db!;
 
@@ -64,7 +68,7 @@ class LocalSyncStore {
 
     _db = await openDatabase(
       dbPath,
-      version: 3,
+      version: 5,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE students_local (
@@ -124,6 +128,23 @@ class LocalSyncStore {
             UNIQUE(student_id, grade, subject, total_time_played, last_played_at)
           )
         ''');
+
+        await db.execute('''
+          CREATE TABLE app_session (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            student_id INTEGER,
+            nickname TEXT,
+            birthday TEXT,
+            updated_at TEXT NOT NULL
+          )
+        ''');
+
+        await db.execute('''
+          CREATE TABLE app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+          )
+        ''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -158,6 +179,27 @@ class LocalSyncStore {
             )
           ''');
         }
+
+        if (oldVersion < 4) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS app_session (
+              id INTEGER PRIMARY KEY CHECK (id = 1),
+              student_id INTEGER,
+              nickname TEXT,
+              birthday TEXT,
+              updated_at TEXT NOT NULL
+            )
+          ''');
+        }
+
+        if (oldVersion < 5) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS app_settings (
+              key TEXT PRIMARY KEY,
+              value TEXT
+            )
+          ''');
+        }
       },
     );
 
@@ -174,12 +216,12 @@ class LocalSyncStore {
       'students_local',
       {
         'student_id': student.studentId,
-        'first_name': student.firstName,
-        'last_name': student.lastName,
-        'nickname': student.nickname,
+        'first_name': _normalizeLowerText(student.firstName),
+        'last_name': _normalizeLowerText(student.lastName),
+        'nickname': _normalizeLowerText(student.nickname),
         'birthday': normalizedBirthday,
-        'sex': student.sex,
-        'area': student.area,
+        'sex': student.sex.trim(),
+        'area': student.area == null ? null : _normalizeLowerText(student.area!),
         'is_synced': 1,
         'created_at': DateTime.now().toIso8601String(),
       },
@@ -208,12 +250,12 @@ class LocalSyncStore {
       'students_local',
       {
         'student_id': -DateTime.now().millisecondsSinceEpoch,
-        'first_name': firstName,
-        'last_name': lastName,
-        'nickname': nickname,
+        'first_name': _normalizeLowerText(firstName),
+        'last_name': _normalizeLowerText(lastName),
+        'nickname': _normalizeLowerText(nickname),
         'birthday': normalizedBirthday,
-        'sex': sex,
-        'area': area,
+        'sex': sex.trim(),
+        'area': area == null ? null : _normalizeLowerText(area),
         'is_synced': 0,
         'created_at': DateTime.now().toIso8601String(),
       },
@@ -325,6 +367,25 @@ class LocalSyncStore {
       'students_local',
       where: 'student_id = ?',
       whereArgs: [studentId],
+      orderBy: 'is_synced DESC, created_at DESC, id DESC',
+      limit: 1,
+    );
+
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  Future<Map<String, dynamic>?> getStudentProfileByIdentity({
+    required String nickname,
+    required String birthday,
+  }) async {
+    final db = await _database();
+    final normalizedBirthday = _normalizeBirthday(birthday);
+    final rows = await db.query(
+      'students_local',
+      where: 'UPPER(nickname) = UPPER(?) AND (birthday = ? OR birthday = ?)',
+      whereArgs: [nickname.trim(), birthday.trim(), normalizedBirthday],
+      orderBy: 'is_synced DESC, created_at DESC, id DESC',
       limit: 1,
     );
 
@@ -344,6 +405,67 @@ class LocalSyncStore {
     return rows.first;
   }
 
+  Future<void> saveActiveSession({
+    required int? studentId,
+    required String nickname,
+    required String birthday,
+  }) async {
+    final db = await _database();
+    final normalizedBirthday = _normalizeBirthday(birthday);
+
+    await db.insert(
+      'app_session',
+      {
+        'id': 1,
+        'student_id': studentId,
+        'nickname': nickname.trim(),
+        'birthday': normalizedBirthday,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<Map<String, dynamic>?> getActiveSession() async {
+    final db = await _database();
+    final rows = await db.query('app_session', where: 'id = 1', limit: 1);
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  Future<void> clearActiveSession() async {
+    final db = await _database();
+    await db.delete('app_session', where: 'id = 1');
+  }
+
+  Future<void> saveSelectedTheme(String themeKey) async {
+    final db = await _database();
+    await db.insert(
+      'app_settings',
+      {
+        'key': 'selected_theme',
+        'value': themeKey,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String?> getSelectedTheme() async {
+    final db = await _database();
+    final rows = await db.query(
+      'app_settings',
+      where: 'key = ?',
+      whereArgs: ['selected_theme'],
+      limit: 1,
+    );
+
+    if (rows.isEmpty) {
+      return null;
+    }
+
+    return rows.first['value'] as String?;
+  }
+
   Future<void> updateLocalStudentProfile({
     required int studentId,
     required String firstName,
@@ -358,12 +480,12 @@ class LocalSyncStore {
     await db.update(
       'students_local',
       {
-        'first_name': firstName,
-        'last_name': lastName,
-        'nickname': nickname,
+        'first_name': _normalizeLowerText(firstName),
+        'last_name': _normalizeLowerText(lastName),
+        'nickname': _normalizeLowerText(nickname),
         'birthday': normalizedBirthday,
-        'sex': sex,
-        'area': area,
+        'sex': sex.trim(),
+        'area': area == null ? null : _normalizeLowerText(area),
       },
       where: 'student_id = ?',
       whereArgs: [studentId],

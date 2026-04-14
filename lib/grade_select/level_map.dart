@@ -269,7 +269,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
         children: [
 
           // 1. Background
-          Image.asset('assets/themes/space.png', fit: BoxFit.cover),
+          Image.asset('assets/themes/bg_spc_w_cloud.png', fit: BoxFit.cover),
 
           // 2. Dashed path — behind everything
           CustomPaint(

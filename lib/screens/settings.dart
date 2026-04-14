@@ -3,6 +3,9 @@ import '../widgets/mock_background.dart';
 import '../widgets/profile_dialog.dart';
 import '../widgets/achievement_dialog.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import '../api_service.dart';
+import '../local_sync_store.dart';
+import 'start.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -13,6 +16,16 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _dialogOpen = false;
+
+  Future<void> _handleSignOut(BuildContext context) async {
+    await ApiService.signOut();
+    if (!mounted) return;
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const StartScreen()),
+      (route) => false,
+    );
+  }
 
   SliderThemeData _sliderTheme(BuildContext context) {
     return SliderTheme.of(context).copyWith(
@@ -321,8 +334,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 ),
                                 child: ElevatedButton(
                                   style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25))),
-                                  onPressed: () {
+                                  onPressed: () async {
                                     selectedThemeNotifier.value = selectedTheme;
+                                    await LocalSyncStore.instance.saveSelectedTheme(selectedTheme);
                                     Navigator.of(context).pop();
                                   },
                                   child: Text('CONFIRM', style: TextStyle(fontWeight: FontWeight.w900, fontSize: confirmFontSize, letterSpacing: 1.5, color: Colors.black)),
@@ -473,7 +487,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Center(child: _buildMenuButton(context, gradient: const RadialGradient(center: Alignment.centerLeft, radius: 1.2, colors: [Color(0xFFFFFFFF), Color(0xFF571272)]), label: 'AUDIO',        iconAsset: 'assets/icons/unmute.svg',        onTap: () => _showAudioSettings(context))),
                           Center(child: _buildMenuButton(context, gradient: const RadialGradient(center: Alignment.centerLeft, radius: 1.2, colors: [Color(0xFFFFFFFF), Color(0xFFCA22A6)]), label: 'THEMES',       iconAsset: 'assets/icons/brush.svg',        onTap: () => _showThemeSettings(context))),
                           const SizedBox(height: 16),
-                          Center(child: _buildMenuButton(context, gradient: const RadialGradient(center: Alignment.center, radius: 1.0, colors: [Color(0xFFED4343), Color(0xFF872626)], stops: [0.53, 1.0]), label: 'SIGN OUT', onTap: () {}, isSignOut: true)),
+                          Center(child: _buildMenuButton(context, gradient: const RadialGradient(center: Alignment.center, radius: 1.0, colors: [Color(0xFFED4343), Color(0xFF872626)], stops: [0.53, 1.0]), label: 'SIGN OUT', onTap: () => _handleSignOut(context), isSignOut: true)),
                           const SizedBox(height: 100),
                         ],
                       ),

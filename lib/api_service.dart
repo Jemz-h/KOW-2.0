@@ -69,6 +69,41 @@ class ApiService {
   }
 
   static int? get currentStudentId => _currentStudentId;
+  static bool get hasActiveSession {
+    final nickname = _currentNickname?.trim();
+    return nickname != null && nickname.isNotEmpty;
+  }
+
+  static Future<bool> restoreSession() async {
+    final session = await LocalSyncStore.instance.getActiveSession();
+    if (session == null) {
+      return false;
+    }
+
+    _currentStudentId = (session['student_id'] as num?)?.toInt();
+    _currentNickname = (session['nickname'] as String?)?.trim();
+    _currentBirthday = session['birthday'] as String?;
+
+    if (_currentNickname == null || _currentNickname!.isEmpty) {
+      return false;
+    }
+
+    startContentVersionPolling();
+    unawaited(syncPending());
+    return true;
+  }
+
+  static Future<void> signOut() async {
+    stopContentVersionPolling();
+    _currentStudentId = null;
+    _currentNickname = null;
+    _currentBirthday = null;
+    _lastContentVersionTag = null;
+    _hasDeferredContentRefresh = false;
+    _activeLearningSessions = 0;
+    _questionCache.clear();
+    await LocalSyncStore.instance.clearActiveSession();
+  }
 
   static void beginLearningSession() {
     _activeLearningSessions++;
@@ -152,6 +187,11 @@ class ApiService {
       _currentStudentId = studentId;
       _currentNickname = nickname;
       _currentBirthday = birthday;
+      await LocalSyncStore.instance.saveActiveSession(
+        studentId: studentId,
+        nickname: nickname,
+        birthday: birthday,
+      );
 
       if (studentId != null) {
         await LocalSyncStore.instance.saveSyncedStudent(
@@ -186,6 +226,11 @@ class ApiService {
 
       _currentNickname = nickname;
       _currentBirthday = birthday;
+      await LocalSyncStore.instance.saveActiveSession(
+        studentId: null,
+        nickname: nickname,
+        birthday: birthday,
+      );
 
       throw const ApiException(
         503,
@@ -224,6 +269,11 @@ class ApiService {
       _currentStudentId = student.studentId;
       _currentNickname = student.nickname.isEmpty ? nickname : student.nickname;
       _currentBirthday = resolvedBirthday;
+      await LocalSyncStore.instance.saveActiveSession(
+        studentId: student.studentId,
+        nickname: _currentNickname!,
+        birthday: resolvedBirthday,
+      );
       startContentVersionPolling();
       unawaited(syncPending());
 
@@ -247,6 +297,11 @@ class ApiService {
         _currentStudentId = offlineStudent.studentId;
         _currentNickname = offlineStudent.nickname;
         _currentBirthday = _normalizeBirthday(birthday);
+        await LocalSyncStore.instance.saveActiveSession(
+          studentId: offlineStudent.studentId,
+          nickname: offlineStudent.nickname,
+          birthday: _currentBirthday!,
+        );
         return offlineStudent;
       }
 
@@ -259,6 +314,20 @@ class ApiService {
 
   /// Returns best-known current student profile data from local cache.
   static Future<Map<String, dynamic>?> getCurrentProfile() async {
+    if (_currentNickname != null && _currentBirthday != null) {
+      final byIdentity = await LocalSyncStore.instance.getStudentProfileByIdentity(
+        nickname: _currentNickname!,
+        birthday: _currentBirthday!,
+      );
+      if (byIdentity != null) {
+        final id = byIdentity['student_id'];
+        if (id is num) {
+          _currentStudentId = id.toInt();
+        }
+        return byIdentity;
+      }
+    }
+
     if (_currentStudentId != null) {
       final byId = await LocalSyncStore.instance.getStudentProfileById(
         _currentStudentId!,
@@ -287,7 +356,11 @@ class ApiService {
       }
     }
 
-    return LocalSyncStore.instance.getMostRecentStudentProfile();
+    if (_currentNickname == null && _currentBirthday == null) {
+      return LocalSyncStore.instance.getMostRecentStudentProfile();
+    }
+
+    return null;
   }
 
   static Future<void> syncPending() async {
@@ -377,6 +450,11 @@ class ApiService {
 
       _currentNickname = nickname;
       _currentBirthday = birthday;
+      await LocalSyncStore.instance.saveActiveSession(
+        studentId: studentId,
+        nickname: nickname,
+        birthday: birthday,
+      );
     } on ApiException {
       rethrow;
     }

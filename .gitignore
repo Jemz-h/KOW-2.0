@@ -68,4 +68,4 @@ app.*.map.json
 /backend/.env.development
 /backend/.env.production
 /docs/
-implementation_status.md
+IMPLEMENTATION_STATUS.md
