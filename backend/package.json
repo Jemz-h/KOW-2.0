@@ -6,7 +6,8 @@
   "scripts": {
     "test": "node --test tests/**/*.test.js",
     "start": "cross-env NODE_ENV=production node src/index.js",
-    "dev": "cross-env NODE_ENV=development nodemon src/index.js"
+    "dev": "cross-env NODE_ENV=development nodemon src/index.js",
+    "sync:sqlite-to-oracle": "node scripts/sync_sqlite_to_oracle.js"
   },
   "keywords": [],
   "author": "",

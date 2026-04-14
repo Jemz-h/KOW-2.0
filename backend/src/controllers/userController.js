@@ -13,11 +13,12 @@ const getUsers = asyncHandler(async (req, res) => {
               s.nickname,
               TO_CHAR(s.birthday, 'YYYY-MM-DD') AS birthday,
               x.sex,
-              b.barangay_nm,
+      COALESCE(a.area_nm, b.barangay_nm) AS area,
               TO_CHAR(s.created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at,
               TO_CHAR(s.updated_at, 'YYYY-MM-DD HH24:MI:SS') AS updated_at
        FROM studentTb s
        LEFT JOIN sexTb x ON s.sex_id = x.sex_id
+    LEFT JOIN areaTb a ON s.area_id = a.area_id
        LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
        ORDER BY s.stud_id`
     : `SELECT s.stud_id,
@@ -26,11 +27,12 @@ const getUsers = asyncHandler(async (req, res) => {
               s.nickname,
               date(s.birthday) AS birthday,
               x.sex,
-              b.barangay_nm,
+      COALESCE(a.area_nm, b.barangay_nm) AS area,
               s.created_at,
               s.updated_at
        FROM studentTb s
        LEFT JOIN sexTb x ON s.sex_id = x.sex_id
+    LEFT JOIN areaTb a ON s.area_id = a.area_id
        LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
        ORDER BY s.stud_id`;
 
@@ -54,13 +56,14 @@ const getUserById = asyncHandler(async (req, res) => {
               s.nickname,
               TO_CHAR(s.birthday, 'YYYY-MM-DD') AS birthday,
               x.sex,
-              b.barangay_nm,
+      COALESCE(a.area_nm, b.barangay_nm) AS area,
               TO_CHAR(s.created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at,
               TO_CHAR(s.updated_at, 'YYYY-MM-DD HH24:MI:SS') AS updated_at,
               s.device_origin,
               s.tmp_local_id
        FROM studentTb s
        LEFT JOIN sexTb x ON s.sex_id = x.sex_id
+    LEFT JOIN areaTb a ON s.area_id = a.area_id
        LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
        WHERE s.stud_id = :id`
     : `SELECT s.stud_id,
@@ -69,13 +72,14 @@ const getUserById = asyncHandler(async (req, res) => {
               s.nickname,
               date(s.birthday) AS birthday,
               x.sex,
-              b.barangay_nm,
+      COALESCE(a.area_nm, b.barangay_nm) AS area,
               s.created_at,
               s.updated_at,
               s.device_origin,
               s.tmp_local_id
        FROM studentTb s
        LEFT JOIN sexTb x ON s.sex_id = x.sex_id
+    LEFT JOIN areaTb a ON s.area_id = a.area_id
        LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
        WHERE s.stud_id = :id`;
 
@@ -111,7 +115,7 @@ const createUser = asyncHandler(async (req, res) => {
     nickname: resolvedNickname,
     birthday,
     sex: gender || null,
-    area: barangay || area || null,
+    area: area || barangay || null,
     teacherId: teacherId || null,
     deviceUuid: deviceUuid || null
   });

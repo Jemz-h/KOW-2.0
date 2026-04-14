@@ -29,26 +29,27 @@ Note:
 
 ## 3. Backend Environment
 
-Set `backend/.env`:
+Use `backend/.env.development` for local dev (`npm run dev`):
 ```env
-PORT=3000
-DB_CLIENT=oracle
-DB_USER=kow_admin
-DB_PASSWORD=KOW_Password_2026!
-DB_CONNECTION_STRING=localhost:1521/XE
-```
+PORT=3010
+NODE_ENV=development
 
-SQLite mode (`backend/.env`):
-```env
-PORT=3000
-DB_CLIENT=sqlite
-SQLITE_DB_PATH=./backend/data/kow_offline.db
+DB_CLIENT=oracle
+DB_FALLBACK_SQLITE=false
+
+DB_USER=kow_admin
+DB_PASSWORD=your_oracle_password
+DB_CONNECTION_STRING=localhost:1521/XEPDB1
+
+SQLITE_DB_PATH=./data/kow_offline.db
+TOKEN_SECRET=replace_with_long_random_secret
 ```
 
 Notes:
 - `DB_CLIENT` defaults to `sqlite` when omitted.
-- `SQLITE_DB_PATH` is optional; default is `./backend/data/kow_offline.db`.
-- If `DB_CLIENT=oracle` fails to initialize, backend falls back to SQLite unless `DB_FALLBACK_SQLITE=false`.
+- `DB_FALLBACK_SQLITE=false` is recommended in dev when validating Oracle sync.
+- `SQLITE_DB_PATH` is optional; default is `./data/kow_offline.db`.
+- Startup now auto-selects the next free port if `PORT` is occupied.
 
 ## 4. Install and Run
 
@@ -57,6 +58,14 @@ cd backend
 npm install
 npm run dev
 ```
+
+Verify runtime mode:
+```bash
+# Expect db_provider=oracle
+http://localhost:3010/api/health
+```
+
+If 3010 is busy, backend will log the auto-selected port (3011, 3012, etc.).
 
 ## 5. Quick Smoke Test
 
@@ -69,6 +78,9 @@ node test_all.js
 
 - `POST /api/auth/register`
   - body: `firstName`, `lastName`, `nickname`, `birthday`, optional `sex`, `area`, `teacherId`, `deviceUuid`
+  - duplicate nickname handling:
+    - exact retry with same nickname+birthday returns success with existing student
+    - conflicting nickname returns `409` with `NICKNAME_CONFLICT`
 - `POST /api/auth/login`
   - body: `nickname`, `birthday`
 - `GET /api/quiz/questions?grade=Punla&subject=Mathematics&difficulty=Easy`
@@ -81,5 +93,16 @@ node test_all.js
 ## 7. Troubleshooting
 
 - ORA-01017: verify `DB_USER`/`DB_PASSWORD`.
-- ORA-12514 / ORA-12154: verify `DB_CONNECTION_STRING` (`localhost:1521/XE`).
+- ORA-12514 / ORA-12154: verify `DB_CONNECTION_STRING` (`localhost:1521/XEPDB1` for this setup).
 - ORA-01920/ORA-01918 on re-run: user/role exists; clean up first or comment create statements.
+
+### Flutter cannot sign up (saved offline only)
+
+This indicates the app cannot reach backend from device.
+
+- Android emulator: use `http://10.0.2.2:<PORT>`.
+- Physical Android device:
+  - run with LAN URL:
+    - `flutter run --dart-define=API_BASE_URL=http://<YOUR_PC_IP>:<PORT>`
+  - or use adb reverse:
+    - `adb reverse tcp:<PORT> tcp:<PORT>` then use `http://localhost:<PORT>`.

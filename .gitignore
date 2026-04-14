@@ -67,3 +67,5 @@ app.*.map.json
 /backend/node_modules/
 /backend/.env.development
 /backend/.env.production
+/docs/
+implementation_status.md

@@ -3,6 +3,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 
+const db = require('./config/db');
 const { getConnectedAdminCount } = require('./services/wsHub');
 const { errorHandler, notFound } = require('./middleware/errorMiddleware');
 
@@ -45,6 +46,7 @@ function createApp() {
       success: true,
       status: 'ok',
       message: 'API is running successfully',
+      db_provider: db.getActiveClient(),
       ws_clients: getConnectedAdminCount(),
       uptime_seconds: Math.floor(process.uptime()),
     });

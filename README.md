@@ -2,6 +2,14 @@
 
 This project consists of a **Flutter** frontend interface and a **Node.js backend** that supports **Oracle SQL** and **SQLite**.
 
+## Quick Links
+
+- [Documentation Index](docs/README.md)
+- [Project Overview](docs/01_PROJECT_OVERVIEW.md)
+- [Tech Stack](docs/02_TECH_STACK.md)
+- [Backend Setup](backend/SETUP_INSTRUCTIONS.md)
+- [Implementation Status](IMPLEMENTATION_STATUS.md)
+
 ##  First Time Setup
 
 ### Option 1: Setting up the Backend (Node.js & Oracle SQL)
@@ -18,20 +26,22 @@ The backend provides the API necessary for the Flutter application to interact w
    npm install
    ```
 4. **Configure Oracle Database Environment**:
-   Inside the `backend` folder, you will notice a `.env` file (or create one if it isn't listed). You need to place your Oracle DB credentials there:
+   Use `backend/.env.development` for local development. Add your Oracle credentials:
    ```env
-   PORT=3000
+   PORT=3010
+   NODE_ENV=development
    DB_CLIENT=oracle
+   DB_FALLBACK_SQLITE=false
    DB_USER=your_oracle_username
    DB_PASSWORD=your_oracle_password
    DB_CONNECTION_STRING=localhost:1521/XEPDB1
    ```
-   *Note: Install an Oracle Database locally or use a cloud solution (like Oracle Autonomous Database). Run the provided setup script located at `backend/src/config/KOW.sql` in your preferred Oracle SQL client (such as SQL Developer or DataGrip) to initialize the database schema and all associated tables. For offline mode, set `DB_CLIENT=sqlite`.*
+   *Note: Install Oracle locally or use Oracle cloud. Run `backend/src/config/KOW.sql` in SQL Developer/DataGrip to initialize schema. For strict Oracle testing, keep `DB_FALLBACK_SQLITE=false`.*
 5. **Start the Development Server**:
    ```bash
    npm run dev
    ```
-   The backend will attempt to connect to your Oracle database and run on `http://localhost:3000`.
+   The backend will attempt to connect to Oracle and run on `http://localhost:3010` (or the next free port if 3010 is occupied).
 
 ---
 
@@ -46,7 +56,12 @@ The frontend project is located in the root of the workspace.
    flutter pub get
    ```
 3. **Connect to the Backend**:
-   Confirm that any API calls in `lib/api_config.dart` or `lib/api_service.dart` aim at `http://localhost:3000/api` or your appropriate machine IP if testing on an emulator.
+    Confirm API target matches backend host/port:
+    - Android emulator: `http://10.0.2.2:3010`
+    - Physical Android device: run with
+       `flutter run --dart-define=API_BASE_URL=http://<YOUR_PC_IP>:3010`
+    - Optional adb reverse flow:
+       `adb reverse tcp:3010 tcp:3010` then use `http://localhost:3010`
 4. **Run the App**:
    ```bash
    flutter run

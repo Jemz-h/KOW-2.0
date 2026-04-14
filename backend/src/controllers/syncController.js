@@ -491,6 +491,13 @@ const syncBatch = asyncHandler(async (req, res) => {
           throw error;
         }
         studentId = Number(existing.STUDENT_ID);
+        await UserModel.reconcileIdentityById({
+          userId: studentId,
+          firstName,
+          lastName,
+          nickname,
+          birthday,
+        });
       }
 
       if (tmpLocalId && isTmpId(tmpLocalId)) {

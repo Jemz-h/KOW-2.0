@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 
@@ -13,12 +14,13 @@ class ApiService {
   ApiService._();
 
   static final _client = http.Client();
-  static const _base   = ApiConfig.baseUrl;
+  static String get _base => ApiConfig.baseUrl;
   static const _requestTimeout = Duration(seconds: 12);
   static const _interactiveAuthTimeout = Duration(seconds: 5);
   static const _maxRetryAttempts = 3;
   static const _retryBaseDelay = Duration(milliseconds: 450);
   static final _uuid = Uuid();
+  static final _deviceInfo = DeviceInfoPlugin();
   static int? _currentStudentId;
   static String? _currentNickname;
   static String? _currentBirthday;
@@ -35,6 +37,36 @@ class ApiService {
     'Accept':       'application/json',
     if (_deviceToken != null) 'Authorization': 'Bearer $_deviceToken',
   };
+
+  static Future<String> _resolveDeviceName() async {
+    try {
+      final androidInfo = await _deviceInfo.androidInfo;
+      final model = androidInfo.model.trim();
+      final manufacturer = androidInfo.manufacturer.trim();
+
+      if (manufacturer.isNotEmpty && model.isNotEmpty) {
+        return '$manufacturer $model';
+      }
+
+      if (model.isNotEmpty) {
+        return model;
+      }
+
+      return 'KOW Device';
+    } catch (_) {
+      try {
+        final iosInfo = await _deviceInfo.iosInfo;
+        final name = iosInfo.name.trim();
+        if (name.isNotEmpty) {
+          return name;
+        }
+      } catch (_) {
+        // Fall through to the generic name below.
+      }
+
+      return 'KOW Device';
+    }
+  }
 
   static int? get currentStudentId => _currentStudentId;
 
@@ -154,6 +186,11 @@ class ApiService {
 
       _currentNickname = nickname;
       _currentBirthday = birthday;
+
+      throw const ApiException(
+        503,
+        'Saved on this device only (offline). Connect to backend to sync to Oracle.',
+      );
     }
   }
 
@@ -179,15 +216,20 @@ class ApiService {
       _checkStatus(res);
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       final student = Student.fromJson(body['student'] as Map<String, dynamic>);
+      final resolvedBirthday = _normalizeBirthday(
+        student.birthday == null || student.birthday!.isEmpty
+            ? birthday
+            : student.birthday!,
+      );
       _currentStudentId = student.studentId;
-      _currentNickname = nickname;
-      _currentBirthday = birthday;
+      _currentNickname = student.nickname.isEmpty ? nickname : student.nickname;
+      _currentBirthday = resolvedBirthday;
       startContentVersionPolling();
       unawaited(syncPending());
 
       await LocalSyncStore.instance.saveSyncedStudent(
         student: student,
-        birthday: birthday,
+        birthday: resolvedBirthday,
       );
 
       return student;
@@ -203,8 +245,8 @@ class ApiService {
 
       if (offlineStudent != null) {
         _currentStudentId = offlineStudent.studentId;
-        _currentNickname = nickname;
-        _currentBirthday = birthday;
+        _currentNickname = offlineStudent.nickname;
+        _currentBirthday = _normalizeBirthday(birthday);
         return offlineStudent;
       }
 
@@ -462,6 +504,19 @@ class ApiService {
     return List<Map<String, dynamic>>.from(body['scores'] as List);
   }
 
+  /// Fetch all progress rows for a student.
+  static Future<List<Map<String, dynamic>>> getProgress(int studentId) async {
+    final res = await _sendWithTimeout(
+      _client.get(
+        Uri.parse('$_base/api/progress/user/$studentId'),
+        headers: _headers,
+      ),
+    );
+    _checkStatus(res);
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from(body['data'] as List);
+  }
+
   /// Save or update learner progress.
   static Future<void> saveProgress({
     required int studentId,
@@ -629,6 +684,22 @@ class ApiService {
     return error is ApiException && _isConnectivityException(error);
   }
 
+  static String _normalizeBirthday(String value) {
+    final raw = value.trim();
+    final match = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})$').firstMatch(raw);
+    if (match == null) {
+      return raw;
+    }
+
+    final month = int.tryParse(match.group(2) ?? '');
+    final day = int.tryParse(match.group(3) ?? '');
+    if (month == null || day == null || month < 1 || month > 12 || day < 1 || day > 31) {
+      return raw;
+    }
+
+    return '${match.group(1)}-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+  }
+
   static Future<int?> _registerRemote({
     required String firstName,
     required String lastName,
@@ -681,6 +752,7 @@ class ApiService {
     }
 
     _deviceUuid ??= _uuid.v4();
+    final deviceName = await _resolveDeviceName();
 
     final res = await _runWithRetry(
       () => _sendWithTimeout(
@@ -692,7 +764,7 @@ class ApiService {
           },
           body: jsonEncode({
             'device_uuid': _deviceUuid,
-            'device_name': 'KOW Device',
+            'device_name': deviceName,
           }),
         ),
       ),

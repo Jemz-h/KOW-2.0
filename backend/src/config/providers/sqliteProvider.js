@@ -70,6 +70,11 @@ async function bootstrapSchema() {
       barangay_nm TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS areaTb (
+      area_id INTEGER PRIMARY KEY,
+      area_nm TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS teacherTb (
       teacher_id INTEGER PRIMARY KEY AUTOINCREMENT,
       first_name TEXT NOT NULL,
@@ -102,6 +107,7 @@ async function bootstrapSchema() {
       birthday TEXT NOT NULL,
       sex_id INTEGER,
       teacher_id INTEGER,
+      area_id INTEGER DEFAULT 1,
       barangay_id INTEGER DEFAULT 1,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -110,6 +116,7 @@ async function bootstrapSchema() {
       UNIQUE(nickname, birthday),
       FOREIGN KEY (sex_id) REFERENCES sexTb(sex_id),
       FOREIGN KEY (teacher_id) REFERENCES teacherTb(teacher_id),
+      FOREIGN KEY (area_id) REFERENCES areaTb(area_id),
       FOREIGN KEY (barangay_id) REFERENCES barangayTb(barangay_id)
     );
 
@@ -200,10 +207,82 @@ async function bootstrapSchema() {
     INSERT OR IGNORE INTO subjectTb (subject_id, subject) VALUES (4, 'English');
 
     INSERT OR IGNORE INTO barangayTb (barangay_id, barangay_nm) VALUES (1, 'Barangay Sauyo');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (1, 'LAW STREET');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (2, 'KIMCO VILLAGE');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (3, 'WALING-WALING STREET');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (4, 'VICTORIA SUBDIVISION');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (5, 'SAMPAGUITA STREET');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (6, 'DRJ VILLAGE');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (7, 'LOWER SAUYO');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (8, 'SPAZIO BERNARDO CONDOMINIUM');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (9, 'VICTORIA STREET');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (10, 'RICHLAND SUBDIVISION');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (11, 'PASCUAL STREET');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (12, 'GREENVILLE SUBDIVISION');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (13, 'TEODORO COMPOUND');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (14, 'DEL NACIA VILLE 4');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (15, 'AREA 85');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (16, 'NIA VILLAGE');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (17, 'AREA 99');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (18, 'OCEAN PARK');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (19, 'AREA 135');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (20, 'GREENVIEW ROYALE');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (21, 'BISTEKVILLE 15');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (22, 'GREENVIEW EXECUTIVE');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (23, 'MARIAN EXTENSION');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (24, 'BIR VILLAGE');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (25, 'MARIAN SUBDIVISION');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (26, 'VICTORIAN HEIGHTS');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (27, 'MOZART EXTENSION');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (28, 'VILLA HERMANO 1');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (29, 'COMMERCIO');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (30, 'VILLA HERMANO 2');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (31, 'UPPER GULOD');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (32, 'PRIVADA HOMES');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (33, 'LOWER GULOD');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (34, 'MERRY HOMES');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (35, 'AREA 169');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (36, 'ATHERTON');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (37, 'AREA 160-168');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (38, 'LAGKITAN');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (39, 'DEL MUNDO COMPOUND');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (40, 'HERMINIGILDO COMPOUND');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (41, 'MABUHAY COMPOUND');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (42, 'AREA 5A');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (43, 'AREA 5B');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (44, 'AREA 6A');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (45, 'NAVAL');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (46, 'VILLA ROSARIO');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (47, 'LIPTON STREET');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (48, 'OLD CABUYAO');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (49, 'BALUYOT 1');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (50, 'BALUYOT 2A');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (51, 'BALUYOT 2B');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (52, 'MONTINOLA');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (53, 'BALUYOT PARK');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (54, 'PAPELAN');
+    INSERT OR IGNORE INTO areaTb (area_id, area_nm) VALUES (55, 'DAANG NAWASA');
 
     INSERT OR IGNORE INTO contentVersionTb (version_id, version_tag, updated_by)
     VALUES (1, 'v1', 'system');
+
+    -- Sample questions (Mathematics, Punla, Easy)
+    INSERT OR IGNORE INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (1, 1, 1, 'What is 1 + 1?', '1', '2', '3', '4', 'B');
+
+    INSERT OR IGNORE INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (1, 1, 1, 'How many fingers on one hand?', '3', '4', '5', '6', 'C');
+
+    -- Sample questions (English, Punla, Easy)
+    INSERT OR IGNORE INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (4, 1, 1, 'What color is the sky?', 'Red', 'Green', 'Blue', 'Yellow', 'C');
   `);
+
+  const studentColumns = await sqliteDb.all(`PRAGMA table_info(studentTb)`);
+  const hasAreaId = studentColumns.some((column) => column.name === 'area_id');
+  if (!hasAreaId) {
+    await sqliteDb.exec(`ALTER TABLE studentTb ADD COLUMN area_id INTEGER DEFAULT 1`);
+  }
 
   await sqliteDb.run(
     `INSERT OR IGNORE INTO adminTb (admin_id, username, password_hash, role)

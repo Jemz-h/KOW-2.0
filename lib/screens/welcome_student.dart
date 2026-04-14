@@ -33,7 +33,11 @@ class WelcomeStudentScreen extends StatelessWidget {
                   onSubmit: () => pushFade(context, const MenuScreen()),
                   onAlreadyHaveAccountTap: () =>
                       pushFade(context, const WelcomeBackScreen()),
-                  onClose: () => Navigator.of(context).pop(),
+                  onClose: () {
+                    if (Navigator.of(context).canPop()) {
+                      Navigator.of(context).pop();
+                    }
+                  },
                 ),
               ),
             ),
@@ -138,6 +142,73 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
   late final Animation<Offset> _popupSlide;
   late final Animation<double> _popupScale;
 
+  void _showImportantAlert(String message) {
+    final overlay = Overlay.of(context, rootOverlay: true);
+
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (overlayContext) {
+        return SafeArea(
+          child: IgnorePointer(
+            ignoring: true,
+            child: Material(
+              color: Colors.transparent,
+              child: Stack(
+                children: [
+                  Positioned(
+                    top: 14,
+                    left: 16,
+                    right: 16,
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 560),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1E1E1E),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black38,
+                                blurRadius: 18,
+                                offset: Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
+                            child: Text(
+                              message,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontFamily: 'SuperCartoon',
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                height: 1.25,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    overlay.insert(entry);
+    Future.delayed(const Duration(seconds: 4), () {
+      entry.remove();
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -224,9 +295,7 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
         _birthdayController.text.trim().isEmpty ||
         _selectedSex == null ||
         !_agreedToTerms) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all required fields.')),
-      );
+      _showImportantAlert('Please fill all required fields.');
       return;
     }
 
@@ -252,17 +321,13 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      _showImportantAlert(e.message);
     } catch (_) {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not connect to server. Try again.'),
-        ),
+      _showImportantAlert(
+        'Sign-up failed. Check backend connection and try again.',
       );
     } finally {
       if (mounted) {

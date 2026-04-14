@@ -38,6 +38,24 @@ class LocalSyncStore {
 
   Database? _db;
 
+  String _normalizeBirthday(String value) {
+    final raw = value.trim();
+    final match = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})$').firstMatch(raw);
+    if (match == null) {
+      return raw;
+    }
+
+    final month = int.tryParse(match.group(2) ?? '');
+    final day = int.tryParse(match.group(3) ?? '');
+    if (month == null || day == null || month < 1 || month > 12 || day < 1 || day > 31) {
+      return raw;
+    }
+
+    final mm = month.toString().padLeft(2, '0');
+    final dd = day.toString().padLeft(2, '0');
+    return '${match.group(1)}-$mm-$dd';
+  }
+
   Future<Database> _database() async {
     if (_db != null) return _db!;
 
@@ -151,6 +169,7 @@ class LocalSyncStore {
     required String birthday,
   }) async {
     final db = await _database();
+    final normalizedBirthday = _normalizeBirthday(birthday);
     await db.insert(
       'students_local',
       {
@@ -158,7 +177,7 @@ class LocalSyncStore {
         'first_name': student.firstName,
         'last_name': student.lastName,
         'nickname': student.nickname,
-        'birthday': birthday,
+        'birthday': normalizedBirthday,
         'sex': student.sex,
         'area': student.area,
         'is_synced': 1,
@@ -169,8 +188,8 @@ class LocalSyncStore {
 
     await db.delete(
       'pending_registrations',
-      where: 'nickname = ? AND birthday = ?',
-      whereArgs: [student.nickname, birthday],
+      where: 'nickname = ? AND (birthday = ? OR birthday = ?)',
+      whereArgs: [student.nickname, birthday, normalizedBirthday],
     );
   }
 
@@ -183,6 +202,7 @@ class LocalSyncStore {
     String? area,
   }) async {
     final db = await _database();
+    final normalizedBirthday = _normalizeBirthday(birthday);
 
     await db.insert(
       'students_local',
@@ -191,7 +211,7 @@ class LocalSyncStore {
         'first_name': firstName,
         'last_name': lastName,
         'nickname': nickname,
-        'birthday': birthday,
+        'birthday': normalizedBirthday,
         'sex': sex,
         'area': area,
         'is_synced': 0,
@@ -206,7 +226,7 @@ class LocalSyncStore {
         'first_name': firstName,
         'last_name': lastName,
         'nickname': nickname,
-        'birthday': birthday,
+        'birthday': normalizedBirthday,
         'sex': sex,
         'area': area,
         'created_at': DateTime.now().toIso8601String(),
@@ -276,10 +296,12 @@ class LocalSyncStore {
     required String birthday,
   }) async {
     final db = await _database();
+    final normalizedBirthday = _normalizeBirthday(birthday);
     final rows = await db.query(
       'students_local',
-      where: 'UPPER(nickname) = UPPER(?) AND birthday = ?',
-      whereArgs: [nickname.trim(), birthday.trim()],
+      where: 'UPPER(nickname) = UPPER(?) AND (birthday = ? OR birthday = ?)',
+      whereArgs: [nickname.trim(), birthday.trim(), normalizedBirthday],
+      orderBy: 'is_synced DESC, created_at DESC, id DESC',
       limit: 1,
     );
 
@@ -314,7 +336,7 @@ class LocalSyncStore {
     final db = await _database();
     final rows = await db.query(
       'students_local',
-      orderBy: 'created_at DESC',
+      orderBy: 'is_synced DESC, created_at DESC, id DESC',
       limit: 1,
     );
 
@@ -332,13 +354,14 @@ class LocalSyncStore {
     String? area,
   }) async {
     final db = await _database();
+    final normalizedBirthday = _normalizeBirthday(birthday);
     await db.update(
       'students_local',
       {
         'first_name': firstName,
         'last_name': lastName,
         'nickname': nickname,
-        'birthday': birthday,
+        'birthday': normalizedBirthday,
         'sex': sex,
         'area': area,
       },
@@ -353,6 +376,29 @@ class LocalSyncStore {
     final db = await _database();
     Object? lastError;
 
+    // Self-heal queue entries for legacy local accounts that were never enqueued.
+    await db.execute('''
+      INSERT OR IGNORE INTO pending_registrations (
+        first_name,
+        last_name,
+        nickname,
+        birthday,
+        sex,
+        area,
+        created_at
+      )
+      SELECT
+        first_name,
+        last_name,
+        nickname,
+        birthday,
+        sex,
+        area,
+        COALESCE(created_at, CURRENT_TIMESTAMP)
+      FROM students_local
+      WHERE is_synced = 0
+    ''');
+
     final pending = await db.query(
       'pending_registrations',
       orderBy: 'id ASC',
@@ -360,12 +406,14 @@ class LocalSyncStore {
 
     for (final row in pending) {
       final id = row['id'] as int;
+      final rawBirthday = row['birthday'] as String;
+      final normalizedBirthday = _normalizeBirthday(rawBirthday);
       try {
         final syncedStudentId = await registerRemote(
           firstName: row['first_name'] as String,
           lastName: row['last_name'] as String,
           nickname: row['nickname'] as String,
-          birthday: row['birthday'] as String,
+          birthday: normalizedBirthday,
           sex: row['sex'] as String,
           area: row['area'] as String?,
         );
@@ -373,8 +421,8 @@ class LocalSyncStore {
         final localRows = await db.query(
           'students_local',
           columns: ['student_id'],
-          where: 'nickname = ? AND birthday = ?',
-          whereArgs: [row['nickname'], row['birthday']],
+          where: 'nickname = ? AND (birthday = ? OR birthday = ?)',
+          whereArgs: [row['nickname'], rawBirthday, normalizedBirthday],
           limit: 1,
         );
 
@@ -388,10 +436,11 @@ class LocalSyncStore {
           'students_local',
           {
             'is_synced': 1,
+            'birthday': normalizedBirthday,
             ...?resolvedStudentId == null ? null : {'student_id': resolvedStudentId},
           },
-          where: 'nickname = ? AND birthday = ?',
-          whereArgs: [row['nickname'], row['birthday']],
+          where: 'nickname = ? AND (birthday = ? OR birthday = ?)',
+          whereArgs: [row['nickname'], rawBirthday, normalizedBirthday],
         );
 
         if (resolvedStudentId != null && oldStudentId != null && oldStudentId != resolvedStudentId) {

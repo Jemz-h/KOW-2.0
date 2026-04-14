@@ -499,6 +499,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
   bool _isSubmittingScore = false;
   bool _hasQuestionInteraction = false;
   List<QuizQuestion>? _remoteQuestions;
+  String? _quizErrorMessage;
   late final DateTime _sessionStartedAt;
 
   late final AnimationController _fadeCtrl;
@@ -574,9 +575,22 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
         return;
       }
 
+      if (rows.isEmpty) {
+        setState(() {
+          _quizErrorMessage = 'There are no questions available for this grade and subject yet. Please try another selection.';
+          _remoteQuestions = const [];
+        });
+        return;
+      }
+
+      // Shuffle questions to prevent repetition
+      final shuffledRows = List.from(rows);
+      shuffledRows.shuffle();
+
       setState(() {
-        _remoteQuestions = List.generate(rows.length, (index) {
-          final row = rows[index];
+        _quizErrorMessage = null;
+        _remoteQuestions = List.generate(shuffledRows.length, (index) {
+          final row = shuffledRows[index];
           final choices = List<String>.from(row['choices'] as List<dynamic>);
 
           return QuizQuestion(
@@ -591,6 +605,18 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
           );
         });
       });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+
+      if (e.statusCode == 404) {
+        setState(() {
+          _quizErrorMessage = 'There are no questions available for this grade and subject yet. Please try another selection.';
+          _remoteQuestions = const [];
+        });
+        return;
+      }
+
+      rethrow;
     } catch (_) {
       // Keep local fallback questions without interrupting gameplay.
     }
@@ -712,6 +738,84 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final sw = MediaQuery.of(context).size.width;
     final sh = MediaQuery.of(context).size.height;
+
+    if (_quizErrorMessage != null) {
+      return Scaffold(
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset('assets/themes/bg_spc_w_cloud.png',
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) =>
+                    Container(color: const Color(0xFF0D1B2E))),
+            SafeArea(
+              child: Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: sw * 0.08),
+                  child: Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: sw * 0.06,
+                      vertical: sh * 0.04,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.96),
+                      borderRadius: BorderRadius.circular(sw * 0.05),
+                      boxShadow: const [BoxShadow(
+                        color: Colors.black26,
+                        blurRadius: 14,
+                        offset: Offset(0, 6),
+                      )],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.hourglass_empty_rounded,
+                            size: 64, color: Color(0xFF2A87B0)),
+                        SizedBox(height: sh * 0.02),
+                        const Text(
+                          'No Questions Available',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: 'SuperCartoon',
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1A2340),
+                          ),
+                        ),
+                        SizedBox(height: sh * 0.015),
+                        Text(
+                          _quizErrorMessage!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontFamily: 'SuperCartoon',
+                            fontSize: 18,
+                            color: Color(0xFF444466),
+                            height: 1.4,
+                          ),
+                        ),
+                        SizedBox(height: sh * 0.03),
+                        ElevatedButton(
+                          onPressed: () => Navigator.maybePop(context),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2A87B0),
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: sw * 0.08,
+                              vertical: sh * 0.015,
+                            ),
+                          ),
+                          child: const Text('Go Back'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     final double cardW      = _isEasy ? kCardW      : kCardAvgW;
     final double cardMinH   = _isEasy ? kCardMinH   : kCardAvgMinH;
@@ -1145,7 +1249,7 @@ class _LevelCompletePopupState extends State<_LevelCompletePopup>
 
   String get _medal {
     if (widget.score == widget.total) return 'assets/icons/gold.svg';
-    if (widget.score >= 3)            return 'assets/iconds/silver.svg';
+    if (widget.score >= 3)            return 'assets/icons/silver.svg';
     return 'assets/icons/bronze.svg';
   }
 

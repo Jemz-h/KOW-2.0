@@ -1,14 +1,29 @@
+import 'package:flutter/foundation.dart';
+
 /// Central API configuration.
 /// Change [baseUrl] to match your backend host/port.
 class ApiConfig {
   ApiConfig._();
 
   /// Base URL of the KOW Node.js backend.
-  /// Default is Android emulator host (10.0.2.2).
-  /// For physical devices, pass --dart-define=API_BASE_URL=http://LAN_IP:3000
-  /// Example: flutter run --dart-define=API_BASE_URL=http://192.168.1.10:3000
-  static const String baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:3000',
-  );
+  /// Priority:
+  /// 1) --dart-define=API_BASE_URL=...
+  /// 2) Platform-aware local defaults on port 3010.
+  static String get baseUrl {
+    const configured = String.fromEnvironment('API_BASE_URL', defaultValue: '');
+    if (configured.isNotEmpty) {
+      return configured;
+    }
+
+    if (kIsWeb) {
+      return 'http://localhost:3010';
+    }
+
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return 'http://localhost:3010';
+      default:
+        return 'http://localhost:3010';
+    }
+  }
 }

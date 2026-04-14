@@ -96,3 +96,10 @@ This file groups the current workspace changes into completed, partial, and unfi
 
 - The current implementation is intentionally staged: core offline sync and admin contract endpoints exist, but auth guards, richer admin UI, and real-time notifications are still pending.
 - The status above reflects the current workspace state, not the final product scope from the documentation set.
+
+## Documentation References
+
+- [Documentation Index](docs/README.md)
+- [Project Overview](docs/01_PROJECT_OVERVIEW.md)
+- [Tech Stack](docs/02_TECH_STACK.md)
+- [Backend Setup](backend/SETUP_INSTRUCTIONS.md)

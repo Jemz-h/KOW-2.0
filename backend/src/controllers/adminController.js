@@ -100,13 +100,14 @@ const listStudents = asyncHandler(async (req, res) => {
             s.nickname,
             ${db.isOracle() ? "TO_CHAR(s.birthday, 'YYYY-MM-DD')" : 'date(s.birthday)'} AS birthday,
             x.sex,
-            b.barangay_nm,
+           COALESCE(a.area_nm, b.barangay_nm) AS area,
             s.device_origin,
             s.tmp_local_id,
             s.created_at,
             s.updated_at
      FROM studentTb s
      LEFT JOIN sexTb x ON s.sex_id = x.sex_id
+         LEFT JOIN areaTb a ON s.area_id = a.area_id
      LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
      ORDER BY s.stud_id DESC`
   );
@@ -131,13 +132,14 @@ const getStudentDetail = asyncHandler(async (req, res) => {
             s.nickname,
             ${db.isOracle() ? "TO_CHAR(s.birthday, 'YYYY-MM-DD')" : 'date(s.birthday)'} AS birthday,
             x.sex,
-            b.barangay_nm,
+           COALESCE(a.area_nm, b.barangay_nm) AS area,
             s.device_origin,
             s.tmp_local_id,
             s.created_at,
             s.updated_at
      FROM studentTb s
      LEFT JOIN sexTb x ON s.sex_id = x.sex_id
+         LEFT JOIN areaTb a ON s.area_id = a.area_id
      LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
      WHERE s.stud_id = :studId`,
     { studId }
@@ -334,6 +336,35 @@ const createQuestion = asyncHandler(async (req, res) => {
   }
 
   if (db.isOracle()) {
+    // Check for duplicate question
+    const duplicateCheck = await db.execute(
+      `SELECT question_id FROM questionTb 
+       WHERE subject_id = :subjectId 
+       AND gradelvl_id = :gradeLevelId 
+       AND diff_id = :diffId 
+       AND question_txt = :prompt
+       AND option_a = :optionA
+       AND option_b = :optionB
+       AND option_c = :optionC
+       AND option_d = :optionD
+       AND correct_opt = :correctOpt`,
+      {
+        subjectId: ids.SUBJECT_ID,
+        gradeLevelId: ids.GRADELVL_ID,
+        diffId: ids.DIFF_ID,
+        prompt: questionText,
+        optionA: resolvedOptionA,
+        optionB: resolvedOptionB,
+        optionC: resolvedOptionC,
+        optionD: resolvedOptionD,
+        correctOpt: String(resolvedCorrectOpt).toUpperCase(),
+      }
+    );
+
+    if (duplicateCheck.rows && duplicateCheck.rows.length > 0) {
+      return res.status(409).json({ success: false, error: 'Question already exists' });
+    }
+
     await db.execute(
       `INSERT INTO questionTb (
          subject_id,
@@ -377,6 +408,35 @@ const createQuestion = asyncHandler(async (req, res) => {
       { autoCommit: true }
     );
   } else {
+    // Check for duplicate question in SQLite
+    const duplicateCheck = await db.execute(
+      `SELECT question_id FROM questionTb 
+       WHERE subject_id = ? 
+       AND gradelvl_id = ? 
+       AND diff_id = ? 
+       AND question_txt = ?
+       AND option_a = ?
+       AND option_b = ?
+       AND option_c = ?
+       AND option_d = ?
+       AND correct_opt = ?`,
+      [
+        ids.SUBJECT_ID,
+        ids.GRADELVL_ID,
+        ids.DIFF_ID,
+        questionText,
+        resolvedOptionA,
+        resolvedOptionB,
+        resolvedOptionC,
+        resolvedOptionD,
+        String(resolvedCorrectOpt).toUpperCase(),
+      ]
+    );
+
+    if (duplicateCheck.rows && duplicateCheck.rows.length > 0) {
+      return res.status(409).json({ success: false, error: 'Question already exists' });
+    }
+
     await db.execute(
       `INSERT INTO questionTb (
          subject_id,
@@ -393,30 +453,30 @@ const createQuestion = asyncHandler(async (req, res) => {
          updated_at
        )
        VALUES (
-         :subjectId,
-         :gradeLevelId,
-         :diffId,
-         :prompt,
-         :optionA,
-         :optionB,
-         :optionC,
-         :optionD,
-         :correctOpt,
+         ?,
+         ?,
+         ?,
+         ?,
+         ?,
+         ?,
+         ?,
+         ?,
+         ?,
          1,
          CURRENT_TIMESTAMP,
          CURRENT_TIMESTAMP
        )`,
-      {
-        subjectId: ids.SUBJECT_ID,
-        gradeLevelId: ids.GRADELVL_ID,
-        diffId: ids.DIFF_ID,
-        prompt: questionText,
-        optionA: resolvedOptionA,
-        optionB: resolvedOptionB,
-        optionC: resolvedOptionC,
-        optionD: resolvedOptionD,
-        correctOpt: String(resolvedCorrectOpt).toUpperCase(),
-      },
+      [
+        ids.SUBJECT_ID,
+        ids.GRADELVL_ID,
+        ids.DIFF_ID,
+        questionText,
+        resolvedOptionA,
+        resolvedOptionB,
+        resolvedOptionC,
+        resolvedOptionD,
+        String(resolvedCorrectOpt).toUpperCase(),
+      ],
       { autoCommit: true }
     );
   }

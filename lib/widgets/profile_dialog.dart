@@ -3,6 +3,64 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../api_service.dart';
 
+const List<String> _areaOptions = [
+  'LAW STREET',
+  'KIMCO VILLAGE',
+  'WALING-WALING STREET',
+  'VICTORIA SUBDIVISION',
+  'SAMPAGUITA STREET',
+  'DRJ VILLAGE',
+  'LOWER SAUYO',
+  'SPAZIO BERNARDO CONDOMINIUM',
+  'VICTORIA STREET',
+  'RICHLAND SUBDIVISION',
+  'PASCUAL STREET',
+  'GREENVILLE SUBDIVISION',
+  'TEODORO COMPOUND',
+  'DEL NACIA VILLE 4',
+  'AREA 85',
+  'NIA VILLAGE',
+  'AREA 99',
+  'OCEAN PARK',
+  'AREA 135',
+  'GREENVIEW ROYALE',
+  'BISTEKVILLE 15',
+  'GREENVIEW EXECUTIVE',
+  'MARIAN EXTENSION',
+  'BIR VILLAGE',
+  'MARIAN SUBDIVISION',
+  'VICTORIAN HEIGHTS',
+  'MOZART EXTENSION',
+  'VILLA HERMANO 1',
+  'COMMERCIO',
+  'VILLA HERMANO 2',
+  'UPPER GULOD',
+  'PRIVADA HOMES',
+  'LOWER GULOD',
+  'MERRY HOMES',
+  'AREA 169',
+  'ATHERTON',
+  'AREA 160-168',
+  'LAGKITAN',
+  'DEL MUNDO COMPOUND',
+  'HERMINIGILDO COMPOUND',
+  'MABUHAY COMPOUND',
+  'AREA 5A',
+  'AREA 5B',
+  'AREA 6A',
+  'NAVAL',
+  'VILLA ROSARIO',
+  'LIPTON STREET',
+  'OLD CABUYAO',
+  'BALUYOT 1',
+  'BALUYOT 2A',
+  'BALUYOT 2B',
+  'MONTINOLA',
+  'BALUYOT PARK',
+  'PAPELAN',
+  'DAANG NAWASA',
+];
+
 Future<void> showProfileDialog(BuildContext context) async {
   final profile = await ApiService.getCurrentProfile();
   if (!context.mounted) {
@@ -160,7 +218,83 @@ Future<void> showProfileDialog(BuildContext context) async {
 
                 Text('Area', style: TextStyle(fontSize: labelFontSize, fontWeight: FontWeight.w800, color: Colors.black87)),
                 SizedBox(height: 3 * scale),
-                SizedBox(height: fieldHeight, child: TextField(controller: areaController, style: TextStyle(fontSize: fieldFontSize, fontWeight: FontWeight.w700), decoration: fieldDecoration('Area'))),
+                SizedBox(
+                  height: fieldHeight,
+                  child: TextField(
+                    controller: areaController,
+                    style: TextStyle(fontSize: fieldFontSize, fontWeight: FontWeight.w700),
+                    decoration: fieldDecoration('Area'),
+                    readOnly: true,
+                    onTap: () async {
+                      final selected = await showModalBottomSheet<String>(
+                        context: context,
+                        isScrollControlled: true,
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+                        ),
+                        builder: (sheetContext) {
+                          return SafeArea(
+                            child: SizedBox(
+                              height: MediaQuery.of(sheetContext).size.height * 0.62,
+                              child: Column(
+                                children: [
+                                  const SizedBox(height: 10),
+                                  Container(
+                                    width: 42,
+                                    height: 4,
+                                    decoration: BoxDecoration(
+                                      color: Colors.black26,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  const Text(
+                                    'SELECT AREA',
+                                    style: TextStyle(
+                                      fontFamily: 'SuperCartoon',
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w900,
+                                      color: Color(0xFF2D2D2D),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Expanded(
+                                    child: ListView.separated(
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                      itemCount: _areaOptions.length,
+                                      separatorBuilder: (_, _) => const Divider(height: 1),
+                                      itemBuilder: (context, index) {
+                                        final area = _areaOptions[index];
+                                        return ListTile(
+                                          dense: true,
+                                          title: Text(
+                                            area,
+                                            style: const TextStyle(
+                                              fontFamily: 'SuperCartoon',
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          onTap: () => Navigator.of(sheetContext).pop(area),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      );
+
+                      if (selected != null) {
+                        setState(() {
+                          areaController.text = selected;
+                        });
+                      }
+                    },
+                  ),
+                ),
                 SizedBox(height: spacing * 1.2),
 
                 Center(child: Text('Sex', style: TextStyle(fontSize: labelFontSize, fontWeight: FontWeight.w800, color: Colors.black87))),

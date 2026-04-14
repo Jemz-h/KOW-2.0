@@ -163,7 +163,9 @@ class _LevelMapScreenState extends State<LevelMapScreen>
         grade: widget.grade,
         subject: widget.subject,
         difficulty: 'EASY',
-      ),
+      ).catchError((_) {
+        return <Map<String, dynamic>>[];
+      }),
     );
   }
 
@@ -182,6 +184,27 @@ class _LevelMapScreenState extends State<LevelMapScreen>
           FadeTransition(opacity: animation, child: child),
       transitionDuration: const Duration(milliseconds: 300),
     ));
+  }
+
+  Future<void> _showNoQuestionsDialog() async {
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('No Questions Available'),
+        content: Text(
+          'There are no questions available for ${widget.grade} yet. '
+          'This grade is still coming soon.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -358,6 +381,11 @@ class _LevelMapScreenState extends State<LevelMapScreen>
                   // ▶ Play
                   _TapIcon(
                     onTap: () {
+                      if (widget.grade.toUpperCase() == 'COMING') {
+                        _showNoQuestionsDialog();
+                        return;
+                      }
+
                       Navigator.of(context).push(PageRouteBuilder(
                         pageBuilder: (_, animation, _) => QuizScreen(
                           difficulty: 'EASY',

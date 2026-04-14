@@ -1,6 +1,38 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../api_service.dart';
+
+class _AchievementStats {
+  final String nickname;
+  final String totalTimePlayed;
+  final int bronzeTokens;
+  final int silverTokens;
+  final int goldTokens;
+  final int mathLessonsCompleted;
+  final int totalLevelsPassed;
+
+  const _AchievementStats({
+    required this.nickname,
+    required this.totalTimePlayed,
+    required this.bronzeTokens,
+    required this.silverTokens,
+    required this.goldTokens,
+    required this.mathLessonsCompleted,
+    required this.totalLevelsPassed,
+  });
+
+  static const empty = _AchievementStats(
+    nickname: 'STUDENT',
+    totalTimePlayed: '0h 0m',
+    bronzeTokens: 0,
+    silverTokens: 0,
+    goldTokens: 0,
+    mathLessonsCompleted: 0,
+    totalLevelsPassed: 0,
+  );
+}
+
 void showAchievementDialog(BuildContext context) {
   showDialog(
     context: context,
@@ -18,8 +50,6 @@ void showAchievementDialog(BuildContext context) {
       final sectionTitleFontSize = 18.0 * scale * hFactor;
       final bodyFontSize = 13.0 * scale * hFactor;
       final nicknameFontSize = 22.0 * scale * hFactor;
-      // final coinSize = 62.0 * scale * hFactor;
-      // final coinCountFontSize = 16.0 * scale * hFactor;
       final sectionVertPad = 12.0 * scale * hFactor;
       final sectionMargin = 6.0 * scale * hFactor;
 
@@ -65,179 +95,258 @@ void showAchievementDialog(BuildContext context) {
             child: child,
           );
 
-      return Stack(
-        children: [
-          GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
-            child: Container(color: Colors.transparent),
-          ),
+      Future<_AchievementStats> loadStats() async {
+        final profile = await ApiService.getCurrentProfile();
+        final studentIdValue = profile?['student_id'] ?? profile?['studentId'];
+        if (studentIdValue is! num) {
+          return _AchievementStats.empty;
+        }
 
-          Center(
-            child: Material(
-              color: Colors.transparent,
-              child: Stack(
-                children: [
-                  Container(
-                    width: dialogWidth,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFD9D9D9),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFFBBBBBB), width: 2),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black38, blurRadius: 16, offset: Offset(0, 8))
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
+        final studentId = studentIdValue.toInt();
+        final nickname = (profile?['nickname'] as String?)?.trim().isNotEmpty == true
+            ? (profile?['nickname'] as String).trim()
+            : _AchievementStats.empty.nickname;
 
-                        // ── HEADER ──
-                        Padding(
-                          padding: EdgeInsets.symmetric(vertical: 14 * scale * hFactor),
-                          child: Center(
-                            child: Text(
-                              'STATISTICS',
-                              style: strokedText(
-                                fontSize: titleFontSize,
-                                color: Colors.white,
-                                letterSpacing: 2,
+        final progress = await ApiService.getProgress(studentId);
+        final scores = await ApiService.getScores(studentId);
+
+        final totalMinutes = progress.fold<int>(0, (sum, row) {
+          final minutesValue = row['total_time_played'];
+          if (minutesValue is num) {
+            return sum + minutesValue.toInt();
+          }
+          return sum;
+        });
+
+        final totalTimePlayed = _formatDuration(totalMinutes);
+
+        var bronzeTokens = 0;
+        var silverTokens = 0;
+        var goldTokens = 0;
+        for (final row in scores) {
+          final scoreValue = row['score'];
+          final maxScoreValue = row['max_score'];
+          final score = scoreValue is num ? scoreValue.toDouble() : 0.0;
+          final maxScore = maxScoreValue is num ? maxScoreValue.toDouble() : 0.0;
+
+          if (maxScore > 0 && score == maxScore) {
+            goldTokens++;
+          } else if (score >= 3) {
+            silverTokens++;
+          } else {
+            bronzeTokens++;
+          }
+        }
+
+        final mathLessonsCompleted = progress.where((row) {
+          final subject = (row['subject'] as String?)?.trim().toUpperCase() ?? '';
+          final diff = row['highest_diff_passed'];
+          return subject == 'MATHEMATICS' && diff is num && diff.toInt() > 0;
+        }).length;
+
+        final totalLevelsPassed = progress.where((row) {
+          final diff = row['highest_diff_passed'];
+          return diff is num && diff.toInt() > 0;
+        }).length;
+
+        return _AchievementStats(
+          nickname: nickname,
+          totalTimePlayed: totalTimePlayed,
+          bronzeTokens: bronzeTokens,
+          silverTokens: silverTokens,
+          goldTokens: goldTokens,
+          mathLessonsCompleted: mathLessonsCompleted,
+          totalLevelsPassed: totalLevelsPassed,
+        );
+      }
+
+      return FutureBuilder<_AchievementStats>(
+        future: loadStats(),
+        builder: (context, snapshot) {
+          final stats = snapshot.data ?? _AchievementStats.empty;
+          final isLoading = snapshot.connectionState == ConnectionState.waiting;
+
+          return Stack(
+            children: [
+              GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Container(color: Colors.transparent),
+              ),
+
+              Center(
+                child: Material(
+                  color: Colors.transparent,
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: dialogWidth,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD9D9D9),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFBBBBBB), width: 2),
+                          boxShadow: const [
+                            BoxShadow(color: Colors.black38, blurRadius: 16, offset: Offset(0, 8))
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+
+                            // ── HEADER ──
+                            Padding(
+                              padding: EdgeInsets.symmetric(vertical: 14 * scale * hFactor),
+                              child: Center(
+                                child: Text(
+                                  'STATISTICS',
+                                  style: strokedText(
+                                    fontSize: titleFontSize,
+                                    color: Colors.white,
+                                    letterSpacing: 2,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                        ),
 
-                        // ── INNER PANEL ──
-                        Container(
-                          margin: EdgeInsets.fromLTRB(10 * scale, 0, 10 * scale, 12 * scale),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: const [
-                              BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))
-                            ],
-                          ),
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 10 * scale,
-                            vertical: 10 * scale * hFactor,
-                          ),
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.topCenter,
-                            child: SizedBox(
-                              width: dialogWidth - (10 * scale * 2) - (10 * scale * 2),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-
-                                  // NICKNAME
-                                  Container(
-                                    width: double.infinity,
-                                    margin: EdgeInsets.only(bottom: sectionMargin),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF3C467B),
-                                      borderRadius: BorderRadius.circular(10 * scale),
-                                    ),
-                                    padding: EdgeInsets.symmetric(vertical: 12 * scale * hFactor),
-                                    child: Center(
-                                      child: Text(
-                                        'NICKNAME',
-                                        style: strokedText(
-                                          fontSize: nicknameFontSize,
-                                          color: const Color(0xFFFFA500),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-
-                                  // TOTAL TIME
-                                 sectionBox(
-                                  child: Row(
+                            // ── INNER PANEL ──
+                            Container(
+                              margin: EdgeInsets.fromLTRB(10 * scale, 0, 10 * scale, 12 * scale),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: const [
+                                  BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))
+                                ],
+                              ),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 10 * scale,
+                                vertical: 10 * scale * hFactor,
+                              ),
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.topCenter,
+                                child: SizedBox(
+                                  width: dialogWidth - (10 * scale * 2) - (10 * scale * 2),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Image.asset(
-                                        'assets/icons/back.png', // can be any image (even if missing)
-                                        width: 52 * scale * hFactor,
-                                        height: 52 * scale * hFactor,
-                                        errorBuilder: (c, e, s) => Icon(
-                                          Icons.hourglass_bottom,
-                                          size: 52 * scale * hFactor,
-                                          color: Colors.white,
+
+                                      // NICKNAME
+                                      Container(
+                                        width: double.infinity,
+                                        margin: EdgeInsets.only(bottom: sectionMargin),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF3C467B),
+                                          borderRadius: BorderRadius.circular(10 * scale),
+                                        ),
+                                        padding: EdgeInsets.symmetric(vertical: 12 * scale * hFactor),
+                                        child: Center(
+                                          child: Text(
+                                            isLoading ? 'LOADING...' : stats.nickname.toUpperCase(),
+                                            style: strokedText(
+                                              fontSize: nicknameFontSize,
+                                              color: const Color(0xFFFFA500),
+                                            ),
+                                          ),
                                         ),
                                       ),
-                                      SizedBox(width: 14 * scale),
-                                      Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text('Total Time',
-                                              style: strokedText(fontSize: bodyFontSize, color: Colors.white)),
-                                          Text('Played:',
-                                              style: strokedText(fontSize: bodyFontSize, color: Colors.white)),
-                                          Text('0h 0m',
-                                              style: strokedText(
-                                                  fontSize: bodyFontSize, color: Colors.white70)),
-                                        ],
+
+                                      // TOTAL TIME
+                                      sectionBox(
+                                        child: Row(
+                                          children: [
+                                            Image.asset(
+                                              'assets/icons/back.png',
+                                              width: 52 * scale * hFactor,
+                                              height: 52 * scale * hFactor,
+                                              errorBuilder: (c, e, s) => Icon(
+                                                Icons.hourglass_bottom,
+                                                size: 52 * scale * hFactor,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                            SizedBox(width: 14 * scale),
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text('Total Time',
+                                                    style: strokedText(fontSize: bodyFontSize, color: Colors.white)),
+                                                Text('Played:',
+                                                    style: strokedText(fontSize: bodyFontSize, color: Colors.white)),
+                                                Text(stats.totalTimePlayed,
+                                                    style: strokedText(
+                                                        fontSize: bodyFontSize, color: Colors.white70)),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+
+                                      // TOKENS
+                                      sectionBox(
+                                        child: Column(
+                                          children: [
+                                            Text('TOKENS EARNED', style: strokedText(fontSize: sectionTitleFontSize, color: Colors.white)),
+                                            SizedBox(height: 10),
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                              children: [
+                                                _CoinBadge(assetPath: 'assets/icons/bronze.svg', count: stats.bronzeTokens),
+                                                _CoinBadge(assetPath: 'assets/icons/silver.svg', count: stats.silverTokens),
+                                                _CoinBadge(assetPath: 'assets/icons/gold.svg', count: stats.goldTokens),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+
+                                      // COMPLETION
+                                      sectionBox(
+                                        child: Column(
+                                          children: [
+                                            Text('COMPLETION', style: strokedText(fontSize: sectionTitleFontSize, color: Colors.white)),
+                                            Text('Math Lessons Completed: ${stats.mathLessonsCompleted}', style: strokedText(fontSize: bodyFontSize, color: Colors.white)),
+                                            Text('Total Levels Passed: ${stats.totalLevelsPassed}', style: strokedText(fontSize: bodyFontSize, color: Colors.white)),
+                                          ],
+                                        ),
                                       ),
                                     ],
                                   ),
                                 ),
-
-                                  // TOKENS
-                                  sectionBox(
-                                    child: Column(
-                                      children: [
-                                        Text('TOKENS EARNED', style: strokedText(fontSize: sectionTitleFontSize, color: Colors.white)),
-                                        SizedBox(height: 10),
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                          children: const [
-                                            _CoinBadge(assetPath: 'assets/icons/bronze.svg', count: 24),
-                                            _CoinBadge(assetPath: 'assets/icons/silver.svg', count: 24),
-                                            _CoinBadge(assetPath: 'assets/icons/gold.svg', count: 24),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-
-                                  // COMPLETION
-                                  sectionBox(
-                                    child: Column(
-                                      children: [
-                                        Text('COMPLETION', style: strokedText(fontSize: sectionTitleFontSize, color: Colors.white)),
-                                        Text('Math Lessons Completed:', style: strokedText(fontSize: bodyFontSize, color: Colors.white)),
-                                        Text('Total Levels Passed:', style: strokedText(fontSize: bodyFontSize, color: Colors.white)),
-                                      ],
-                                    ),
-                                  ),
-                                ],
                               ),
                             ),
+                          ],
+                        ),
+                      ),
+
+                      // ❌ X BUTTON (TOP RIGHT)
+                      Positioned(
+                        top: 10 * scale,
+                        right: 10 * scale,
+                        child: GestureDetector(
+                          onTap: () => Navigator.of(context).pop(),
+                          child: SvgPicture.asset(
+                            'assets/icons/x.svg',
+                            width: 32 * scale,
+                            height: 32 * scale,
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-
-                  // ❌ X BUTTON (TOP RIGHT)
-                  Positioned(
-                    top: 10 * scale,
-                    right: 10 * scale,
-                    child: GestureDetector(
-                      onTap: () => Navigator.of(context).pop(),
-                      child: SvgPicture.asset(
-                        'assets/icons/x.svg',
-                        width: 32 * scale,
-                        height: 32 * scale,
                       ),
-                    ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       );
     },
   );
+}
+
+String _formatDuration(int totalMinutes) {
+  final hours = totalMinutes ~/ 60;
+  final minutes = totalMinutes % 60;
+  return '${hours}h ${minutes}m';
 }
 
 class _CoinBadge extends StatelessWidget {

@@ -1,9 +1,12 @@
 
- CREATE USER kow_admin IDENTIFIED BY "KOW_Password_2026!";
- GRANT CONNECT, RESOURCE TO kow_admin;
- GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW, CREATE SEQUENCE,
-       CREATE PROCEDURE, CREATE TRIGGER, CREATE SYNONYM TO kow_admin;
-ALTER USER kow_admin QUOTA UNLIMITED ON USERS;
+-- =============================================================================
+-- 0. OPTIONAL DBA BOOTSTRAP (run only as SYS/SYSTEM or a DBA account)
+-- =============================================================================
+-- CREATE USER kow_admin IDENTIFIED BY "KOW_Password_2026!";
+-- GRANT CONNECT TO kow_admin;
+-- GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW, CREATE SEQUENCE,
+--       CREATE PROCEDURE, CREATE TRIGGER, CREATE SYNONYM TO kow_admin;
+-- ALTER USER kow_admin QUOTA UNLIMITED ON USERS;
 
 
 
@@ -67,6 +70,7 @@ BEGIN
     BEGIN EXECUTE IMMEDIATE 'DROP TABLE adminTb          CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP TABLE studentTb        CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP TABLE teacherTb        CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'DROP TABLE areaTb           CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP TABLE barangayTb       CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP TABLE subjectTb        CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP TABLE gradelvlTb       CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
@@ -160,18 +164,80 @@ CREATE TABLE barangayTb (
 );
 INSERT INTO barangayTb VALUES (1, 'Barangay Sauyo');
 
+-- Area reference
+CREATE TABLE areaTb (
+    area_id NUMBER(5)    PRIMARY KEY,
+    area_nm VARCHAR2(60) NOT NULL
+);
+
+INSERT INTO areaTb VALUES (1, 'LAW STREET');
+INSERT INTO areaTb VALUES (2, 'KIMCO VILLAGE');
+INSERT INTO areaTb VALUES (3, 'WALING-WALING STREET');
+INSERT INTO areaTb VALUES (4, 'VICTORIA SUBDIVISION');
+INSERT INTO areaTb VALUES (5, 'SAMPAGUITA STREET');
+INSERT INTO areaTb VALUES (6, 'DRJ VILLAGE');
+INSERT INTO areaTb VALUES (7, 'LOWER SAUYO');
+INSERT INTO areaTb VALUES (8, 'SPAZIO BERNARDO CONDOMINIUM');
+INSERT INTO areaTb VALUES (9, 'VICTORIA STREET');
+INSERT INTO areaTb VALUES (10, 'RICHLAND SUBDIVISION');
+INSERT INTO areaTb VALUES (11, 'PASCUAL STREET');
+INSERT INTO areaTb VALUES (12, 'GREENVILLE SUBDIVISION');
+INSERT INTO areaTb VALUES (13, 'TEODORO COMPOUND');
+INSERT INTO areaTb VALUES (14, 'DEL NACIA VILLE 4');
+INSERT INTO areaTb VALUES (15, 'AREA 85');
+INSERT INTO areaTb VALUES (16, 'NIA VILLAGE');
+INSERT INTO areaTb VALUES (17, 'AREA 99');
+INSERT INTO areaTb VALUES (18, 'OCEAN PARK');
+INSERT INTO areaTb VALUES (19, 'AREA 135');
+INSERT INTO areaTb VALUES (20, 'GREENVIEW ROYALE');
+INSERT INTO areaTb VALUES (21, 'BISTEKVILLE 15');
+INSERT INTO areaTb VALUES (22, 'GREENVIEW EXECUTIVE');
+INSERT INTO areaTb VALUES (23, 'MARIAN EXTENSION');
+INSERT INTO areaTb VALUES (24, 'BIR VILLAGE');
+INSERT INTO areaTb VALUES (25, 'MARIAN SUBDIVISION');
+INSERT INTO areaTb VALUES (26, 'VICTORIAN HEIGHTS');
+INSERT INTO areaTb VALUES (27, 'MOZART EXTENSION');
+INSERT INTO areaTb VALUES (28, 'VILLA HERMANO 1');
+INSERT INTO areaTb VALUES (29, 'COMMERCIO');
+INSERT INTO areaTb VALUES (30, 'VILLA HERMANO 2');
+INSERT INTO areaTb VALUES (31, 'UPPER GULOD');
+INSERT INTO areaTb VALUES (32, 'PRIVADA HOMES');
+INSERT INTO areaTb VALUES (33, 'LOWER GULOD');
+INSERT INTO areaTb VALUES (34, 'MERRY HOMES');
+INSERT INTO areaTb VALUES (35, 'AREA 169');
+INSERT INTO areaTb VALUES (36, 'ATHERTON');
+INSERT INTO areaTb VALUES (37, 'AREA 160-168');
+INSERT INTO areaTb VALUES (38, 'LAGKITAN');
+INSERT INTO areaTb VALUES (39, 'DEL MUNDO COMPOUND');
+INSERT INTO areaTb VALUES (40, 'HERMINIGILDO COMPOUND');
+INSERT INTO areaTb VALUES (41, 'MABUHAY COMPOUND');
+INSERT INTO areaTb VALUES (42, 'AREA 5A');
+INSERT INTO areaTb VALUES (43, 'AREA 5B');
+INSERT INTO areaTb VALUES (44, 'AREA 6A');
+INSERT INTO areaTb VALUES (45, 'NAVAL');
+INSERT INTO areaTb VALUES (46, 'VILLA ROSARIO');
+INSERT INTO areaTb VALUES (47, 'LIPTON STREET');
+INSERT INTO areaTb VALUES (48, 'OLD CABUYAO');
+INSERT INTO areaTb VALUES (49, 'BALUYOT 1');
+INSERT INTO areaTb VALUES (50, 'BALUYOT 2A');
+INSERT INTO areaTb VALUES (51, 'BALUYOT 2B');
+INSERT INTO areaTb VALUES (52, 'MONTINOLA');
+INSERT INTO areaTb VALUES (53, 'BALUYOT PARK');
+INSERT INTO areaTb VALUES (54, 'PAPELAN');
+INSERT INTO areaTb VALUES (55, 'DAANG NAWASA');
+
 COMMIT;
 
 
 -- =============================================================================
 -- 4. CORE ENTITY TABLES
---    NOTE: No DEFAULT seq.NEXTVAL here — that is Oracle 12c+ syntax.
---          BEFORE INSERT triggers (Section 10) handle auto-increment for 11g.
+--    NOTE: This script uses DEFAULT seq.NEXTVAL for PK auto-numbering.
+--          This avoids hard dependency on CREATE TRIGGER privilege.
 -- =============================================================================
 
 -- Teachers / Volunteers
 CREATE TABLE teacherTb (
-    teacher_id  NUMBER(10)   PRIMARY KEY,
+    teacher_id  NUMBER(10)   DEFAULT seq_teacher_id.NEXTVAL PRIMARY KEY,
     first_name  VARCHAR2(60) NOT NULL,
     last_name   VARCHAR2(60) NOT NULL,
     created_at  DATE         DEFAULT SYSDATE NOT NULL
@@ -179,13 +245,14 @@ CREATE TABLE teacherTb (
 
 -- Students
 CREATE TABLE studentTb (
-    stud_id       NUMBER(10)   PRIMARY KEY,
+    stud_id       NUMBER(10)   DEFAULT seq_stud_id.NEXTVAL PRIMARY KEY,
     first_name    VARCHAR2(60) NOT NULL,
     last_name     VARCHAR2(60) NOT NULL,
     nickname      VARCHAR2(40) NOT NULL,
     birthday      DATE         NOT NULL,
     sex_id        NUMBER(2)    REFERENCES sexTb(sex_id),
     teacher_id    NUMBER(10)   REFERENCES teacherTb(teacher_id),
+    area_id       NUMBER(5)    DEFAULT 1 REFERENCES areaTb(area_id),
     barangay_id   NUMBER(5)    DEFAULT 1 REFERENCES barangayTb(barangay_id),
     created_at    DATE         DEFAULT SYSDATE NOT NULL,
     updated_at    DATE         DEFAULT SYSDATE NOT NULL,
@@ -196,7 +263,7 @@ CREATE TABLE studentTb (
 
 -- Admin users
 CREATE TABLE adminTb (
-    admin_id       NUMBER(10)    PRIMARY KEY,
+    admin_id       NUMBER(10)    DEFAULT seq_admin_id.NEXTVAL PRIMARY KEY,
     username       VARCHAR2(60)  NOT NULL UNIQUE,
     password_hash  VARCHAR2(255) NOT NULL,  -- bcrypt hash (10 rounds)
     role           VARCHAR2(20)  DEFAULT 'admin' NOT NULL,
@@ -206,7 +273,7 @@ CREATE TABLE adminTb (
 
 -- Registered devices
 CREATE TABLE deviceTb (
-    device_id      NUMBER(10)   PRIMARY KEY,
+    device_id      NUMBER(10)   DEFAULT seq_device_id.NEXTVAL PRIMARY KEY,
     device_uuid    VARCHAR2(40) NOT NULL UNIQUE,  -- UUID from Flutter app
     device_name    VARCHAR2(80),
     registered_at  DATE         DEFAULT SYSDATE NOT NULL,
@@ -229,7 +296,7 @@ CREATE TABLE customTb (
 
 -- Score records (one row per game session attempt — always INSERT, never UPDATE)
 CREATE TABLE scoreTb (
-    score_id    NUMBER(10)   PRIMARY KEY,
+    score_id    NUMBER(10)   DEFAULT seq_score_id.NEXTVAL PRIMARY KEY,
     stud_id     NUMBER(10)   NOT NULL REFERENCES studentTb(stud_id),
     subject_id  NUMBER(3)    NOT NULL REFERENCES subjectTb(subject_id),
     gradelvl_id NUMBER(3)    NOT NULL REFERENCES gradelvlTb(gradelvl_id),
@@ -244,7 +311,7 @@ CREATE TABLE scoreTb (
 
 -- Time played per student per session
 CREATE TABLE timeplTb (
-    timeplay_id  NUMBER(10)   PRIMARY KEY,
+    timeplay_id  NUMBER(10)   DEFAULT seq_timeplay_id.NEXTVAL PRIMARY KEY,
     stud_id      NUMBER(10)   NOT NULL REFERENCES studentTb(stud_id),
     subject_id   NUMBER(3)    REFERENCES subjectTb(subject_id),
     time_played  NUMBER(10)   NOT NULL,  -- in seconds
@@ -266,7 +333,7 @@ CREATE TABLE progressTb (
 
 -- Analytics summary (computed/refreshed by sp_refresh_analytics)
 CREATE TABLE analyticsTb (
-    analytics_id   NUMBER(10)  PRIMARY KEY,
+    analytics_id   NUMBER(10)  DEFAULT seq_analytics_id.NEXTVAL PRIMARY KEY,
     stud_id        NUMBER(10)  NOT NULL REFERENCES studentTb(stud_id),
     subject_id     NUMBER(3)   REFERENCES subjectTb(subject_id),
     gradelvl_id    NUMBER(3)   REFERENCES gradelvlTb(gradelvl_id),
@@ -284,7 +351,7 @@ CREATE TABLE analyticsTb (
 -- =============================================================================
 
 CREATE TABLE questionTb (
-    question_id  NUMBER(10)    PRIMARY KEY,
+    question_id  NUMBER(10)    DEFAULT seq_question_id.NEXTVAL PRIMARY KEY,
     subject_id   NUMBER(3)     NOT NULL REFERENCES subjectTb(subject_id),
     gradelvl_id  NUMBER(3)     NOT NULL REFERENCES gradelvlTb(gradelvl_id),
     diff_id      NUMBER(3)     NOT NULL REFERENCES diffTb(diff_id),
@@ -301,7 +368,7 @@ CREATE TABLE questionTb (
 
 -- Content version tracker (devices compare this to decide if cache needs refresh)
 CREATE TABLE contentVersionTb (
-    version_id   NUMBER(10)    PRIMARY KEY,
+    version_id   NUMBER(10)    DEFAULT seq_content_ver.NEXTVAL PRIMARY KEY,
     version_tag  VARCHAR2(20)  NOT NULL,  -- e.g. 'v42'
     changed_by   NUMBER(10)    REFERENCES adminTb(admin_id),
     changed_at   DATE          DEFAULT SYSDATE NOT NULL,
@@ -315,7 +382,7 @@ CREATE TABLE contentVersionTb (
 
 -- Server-side log of all sync events received from devices
 CREATE TABLE syncLogTb (
-    sync_id     NUMBER(10)   PRIMARY KEY,
+    sync_id     NUMBER(10)   DEFAULT seq_sync_id.NEXTVAL PRIMARY KEY,
     device_uuid VARCHAR2(40) NOT NULL,
     stud_id     NUMBER(10)   REFERENCES studentTb(stud_id),
     event_type  VARCHAR2(30) NOT NULL,  -- 'score', 'register', 'timeplay', 'progress'
@@ -330,7 +397,7 @@ CREATE TABLE syncLogTb (
 -- =============================================================================
 
 CREATE TABLE auditTb (
-    audit_id   NUMBER(10)  PRIMARY KEY,
+    audit_id   NUMBER(10)  DEFAULT seq_audit_id.NEXTVAL PRIMARY KEY,
     table_name VARCHAR2(40),
     operation  VARCHAR2(10),  -- INSERT / UPDATE / DELETE
     record_id  NUMBER(10),
@@ -353,12 +420,13 @@ SELECT
     s.birthday,
     TRUNC(MONTHS_BETWEEN(SYSDATE, s.birthday) / 12) AS age,
     x.sex,
-    b.barangay_nm,
+    COALESCE(a.area_nm, b.barangay_nm) AS area_nm,
     t.first_name || ' ' || t.last_name AS teacher_name,
     s.created_at
 FROM studentTb   s
 JOIN sexTb       x ON s.sex_id      = x.sex_id
-JOIN barangayTb  b ON s.barangay_id = b.barangay_id
+LEFT JOIN areaTb  a ON s.area_id     = a.area_id
+LEFT JOIN barangayTb  b ON s.barangay_id = b.barangay_id
 LEFT JOIN teacherTb t ON s.teacher_id = t.teacher_id;
 
 -- Score summary per student per subject/level/difficulty
@@ -552,123 +620,9 @@ END sp_bump_content_version;
 -- =============================================================================
 -- 11. TRIGGERS
 -- =============================================================================
--- Section A: Auto-increment PKs (Oracle 11g replacement for DEFAULT seq.NEXTVAL)
--- Section B: Audit + timestamp triggers
-
--- A) Auto-increment: teacherTb
-CREATE OR REPLACE TRIGGER trg_ai_teacher
-BEFORE INSERT ON teacherTb
-FOR EACH ROW
+-- Optional: create triggers if account has CREATE TRIGGER privilege.
 BEGIN
-    IF :NEW.teacher_id IS NULL THEN
-        SELECT seq_teacher_id.NEXTVAL INTO :NEW.teacher_id FROM DUAL;
-    END IF;
-END;
-/
-
--- A) Auto-increment: studentTb
-CREATE OR REPLACE TRIGGER trg_ai_student
-BEFORE INSERT ON studentTb
-FOR EACH ROW
-BEGIN
-    IF :NEW.stud_id IS NULL THEN
-        SELECT seq_stud_id.NEXTVAL INTO :NEW.stud_id FROM DUAL;
-    END IF;
-END;
-/
-
--- A) Auto-increment: adminTb
-CREATE OR REPLACE TRIGGER trg_ai_admin
-BEFORE INSERT ON adminTb
-FOR EACH ROW
-BEGIN
-    IF :NEW.admin_id IS NULL THEN
-        SELECT seq_admin_id.NEXTVAL INTO :NEW.admin_id FROM DUAL;
-    END IF;
-END;
-/
-
--- A) Auto-increment: deviceTb
-CREATE OR REPLACE TRIGGER trg_ai_device
-BEFORE INSERT ON deviceTb
-FOR EACH ROW
-BEGIN
-    IF :NEW.device_id IS NULL THEN
-        SELECT seq_device_id.NEXTVAL INTO :NEW.device_id FROM DUAL;
-    END IF;
-END;
-/
-
--- A) Auto-increment: scoreTb
-CREATE OR REPLACE TRIGGER trg_ai_score
-BEFORE INSERT ON scoreTb
-FOR EACH ROW
-BEGIN
-    IF :NEW.score_id IS NULL THEN
-        SELECT seq_score_id.NEXTVAL INTO :NEW.score_id FROM DUAL;
-    END IF;
-END;
-/
-
--- A) Auto-increment: timeplTb
-CREATE OR REPLACE TRIGGER trg_ai_timeplay
-BEFORE INSERT ON timeplTb
-FOR EACH ROW
-BEGIN
-    IF :NEW.timeplay_id IS NULL THEN
-        SELECT seq_timeplay_id.NEXTVAL INTO :NEW.timeplay_id FROM DUAL;
-    END IF;
-END;
-/
-
--- A) Auto-increment: analyticsTb
-CREATE OR REPLACE TRIGGER trg_ai_analytics
-BEFORE INSERT ON analyticsTb
-FOR EACH ROW
-BEGIN
-    IF :NEW.analytics_id IS NULL THEN
-        SELECT seq_analytics_id.NEXTVAL INTO :NEW.analytics_id FROM DUAL;
-    END IF;
-END;
-/
-
--- A) Auto-increment: questionTb
-CREATE OR REPLACE TRIGGER trg_ai_question
-BEFORE INSERT ON questionTb
-FOR EACH ROW
-BEGIN
-    IF :NEW.question_id IS NULL THEN
-        SELECT seq_question_id.NEXTVAL INTO :NEW.question_id FROM DUAL;
-    END IF;
-END;
-/
-
--- A) Auto-increment: contentVersionTb
-CREATE OR REPLACE TRIGGER trg_ai_contentver
-BEFORE INSERT ON contentVersionTb
-FOR EACH ROW
-BEGIN
-    IF :NEW.version_id IS NULL THEN
-        SELECT seq_content_ver.NEXTVAL INTO :NEW.version_id FROM DUAL;
-    END IF;
-END;
-/
-
--- A) Auto-increment: syncLogTb
-CREATE OR REPLACE TRIGGER trg_ai_synclog
-BEFORE INSERT ON syncLogTb
-FOR EACH ROW
-BEGIN
-    IF :NEW.sync_id IS NULL THEN
-        SELECT seq_sync_id.NEXTVAL INTO :NEW.sync_id FROM DUAL;
-    END IF;
-END;
-/
-
--- B) Auto-audit trigger for studentTb
---    NOTE: INSERTING/UPDATING/DELETING are PL/SQL boolean predicates — they cannot
---    be used inside SQL expressions (VALUES clause). Use IF/ELSIF instead.
-CREATE OR REPLACE TRIGGER trg_student_audit
+    BEGIN EXECUTE IMMEDIATE q'[CREATE OR REPLACE TRIGGER trg_student_audit
 AFTER INSERT OR UPDATE OR DELETE ON studentTb
 FOR EACH ROW
 DECLARE
@@ -685,20 +639,16 @@ BEGIN
     INSERT INTO auditTb (audit_id, table_name, operation, record_id, changed_by, changed_at)
     VALUES (seq_audit_id.NEXTVAL, 'studentTb', v_op, v_id,
             SYS_CONTEXT('USERENV', 'SESSION_USER'), SYSDATE);
-END;
-/
+END;]'; EXCEPTION WHEN OTHERS THEN NULL; END;
 
--- B) Auto-update updated_at on studentTb
-CREATE OR REPLACE TRIGGER trg_student_updated
+    BEGIN EXECUTE IMMEDIATE q'[CREATE OR REPLACE TRIGGER trg_student_updated
 BEFORE UPDATE ON studentTb
 FOR EACH ROW
 BEGIN
     :NEW.updated_at := SYSDATE;
-END;
-/
+END;]'; EXCEPTION WHEN OTHERS THEN NULL; END;
 
--- B) Audit trigger for questionTb
-CREATE OR REPLACE TRIGGER trg_question_updated
+    BEGIN EXECUTE IMMEDIATE q'[CREATE OR REPLACE TRIGGER trg_question_updated
 AFTER INSERT OR UPDATE OR DELETE ON questionTb
 FOR EACH ROW
 DECLARE
@@ -715,6 +665,7 @@ BEGIN
     INSERT INTO auditTb (audit_id, table_name, operation, record_id, changed_by, changed_at)
     VALUES (seq_audit_id.NEXTVAL, 'questionTb', v_op, v_id,
             SYS_CONTEXT('USERENV', 'SESSION_USER'), SYSDATE);
+END;]'; EXCEPTION WHEN OTHERS THEN NULL; END;
 END;
 /
 
@@ -785,64 +736,110 @@ END;
 -- 13. SYNONYMS (simplify object references)
 -- =============================================================================
 
-CREATE OR REPLACE SYNONYM students  FOR studentTb;
-CREATE OR REPLACE SYNONYM scores    FOR scoreTb;
-CREATE OR REPLACE SYNONYM subjects  FOR subjectTb;
-CREATE OR REPLACE SYNONYM questions FOR questionTb;
-CREATE OR REPLACE SYNONYM analytics FOR analyticsTb;
-CREATE OR REPLACE SYNONYM progress  FOR progressTb;
-CREATE OR REPLACE SYNONYM devices   FOR deviceTb;
-CREATE OR REPLACE SYNONYM admins    FOR adminTb;
+BEGIN
+    BEGIN EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM students  FOR studentTb'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM scores    FOR scoreTb'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM subjects  FOR subjectTb'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM questions FOR questionTb'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM analytics FOR analyticsTb'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM progress  FOR progressTb'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM devices   FOR deviceTb'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM admins    FOR adminTb'; EXCEPTION WHEN OTHERS THEN NULL; END;
+END;
+/
 
 
 -- =============================================================================
 -- 14. SAMPLE SEED DATA (for testing admin panel immediately)
 -- =============================================================================
 
--- Sample teacher
-INSERT INTO teacherTb (first_name, last_name)
-VALUES ('Mary Rose', 'Manandeg');
+-- Sample teacher (idempotent - won't duplicate on re-execution)
+MERGE INTO teacherTb t
+USING (SELECT 'Mary Rose' first_name, 'Manandeg' last_name FROM DUAL) s
+ON (t.first_name = s.first_name AND t.last_name = s.last_name)
+WHEN NOT MATCHED THEN
+  INSERT (first_name, last_name) VALUES (s.first_name, s.last_name);
 
 -- Sample admin user
 -- Default password: Admin@KOW2026
 -- IMPORTANT: Regenerate this hash with bcryptjs before production:
 --   const bcrypt = require('bcryptjs');
 --   console.log(bcrypt.hashSync('YourNewPassword', 10));
-INSERT INTO adminTb (username, password_hash, role)
-VALUES ('kow_admin', '$2b$10$exampleHashChangeBeforeUse1234567890abcdefgh', 'admin');
+MERGE INTO adminTb a
+USING (SELECT 'kow_admin' username FROM DUAL) s
+ON (a.username = s.username)
+WHEN NOT MATCHED THEN
+  INSERT (username, password_hash, role) 
+  VALUES ('kow_admin', '$2b$10$exampleHashChangeBeforeUse1234567890abcdefgh', 'admin');
 
--- Sample students
-INSERT INTO studentTb (first_name, last_name, nickname, birthday, sex_id, teacher_id, barangay_id, device_origin)
-VALUES ('Maria', 'Santos', 'Mari', TO_DATE('2020-03-15', 'YYYY-MM-DD'), 2, 1, 1, 'DEV-001');
+-- Sample students (idempotent)
+MERGE INTO studentTb s
+USING (SELECT 'Maria' first_name, 'Santos' last_name, 'Mari' nickname, TO_DATE('2020-03-15', 'YYYY-MM-DD') birthday, 2 sex_id, 1 teacher_id, 1 barangay_id, 'DEV-001' device_origin FROM DUAL) d
+ON (s.first_name = d.first_name AND s.last_name = d.last_name AND s.nickname = d.nickname)
+WHEN NOT MATCHED THEN
+  INSERT (first_name, last_name, nickname, birthday, sex_id, teacher_id, barangay_id, device_origin) 
+  VALUES (d.first_name, d.last_name, d.nickname, d.birthday, d.sex_id, d.teacher_id, d.barangay_id, d.device_origin);
 
-INSERT INTO studentTb (first_name, last_name, nickname, birthday, sex_id, teacher_id, barangay_id, device_origin)
-VALUES ('Jose', 'Reyes', 'Pepe', TO_DATE('2019-07-22', 'YYYY-MM-DD'), 1, 1, 1, 'DEV-001');
+MERGE INTO studentTb s
+USING (SELECT 'Jose' first_name, 'Reyes' last_name, 'Pepe' nickname, TO_DATE('2019-07-22', 'YYYY-MM-DD') birthday, 1 sex_id, 1 teacher_id, 1 barangay_id, 'DEV-001' device_origin FROM DUAL) d
+ON (s.first_name = d.first_name AND s.last_name = d.last_name AND s.nickname = d.nickname)
+WHEN NOT MATCHED THEN
+  INSERT (first_name, last_name, nickname, birthday, sex_id, teacher_id, barangay_id, device_origin) 
+  VALUES (d.first_name, d.last_name, d.nickname, d.birthday, d.sex_id, d.teacher_id, d.barangay_id, d.device_origin);
 
--- Sample device
-INSERT INTO deviceTb (device_uuid, device_name, registered_at)
-VALUES ('DEV-001', 'Barangay Sauyo Tablet 1', SYSDATE);
+-- Sample device (idempotent)
+MERGE INTO deviceTb d
+USING (SELECT 'DEV-001' device_uuid FROM DUAL) s
+ON (d.device_uuid = s.device_uuid)
+WHEN NOT MATCHED THEN
+  INSERT (device_uuid, device_name, registered_at) 
+  VALUES ('DEV-001', 'Barangay Sauyo Tablet 1', SYSDATE);
 
--- Sample scores
-INSERT INTO scoreTb (stud_id, subject_id, gradelvl_id, diff_id, score, max_score, passed, played_at, device_uuid)
-VALUES (1001, 1, 2, 1, 8, 10, 1, SYSDATE - 1, 'DEV-001');
+-- Sample scores (idempotent - using unique constraint on stud_id, subject_id, gradelvl_id, diff_id, played_at)
+MERGE INTO scoreTb s
+USING (SELECT 1001 stud_id, 1 subject_id, 2 gradelvl_id, 1 diff_id, 8 score, 10 max_score, 1 passed, TRUNC(SYSDATE - 1) played_at, 'DEV-001' device_uuid FROM DUAL) d
+ON (s.stud_id = d.stud_id AND s.subject_id = d.subject_id AND s.gradelvl_id = d.gradelvl_id AND s.device_uuid = d.device_uuid AND TRUNC(s.played_at) = d.played_at)
+WHEN NOT MATCHED THEN
+  INSERT (stud_id, subject_id, gradelvl_id, diff_id, score, max_score, passed, played_at, device_uuid) 
+  VALUES (d.stud_id, d.subject_id, d.gradelvl_id, d.diff_id, d.score, d.max_score, d.passed, SYSDATE - 1, d.device_uuid);
 
-INSERT INTO scoreTb (stud_id, subject_id, gradelvl_id, diff_id, score, max_score, passed, played_at, device_uuid)
-VALUES (1002, 2, 2, 1, 7, 10, 1, SYSDATE, 'DEV-001');
+MERGE INTO scoreTb s
+USING (SELECT 1002 stud_id, 2 subject_id, 2 gradelvl_id, 1 diff_id, 7 score, 10 max_score, 1 passed, TRUNC(SYSDATE) played_at, 'DEV-001' device_uuid FROM DUAL) d
+ON (s.stud_id = d.stud_id AND s.subject_id = d.subject_id AND s.gradelvl_id = d.gradelvl_id AND s.device_uuid = d.device_uuid AND TRUNC(s.played_at) = d.played_at)
+WHEN NOT MATCHED THEN
+  INSERT (stud_id, subject_id, gradelvl_id, diff_id, score, max_score, passed, played_at, device_uuid) 
+  VALUES (d.stud_id, d.subject_id, d.gradelvl_id, d.diff_id, d.score, d.max_score, d.passed, SYSDATE, d.device_uuid);
 
--- Sample questions (Mathematics, Punla, Easy)
-INSERT INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt)
-VALUES (1, 1, 1, 'What is 1 + 1?', '1', '2', '3', '4', 'B');
+-- Sample questions (idempotent - won't insert same question twice)
+-- Mathematics, Punla, Easy
+MERGE INTO questionTb q
+USING (SELECT 1 subject_id, 1 gradelvl_id, 1 diff_id, 'What is 1 + 1?' question_txt, '1' option_a, '2' option_b, '3' option_c, '4' option_d, 'B' correct_opt FROM DUAL) s
+ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
+WHEN NOT MATCHED THEN
+  INSERT (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt) 
+  VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
 
-INSERT INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt)
-VALUES (1, 1, 1, 'How many fingers on one hand?', '3', '4', '5', '6', 'C');
+MERGE INTO questionTb q
+USING (SELECT 1 subject_id, 1 gradelvl_id, 1 diff_id, 'How many fingers on one hand?' question_txt, '3' option_a, '4' option_b, '5' option_c, '6' option_d, 'C' correct_opt FROM DUAL) s
+ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
+WHEN NOT MATCHED THEN
+  INSERT (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt) 
+  VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
 
--- Sample questions (English, Punla, Easy)
-INSERT INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt)
-VALUES (4, 1, 1, 'What color is the sky?', 'Red', 'Green', 'Blue', 'Yellow', 'C');
+-- English, Punla, Easy
+MERGE INTO questionTb q
+USING (SELECT 4 subject_id, 1 gradelvl_id, 1 diff_id, 'What color is the sky?' question_txt, 'Red' option_a, 'Green' option_b, 'Blue' option_c, 'Yellow' option_d, 'C' correct_opt FROM DUAL) s
+ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
+WHEN NOT MATCHED THEN
+  INSERT (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt) 
+  VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
 
--- Initial content version
-INSERT INTO contentVersionTb (version_tag, change_note)
-VALUES ('v1', 'Initial schema load');
+-- Initial content version (idempotent)
+MERGE INTO contentVersionTb c
+USING (SELECT 'v1' version_tag FROM DUAL) s
+ON (c.version_tag = s.version_tag)
+WHEN NOT MATCHED THEN
+  INSERT (version_tag, change_note) VALUES (s.version_tag, 'Initial schema load');
 
 COMMIT;
 
@@ -854,23 +851,33 @@ COMMIT;
 SELECT 'Tables:     ' || COUNT(*) AS status FROM user_tables
 WHERE table_name IN (
     'STUDENTTB','SCORETB','SUBJECTTB','GRADELVLTB','DIFFTB',
-    'BARANGAYTB','SEXTB','TEACHERTB','CUSTOMTB','ANALYTICSTB',
+    'AREATB','BARANGAYTB','SEXTB','TEACHERTB','CUSTOMTB','ANALYTICSTB',
     'TIMEPLTB','PROGRESSTB','QUESTIONTB','CONTENTVERSIONTB',
     'SYNCLOGTB','AUDITTB','DEVICETB','ADMINTB'
 );
--- Expected: 18
+-- Expected: 19
 
 SELECT 'Sequences:  ' || COUNT(*) AS status FROM user_sequences;
+-- Expected: 11
+
+SELECT 'Sequences(KOW): ' || COUNT(*) AS status FROM user_sequences
+WHERE sequence_name IN (
+    'SEQ_STUD_ID','SEQ_SCORE_ID','SEQ_TEACHER_ID','SEQ_ANALYTICS_ID','SEQ_TIMEPLAY_ID',
+    'SEQ_DEVICE_ID','SEQ_ADMIN_ID','SEQ_QUESTION_ID','SEQ_SYNC_ID','SEQ_CONTENT_VER','SEQ_AUDIT_ID'
+);
 -- Expected: 11
 
 SELECT 'Views:      ' || COUNT(*) AS status FROM user_views;
 -- Expected: 4
 
-SELECT 'Procedures: ' || COUNT(*) AS status FROM user_procedures WHERE object_type = 'PROCEDURE';
+SELECT 'Procedures: ' || COUNT(*) AS status FROM user_procedures
+WHERE object_type = 'PROCEDURE'
+    AND object_name IN ('SP_UPSERT_STUDENT','SP_UPLOAD_SCORE','SP_REFRESH_ANALYTICS','SP_BUMP_CONTENT_VERSION');
 -- Expected: 4
 
-SELECT 'Triggers:   ' || COUNT(*) AS status FROM user_triggers;
--- Expected: 13  (10 auto-increment + trg_student_audit + trg_student_updated + trg_question_updated)
+SELECT 'Triggers(KOW): ' || COUNT(*) AS status FROM user_triggers
+WHERE trigger_name IN ('TRG_STUDENT_AUDIT','TRG_STUDENT_UPDATED','TRG_QUESTION_UPDATED');
+-- Expected: 3 if CREATE TRIGGER is granted; otherwise 0
 
 -- =============================================================================
 -- END OF SCHEMA

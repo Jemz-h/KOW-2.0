@@ -1,4 +1,5 @@
-require('dotenv').config();
+const { loadEnv } = require('./loadEnv');
+loadEnv();
 
 const oracleProvider = require('./providers/oracleProvider');
 const sqliteProvider = require('./providers/sqliteProvider');
@@ -58,6 +59,10 @@ function getDriver() {
   return provider.driver;
 }
 
+function getActiveClient() {
+  return activeClient;
+}
+
 async function closePoolAndExit() {
   console.log('\nClosing database provider');
   try {
@@ -79,5 +84,5 @@ module.exports = {
   isOracle,
   isSqlite,
   getDriver,
-  client: activeClient
+  getActiveClient,
 };
