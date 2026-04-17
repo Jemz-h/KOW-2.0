@@ -51,10 +51,8 @@ class LogoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      top: top,
-      left: 0,
-      right: 0,
+    return Transform.translate(
+      offset: Offset(0, top),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [

@@ -143,9 +143,9 @@ void showProfileDialog(BuildContext context) {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _SexAvatar(assetPath: 'assets/misc/boy.svg', selected: selectedSex == 0, checkAsset: 'assets/icons/check.png', size: avatarSize, onTap: () => setState(() => selectedSex = 0)),
+                    _SexAvatar(assetPath: 'assets/misc/boy.png', selected: selectedSex == 0, checkAsset: 'assets/icons/check.png', size: avatarSize, onTap: () => setState(() => selectedSex = 0)),
                     SizedBox(width: 20 * scale),
-                    _SexAvatar(assetPath: 'assets/misc/girl.svg', selected: selectedSex == 1, checkAsset: 'assets/icons/check.png', size: avatarSize, onTap: () => setState(() => selectedSex = 1)),
+                    _SexAvatar(assetPath: 'assets/misc/girl.png', selected: selectedSex == 1, checkAsset: 'assets/icons/check.png', size: avatarSize, onTap: () => setState(() => selectedSex = 1)),
                   ],
                 ),
                 SizedBox(height: spacing * 1.5),
@@ -234,7 +234,7 @@ class _SexAvatar extends StatelessWidget {
                           Icon(Icons.person, size: size * 0.5, color: Colors.grey[400])),
             ),
           ),
-          if (selected) Positioned.fill(child: Container(decoration: BoxDecoration(color: Colors.black.withOpacity(0.35), borderRadius: BorderRadius.circular(14)))),
+          if (selected) Positioned.fill(child: Container(decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.35), borderRadius: BorderRadius.circular(14)))),
           if (selected) Positioned.fill(child: Center(child: Image.asset(checkAsset, width: size * 0.55, height: size * 0.55, fit: BoxFit.contain, errorBuilder: (context, error, stackTrace) => Icon(Icons.check_circle, color: const Color(0xFF3DBE64), size: size * 0.55)))),
         ],
       ),
