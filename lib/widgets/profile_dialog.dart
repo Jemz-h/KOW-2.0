@@ -234,7 +234,7 @@ class _SexAvatar extends StatelessWidget {
                           Icon(Icons.person, size: size * 0.5, color: Colors.grey[400])),
             ),
           ),
-          if (selected) Positioned.fill(child: Container(decoration: BoxDecoration(color: Colors.black.withOpacity(0.35), borderRadius: BorderRadius.circular(14)))),
+          if (selected) Positioned.fill(child: Container(decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.35), borderRadius: BorderRadius.circular(14)))),
           if (selected) Positioned.fill(child: Center(child: Image.asset(checkAsset, width: size * 0.55, height: size * 0.55, fit: BoxFit.contain, errorBuilder: (context, error, stackTrace) => Icon(Icons.check_circle, color: const Color(0xFF3DBE64), size: size * 0.55)))),
         ],
       ),

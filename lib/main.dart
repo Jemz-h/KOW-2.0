@@ -1,12 +1,44 @@
+import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // ← add this
 
 import 'screens/start.dart';
 
 void main() {
-  runApp(const MyApp());
+  // 1. Configure fullscreen / navigation bar behavior globally
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky); // nav bar hides, shows on swipe
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      systemNavigationBarColor: Colors.transparent,
+    ),
+  );
+
+  // 2. Error handling (keep your existing code)
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    Zone.current.handleUncaughtError(
+      details.exception,
+      details.stack ?? StackTrace.current,
+    );
+  };
+
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    debugPrint('Unhandled platform error: $error');
+    debugPrintStack(stackTrace: stack);
+    return true;
+  };
+
+  runZonedGuarded(
+    () => runApp(const MyApp()),
+    (Object error, StackTrace stack) {
+      debugPrint('Unhandled zoned error: $error');
+      debugPrintStack(stackTrace: stack);
+    },
+  );
 }
 
-/// App root widget that wires theme and landing screen.
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -14,7 +46,6 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final baseTheme = ThemeData(useMaterial3: true);
     return MaterialApp(
-      // Uncomment the comment below to remove the debug ribbon on the upper right
       // debugShowCheckedModeBanner: false,
       theme: ThemeData(
         fontFamily: 'SuperCartoon',

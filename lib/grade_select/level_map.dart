@@ -336,7 +336,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
 
                   // ▶ Play
                   _TapIcon(
-                    onTap: () { /* TODO: navigate to game */ },
+                    onTap: () { /* game navigation hook */ },
                     child: SvgPicture.asset(
                       'assets/icons/play.svg',
                       width: kPlaySize, height: kPlaySize,
