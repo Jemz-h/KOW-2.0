@@ -380,6 +380,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
 
                   // ▶ Play
                   _TapIcon(
+<<<<<<< HEAD
                     onTap: () {
                       if (widget.grade.toUpperCase() == 'COMING') {
                         _showNoQuestionsDialog();
@@ -398,6 +399,9 @@ class _LevelMapScreenState extends State<LevelMapScreen>
                         transitionDuration: const Duration(milliseconds: 300),
                       ));
                     },
+=======
+                    onTap: () { /* game navigation hook */ },
+>>>>>>> 50596e6deeea80c069a5998050186a37243c272b
                     child: SvgPicture.asset(
                       'assets/icons/play.svg',
                       width: kPlaySize, height: kPlaySize,

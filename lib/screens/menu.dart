@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:kow/grade_select/grade.dart';
+import 'package:auto_size_text/auto_size_text.dart';
+import 'package:flutter/services.dart'; 
 
 import '../widgets/menu_button.dart';
 import '../widgets/mock_background.dart';
@@ -149,6 +151,27 @@ class _MenuScreenState extends State<MenuScreen>
             double sx(double px) => px * scale;
             double sy(double px) => px * scale;
 
+            Widget _buildLogoRow(double h, double contentW, double Function(double) sx) {
+              return Positioned(
+                top: sx(h),
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Transform.scale(
+                    scale: 2.2,
+                    alignment: Alignment.topCenter,
+                    child: SizedBox(
+                      width: contentW,
+                      child: LogoRow(
+                        top: 0,
+                        width: contentW,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
+
             return SafeArea(
               child: Center(
                 child: SizedBox(
@@ -158,11 +181,15 @@ class _MenuScreenState extends State<MenuScreen>
                     clipBehavior: Clip.none,
                     children: [
                       // App logo row at the top
+<<<<<<< HEAD
                       Positioned(
                         left: sx(20), top: sy(20),
                         width: sx(372), height: sy(110),
                         child: LogoRow(width: sx(372)),
                       ),
+=======
+                      _buildLogoRow(20, sx(372), sx),
+>>>>>>> 50596e6deeea80c069a5998050186a37243c272b
                       // Main title — animated fade-in, slide-up, and idle floating
                       Positioned(
                         top: designH * 0.14,
@@ -174,6 +201,7 @@ class _MenuScreenState extends State<MenuScreen>
                             position: _titleSlide,
                             child: ScaleTransition(
                               scale: _idleTitleScale,
+<<<<<<< HEAD
                               child: FittedBox(
                                 fit: BoxFit.scaleDown,
                                 child: Text(
@@ -193,6 +221,25 @@ class _MenuScreenState extends State<MenuScreen>
                                       ),
                                     ],
                                   ),
+=======
+                              child: Text(
+                                'KARUNUNGAN\nON WHEELS',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontFamily: 'SuperCartoon',
+                                  fontSize: isTablet ? 70 : contentW * 0.13,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: (isTablet ? 28 : contentW * 0.065) * 0.1,
+                                  height: 1.2,
+                                  color: Colors.white,
+                                  shadows: const [
+                                    Shadow(
+                                      blurRadius: 4,
+                                      color: Colors.black54,
+                                      offset: Offset(2, 2),
+                                    ),
+                                  ],
+>>>>>>> 50596e6deeea80c069a5998050186a37243c272b
                                 ),
                               ),
                             ),
@@ -202,37 +249,41 @@ class _MenuScreenState extends State<MenuScreen>
 
                       // Subtitle — animated fade-in, slide-up, and idle floating (slight delay)
                       Positioned(
-                        top: designH * 0.28,
-                        left: 30,
-                        right: 30,
-                        child: FadeTransition(
-                          opacity: _subtitleOpacity,
-                          child: SlideTransition(
-                            position: _subtitleSlide,
-                            child: ScaleTransition(
-                              scale: _idleSubtitleScale,
-                              child: Text(
-                                '"ENHANCING FUNCTIONAL LITERACY THROUGH LOCALLY DEVELOPED INSTRUCTIONAL MATERIALS"',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontFamily: 'SuperCartoon',
-                                  fontSize: contentW * 0.045,
-                                  fontWeight: FontWeight.w800,
-                                  height: 1.25,
-                                  color: const Color(0xFFFFE34D),
-                                  shadows: const [
-                                    Shadow(
-                                      blurRadius: 4,
-                                      color: Colors.black45,
-                                      offset: Offset(1, 1),
+                            top: designH * 0.28,
+                            left: 10,
+                            right: 10,
+                            child: FadeTransition(
+                              opacity: _subtitleOpacity,
+                              child: SlideTransition(
+                                position: _subtitleSlide,
+                                child: ScaleTransition(
+                                  scale: _idleSubtitleScale,
+                                  child: AutoSizeText(
+                                    '"ENHANCING FUNCTIONAL LITERACY THROUGH LOCALLY DEVELOPED INSTRUCTIONAL MATERIALS"',
+                                    textAlign: TextAlign.center,
+                                    maxLines: 2,
+                                    minFontSize: 12,
+                                    stepGranularity: 0.1,
+                                    style: TextStyle(
+                                      fontFamily: 'SuperCartoon',
+                                      fontSize: isTablet ? 28 : contentW * 0.065,
+                                      letterSpacing: (isTablet ? 28 : contentW * 0.065) * 0.08,
+                                      fontWeight: FontWeight.w800,
+                                      height: 1.1,
+                                      color: const Color(0xFFFFE34D),
+                                      shadows: const [
+                                        Shadow(
+                                          blurRadius: 2,
+                                          color: Colors.black,
+                                          offset: Offset(1.5, 1.5),
+                                        ),
+                                      ],
                                     ),
-                                  ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                      ),
                       // Mascot/character image in the center
                       Positioned(
                         left: sx(80), right: sx(80), top: sy(320), height: sy(280),

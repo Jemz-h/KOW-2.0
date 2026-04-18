@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
   "name": "backend",
   "version": "1.0.0",
   "description": "",
@@ -29,5 +30,26 @@
   "devDependencies": {
     "cross-env": "^10.1.0",
     "nodemon": "^3.1.14"
+=======
+  "name": "kow-backend",
+  "version": "1.0.0",
+  "description": "KOW backend API with Oracle online and SQLite offline modes",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.7.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "oracledb": "^6.7.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+>>>>>>> 50596e6deeea80c069a5998050186a37243c272b
   }
 }
