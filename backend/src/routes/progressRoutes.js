@@ -7,6 +7,7 @@ const {
 const router = express.Router();
 
 router.post('/', createOrUpdateProgress);
+router.get('/user/:studentId', getProgress);
 router.get('/:studentId', getProgress);
 
 module.exports = router;

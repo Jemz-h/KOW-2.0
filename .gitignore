@@ -64,8 +64,13 @@ app.*.map.json
 
 # Local work logs (not committed)
 /md/
+/backend/node_modules/
+/backend/.env.development
+/backend/.env.production
+/docs/
+IMPLEMENTATION_STATUS.md
 
 # Backend/
 backend/node_modules/
 backend/.env
-backend/.env.local
+backend/.env.development

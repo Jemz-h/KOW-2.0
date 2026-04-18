@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'api_service.dart';
 import 'grade_select/level_map.dart';
+import 'widgets/mock_background.dart';
 
 // ╔══════════════════════════════════════════════════════════════════════════╗
 // ║  LAYOUT & SIZE CONSTANTS                                                ║
@@ -495,12 +497,24 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
   int? _selectedIdx;
   bool _showResult    = false;
   bool _showDonePopup = false;
+  bool _isSubmittingScore = false;
+  bool _hasQuestionInteraction = false;
+  List<QuizQuestion>? _remoteQuestions;
+  String? _quizErrorMessage;
+  late final DateTime _sessionStartedAt;
 
-  late final AnimationController _fadeCtrl =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
+  late final AnimationController _fadeCtrl;
 
-  // ── _qs returns the correct question list for ALL three difficulties ──────
+  // ── _qs returns API questions when available, otherwise local fallback ────
   List<QuizQuestion> get _qs {
+    if (_remoteQuestions != null && _remoteQuestions!.isNotEmpty) {
+      return _remoteQuestions!;
+    }
+
+    return _fallbackQuestions;
+  }
+
+  List<QuizQuestion> get _fallbackQuestions {
     switch (widget.difficulty) {
       case 'AVERAGE': return kAverageQuestions;
       case 'HARD':    return kHardQuestions;   // ← HARD now has its own 5 questions
@@ -529,12 +543,140 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
   }
 
   @override
-  void dispose() { _fadeCtrl.dispose(); super.dispose(); }
+  void initState() {
+    super.initState();
+    _fadeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    ApiService.beginLearningSession();
+    _sessionStartedAt = DateTime.now();
+    _loadQuestions();
+  }
+
+  @override
+  void dispose() {
+    ApiService.endLearningSession();
+    _fadeCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadQuestions() async {
+    try {
+      final rows = await ApiService.getQuestions(
+        grade: widget.grade,
+        subject: widget.subject,
+        difficulty: widget.difficulty,
+      );
+
+      if (!mounted) return;
+
+      // Keep quiz progression stable if user already started interacting.
+      if (_hasQuestionInteraction || _qi > 0 || _showResult) {
+        return;
+      }
+
+      if (rows.isEmpty) {
+        setState(() {
+          _quizErrorMessage = 'There are no questions available for this grade and subject yet. Please try another selection.';
+          _remoteQuestions = const [];
+        });
+        return;
+      }
+
+      // Shuffle questions to prevent repetition
+      final shuffledRows = List.from(rows);
+      shuffledRows.shuffle();
+
+      setState(() {
+        _quizErrorMessage = null;
+        _remoteQuestions = List.generate(shuffledRows.length, (index) {
+          final row = shuffledRows[index];
+          final choices = List<String>.from(row['choices'] as List<dynamic>);
+
+          return QuizQuestion(
+            questionNumber: 'QUESTION ${index + 1}',
+            imagePath: null,
+            prompt: (row['prompt'] as String?) ?? '',
+            wordType: null,
+            subPrompt: (row['prompt'] as String?) ?? '',
+            choices: choices,
+            correctIndex: (row['correctIndex'] as num?)?.toInt() ?? 0,
+            funFact: (row['funFact'] as String?) ?? '',
+          );
+        });
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+
+      if (e.statusCode == 404) {
+        setState(() {
+          _quizErrorMessage = 'There are no questions available for this grade and subject yet. Please try another selection.';
+          _remoteQuestions = const [];
+        });
+        return;
+      }
+
+      rethrow;
+    } catch (_) {
+      // Keep local fallback questions without interrupting gameplay.
+    }
+  }
+
+  Future<void> _submitFinalScore() async {
+    if (_isSubmittingScore) {
+      return;
+    }
+
+    final studentId = ApiService.currentStudentId;
+    if (studentId == null || studentId <= 0) {
+      return;
+    }
+
+    _isSubmittingScore = true;
+    try {
+      final playedAt = DateTime.now().toIso8601String();
+      await ApiService.submitScore(
+        studentId: studentId,
+        grade: widget.grade,
+        subject: widget.subject,
+        difficulty: widget.difficulty,
+        score: _score,
+        total: _qs.length,
+        playedAt: playedAt,
+      );
+
+      final maxScore = _qs.isNotEmpty ? _qs.length : 1;
+      final passed = (_score / maxScore) >= 0.7;
+      final diffId = switch (widget.difficulty) {
+        'EASY' => 1,
+        'AVERAGE' => 2,
+        'HARD' => 3,
+        _ => null,
+      };
+
+      final timeSpentSeconds = DateTime.now().difference(_sessionStartedAt).inSeconds;
+
+      await ApiService.saveProgress(
+        studentId: studentId,
+        grade: widget.grade,
+        subject: widget.subject,
+        highestDiffPassed: passed ? diffId : null,
+        totalTimePlayed: timeSpentSeconds < 0 ? 0 : timeSpentSeconds,
+        lastPlayedAt: playedAt,
+      );
+    } catch (_) {
+      // Keep gameplay uninterrupted if score sync fails.
+    } finally {
+      _isSubmittingScore = false;
+    }
+  }
 
   // ── Game logic ────────────────────────────────────────────────────────────
   void _onAnswer(int idx) {
     if (_selectedIdx != null) return;
     setState(() {
+      _hasQuestionInteraction = true;
       _selectedIdx = idx;
       if (idx == _q.correctIndex) _score++;
     });
@@ -547,7 +689,10 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
 
   void _onSkip() {
     if (_skipsLeft <= 0 || _selectedIdx != null) return;
-    setState(() => _skipsLeft--);
+    setState(() {
+      _hasQuestionInteraction = true;
+      _skipsLeft--;
+    });
     _advance();
   }
 
@@ -565,6 +710,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
       });
       _fadeCtrl.reset();
     } else {
+      _submitFinalScore();
       setState(() => _showDonePopup = true);  // ← popup fires for all difficulties
     }
   }
@@ -594,6 +740,92 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
     final sw = MediaQuery.of(context).size.width;
     final sh = MediaQuery.of(context).size.height;
 
+    if (_quizErrorMessage != null) {
+      return Scaffold(
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            ValueListenableBuilder<String>(
+              valueListenable: selectedThemeNotifier,
+              builder: (context, theme, _) {
+                final bgAsset = themeBackgrounds[theme] ?? themeBackgrounds['space']!;
+                return Image.asset(
+                  bgAsset,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) =>
+                      Container(color: const Color(0xFF0D1B2E)),
+                );
+              },
+            ),
+            SafeArea(
+              child: Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: sw * 0.08),
+                  child: Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: sw * 0.06,
+                      vertical: sh * 0.04,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.96),
+                      borderRadius: BorderRadius.circular(sw * 0.05),
+                      boxShadow: const [BoxShadow(
+                        color: Colors.black26,
+                        blurRadius: 14,
+                        offset: Offset(0, 6),
+                      )],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.hourglass_empty_rounded,
+                            size: 64, color: Color(0xFF2A87B0)),
+                        SizedBox(height: sh * 0.02),
+                        const Text(
+                          'No Questions Available',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: 'SuperCartoon',
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1A2340),
+                          ),
+                        ),
+                        SizedBox(height: sh * 0.015),
+                        Text(
+                          _quizErrorMessage!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontFamily: 'SuperCartoon',
+                            fontSize: 18,
+                            color: Color(0xFF444466),
+                            height: 1.4,
+                          ),
+                        ),
+                        SizedBox(height: sh * 0.03),
+                        ElevatedButton(
+                          onPressed: () => Navigator.maybePop(context),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2A87B0),
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: sw * 0.08,
+                              vertical: sh * 0.015,
+                            ),
+                          ),
+                          child: const Text('Go Back'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final double cardW      = _isEasy ? kCardW      : kCardAvgW;
     final double cardMinH   = _isEasy ? kCardMinH   : kCardAvgMinH;
     final double cardPadH   = _isEasy ? kCardPadH   : kCardAvgPadH;
@@ -606,10 +838,18 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
         fit: StackFit.expand,
         children: [
 
-          Image.asset('assets/themes/bg_spc_w_cloud.png',
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) =>
-                  Container(color: const Color(0xFF0D1B2E))),
+          ValueListenableBuilder<String>(
+            valueListenable: selectedThemeNotifier,
+            builder: (context, theme, _) {
+              final bgAsset = themeBackgrounds[theme] ?? themeBackgrounds['space']!;
+              return Image.asset(
+                bgAsset,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) =>
+                    Container(color: const Color(0xFF0D1B2E)),
+              );
+            },
+          ),
 
           SafeArea(
             child: Column(
@@ -826,7 +1066,12 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => QuizScreen(difficulty: nextDifficulty),
+                    builder: (_) => QuizScreen(
+                      difficulty: nextDifficulty,
+                      grade: widget.grade,
+                      subject: widget.subject,
+                      gradeImg: widget.gradeImg,
+                    ),
                   ),
                 );
               },
@@ -998,24 +1243,30 @@ class _LevelCompletePopup extends StatefulWidget {
 class _LevelCompletePopupState extends State<_LevelCompletePopup>
     with SingleTickerProviderStateMixin {
 
-  late final AnimationController _ctrl = AnimationController(
-      vsync: this, duration: Duration(milliseconds: kPopSlideMs));
-
-  late final Animation<double> _fade = CurvedAnimation(
-      parent: _ctrl, curve: Curves.easeOut);
-
-  late final Animation<double> _scaleAnim = Tween<double>(begin: 0.88, end: 1.0)
-      .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
+  late final AnimationController _ctrl;
+  late final Animation<double> _fade;
+  late final Animation<double> _scaleAnim;
 
   @override
-  void initState() { super.initState(); _ctrl.forward(); }
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: kPopSlideMs),
+    );
+    _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
+    _scaleAnim = Tween<double>(begin: 0.88, end: 1.0).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack),
+    );
+    _ctrl.forward();
+  }
 
   @override
   void dispose() { _ctrl.dispose(); super.dispose(); }
 
   String get _medal {
     if (widget.score == widget.total) return 'assets/icons/gold.svg';
-    if (widget.score >= 3)            return 'assets/iconds/silver.svg';
+    if (widget.score >= 3)            return 'assets/icons/silver.svg';
     return 'assets/icons/bronze.svg';
   }
 
@@ -1059,10 +1310,18 @@ class _LevelCompletePopupState extends State<_LevelCompletePopup>
       child: Stack(children: [
 
         Positioned.fill(
-          child: Image.asset('assets/themes/bg_spc_w_cloud.png',
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) =>
-                Container(color: const Color(0xFF0A1528))),
+          child: ValueListenableBuilder<String>(
+            valueListenable: selectedThemeNotifier,
+            builder: (context, theme, _) {
+              final bgAsset = themeBackgrounds[theme] ?? themeBackgrounds['space']!;
+              return Image.asset(
+                bgAsset,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) =>
+                    Container(color: const Color(0xFF0A1528)),
+              );
+            },
+          ),
         ),
 
         Positioned.fill(
@@ -1332,11 +1591,17 @@ class _PopButton extends StatefulWidget {
 class _PopButtonState extends State<_PopButton>
     with SingleTickerProviderStateMixin {
 
-  late final AnimationController _ctrl =
-      AnimationController(vsync: this, duration: kTapPressDur);
-  late final Animation<double> _scale =
-      Tween<double>(begin: 1.0, end: kTapPressScale)
-          .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: kTapPressDur);
+    _scale = Tween<double>(begin: 1.0, end: kTapPressScale).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+  }
 
   @override void dispose() { _ctrl.dispose(); super.dispose(); }
 
@@ -1430,15 +1695,22 @@ class _SkipButton extends StatefulWidget {
 
 class _SkipButtonState extends State<_SkipButton>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl =
-      AnimationController(vsync: this, duration: kTapPressDur);
-  late final Animation<double> _scale =
-      Tween<double>(begin: 1.0, end: kTapPressScale)
-          .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
-  late final Animation<Color?> _color = ColorTween(
-    begin: const Color(0xFFB6D5F0),
-    end:   const Color(0xFF8BBFE8),
-  ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+  late final Animation<Color?> _color;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: kTapPressDur);
+    _scale = Tween<double>(begin: 1.0, end: kTapPressScale).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+    _color = ColorTween(
+      begin: const Color(0xFFB6D5F0),
+      end: const Color(0xFF8BBFE8),
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+  }
 
   @override void dispose() { _ctrl.dispose(); super.dispose(); }
   bool get _canSkip => widget.skipsLeft > 0 && !widget.disabled;
@@ -1488,15 +1760,22 @@ class _ContinueButton extends StatefulWidget {
 
 class _ContinueButtonState extends State<_ContinueButton>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl =
-      AnimationController(vsync: this, duration: kTapPressDur);
-  late final Animation<double> _scale =
-      Tween<double>(begin: 1.0, end: kTapPressScale)
-          .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
-  late final Animation<Color?> _color = ColorTween(
-    begin: const Color.fromARGB(255, 117, 240, 117),
-    end:   const Color.fromARGB(255, 147, 199, 147),
-  ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+  late final Animation<Color?> _color;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: kTapPressDur);
+    _scale = Tween<double>(begin: 1.0, end: kTapPressScale).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+    _color = ColorTween(
+      begin: const Color.fromARGB(255, 117, 240, 117),
+      end: const Color.fromARGB(255, 147, 199, 147),
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+  }
 
   @override void dispose() { _ctrl.dispose(); super.dispose(); }
 
@@ -1540,11 +1819,17 @@ class _TapIcon extends StatefulWidget {
 
 class _TapIconState extends State<_TapIcon>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: kTapPressDur);
-  late final Animation<double> _s =
-      Tween<double>(begin: 1.0, end: kTapPressScale)
-          .animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut));
+  late final AnimationController _c;
+  late final Animation<double> _s;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(vsync: this, duration: kTapPressDur);
+    _s = Tween<double>(begin: 1.0, end: kTapPressScale).animate(
+      CurvedAnimation(parent: _c, curve: Curves.easeInOut),
+    );
+  }
   @override void dispose() { _c.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) => GestureDetector(

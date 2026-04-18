@@ -44,7 +44,7 @@ class MockBackground extends StatelessWidget {
 
 /// Shared logo row displayed at the top of landing/menu screens.
 class LogoRow extends StatelessWidget {
-  const LogoRow({super.key, required this.top, required this.width});
+  const LogoRow({super.key, this.top = 0, required this.width});
 
   final double top;
   final double width;

@@ -1,8 +1,8 @@
 const {
   upsertProgress,
-  getProgressByStudent,
 } = require('../repositories/progress.repository');
 const { dbMode } = require('../config/env');
+const db = require('../config/db');
 
 // @desc    Create or update progress
 // @route   POST /api/progress
@@ -11,6 +11,11 @@ async function createOrUpdateProgress(req, res, next) {
   try {
     const {
       studentId,
+      grade,
+      subject,
+      highest_diff_passed,
+      total_time_played,
+      last_played_at,
       levelId,
       score = 0,
       completed = false,
@@ -18,9 +23,165 @@ async function createOrUpdateProgress(req, res, next) {
       diffId,
     } = req.body;
 
-    if (!studentId || !levelId) {
+    if (!studentId) {
       return res.status(400).json({
-        message: 'studentId and levelId are required.',
+        message: 'studentId is required.',
+      });
+    }
+
+    const hasNamePayload =
+      grade !== undefined ||
+      subject !== undefined ||
+      highest_diff_passed !== undefined ||
+      total_time_played !== undefined ||
+      last_played_at !== undefined;
+
+    if (hasNamePayload) {
+      if (!grade || !subject) {
+        return res.status(400).json({
+          message: 'grade and subject are required when using progress payload by names.',
+        });
+      }
+
+      const mapping = await db.execute(
+        `SELECT g.gradelvl_id,
+                s.subject_id
+         FROM gradelvlTb g
+         CROSS JOIN subjectTb s
+         WHERE UPPER(g.gradelvl) = UPPER(:grade)
+           AND UPPER(s.subject) = UPPER(:subject)`,
+        {
+          grade: String(grade),
+          subject: String(subject),
+        }
+      );
+
+      if (!mapping.rows.length) {
+        return res.status(404).json({
+          message: 'grade or subject not found.',
+        });
+      }
+
+      const mapRow = mapping.rows[0];
+      const mappedGradeLevelId = Number(mapRow.GRADELVL_ID ?? mapRow.gradelvl_id);
+      const mappedSubjectId = Number(mapRow.SUBJECT_ID ?? mapRow.subject_id);
+      const numericStudentId = Number(studentId);
+      const highestDiffPassed = Math.max(
+        0,
+        Number(highest_diff_passed ?? diffId ?? 0) || 0
+      );
+      const totalTimePlayed = Math.max(
+        0,
+        Number(total_time_played ?? 0) || 0
+      );
+      const playedAt = last_played_at || new Date().toISOString();
+
+      if (db.isOracle()) {
+        await db.execute(
+          `MERGE INTO progressTb p
+           USING (
+             SELECT :studentId AS stud_id,
+                    :subjectId AS subject_id,
+                    :gradeLevelId AS gradelvl_id,
+                    :highestDiffPassed AS highest_diff_passed,
+                    :totalTimePlayed AS total_time_played,
+                    :playedAt AS played_at
+             FROM DUAL
+           ) src
+           ON (
+             p.stud_id = src.stud_id
+             AND p.subject_id = src.subject_id
+             AND p.gradelvl_id = src.gradelvl_id
+           )
+           WHEN MATCHED THEN
+             UPDATE SET
+               p.highest_diff_passed = GREATEST(NVL(p.highest_diff_passed, 0), src.highest_diff_passed),
+               p.total_time_played = NVL(p.total_time_played, 0) + NVL(src.total_time_played, 0),
+               p.last_played_at = TO_DATE(SUBSTR(REPLACE(src.played_at, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
+           WHEN NOT MATCHED THEN
+             INSERT (
+               progress_id,
+               stud_id,
+               subject_id,
+               gradelvl_id,
+               highest_diff_passed,
+               total_time_played,
+               last_played_at
+             )
+             VALUES (
+               seq_score_id.NEXTVAL,
+               src.stud_id,
+               src.subject_id,
+               src.gradelvl_id,
+               src.highest_diff_passed,
+               src.total_time_played,
+               TO_DATE(SUBSTR(REPLACE(src.played_at, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
+             )`,
+          {
+            studentId: numericStudentId,
+            subjectId: mappedSubjectId,
+            gradeLevelId: mappedGradeLevelId,
+            highestDiffPassed,
+            totalTimePlayed,
+            playedAt,
+          },
+          { autoCommit: true }
+        );
+      } else {
+        await db.execute(
+          `INSERT INTO progressTb (
+             stud_id,
+             subject_id,
+             gradelvl_id,
+             highest_diff_passed,
+             total_time_played,
+             last_played_at
+           )
+           VALUES (
+             :studentId,
+             :subjectId,
+             :gradeLevelId,
+             :highestDiffPassed,
+             :totalTimePlayed,
+             :playedAt
+           )
+           ON CONFLICT (stud_id, subject_id, gradelvl_id)
+           DO UPDATE SET
+             highest_diff_passed = CASE
+               WHEN excluded.highest_diff_passed > COALESCE(progressTb.highest_diff_passed, 0)
+                 THEN excluded.highest_diff_passed
+               ELSE progressTb.highest_diff_passed
+             END,
+             total_time_played = COALESCE(progressTb.total_time_played, 0) + COALESCE(excluded.total_time_played, 0),
+             last_played_at = excluded.last_played_at`,
+          {
+            studentId: numericStudentId,
+            subjectId: mappedSubjectId,
+            gradeLevelId: mappedGradeLevelId,
+            highestDiffPassed,
+            totalTimePlayed,
+            playedAt,
+          },
+          { autoCommit: true }
+        );
+      }
+
+      return res.status(200).json({
+        message: 'Progress saved.',
+        data: {
+          studentId: numericStudentId,
+          grade,
+          subject,
+          highest_diff_passed: highestDiffPassed,
+          total_time_played: totalTimePlayed,
+          last_played_at: playedAt,
+        },
+      });
+    }
+
+    if (!levelId) {
+      return res.status(400).json({
+        message: 'levelId is required for legacy progress payload.',
       });
     }
 
@@ -59,8 +220,28 @@ async function createOrUpdateProgress(req, res, next) {
 // @access  Public
 async function getProgress(req, res, next) {
   try {
-    const rows = await getProgressByStudent(String(req.params.studentId));
-    return res.status(200).json({ count: rows.length, data: rows });
+    const completedExpr = db.isOracle()
+      ? 'CASE WHEN NVL(p.highest_diff_passed, 0) > 0 THEN 1 ELSE 0 END'
+      : 'CASE WHEN COALESCE(p.highest_diff_passed, 0) > 0 THEN 1 ELSE 0 END';
+
+    const rows = await db.execute(
+      `SELECT p.stud_id,
+              p.subject_id,
+              p.gradelvl_id,
+              p.highest_diff_passed,
+              p.total_time_played,
+              p.last_played_at,
+              s.subject,
+              g.gradelvl,
+              ${completedExpr} AS completed
+       FROM progressTb p
+       JOIN subjectTb s ON p.subject_id = s.subject_id
+       JOIN gradelvlTb g ON p.gradelvl_id = g.gradelvl_id
+       WHERE p.stud_id = :studentId
+       ORDER BY p.last_played_at DESC`,
+      { studentId: Number(req.params.studentId) }
+    );
+    return res.status(200).json({ count: rows.rows.length, data: rows.rows });
   } catch (error) {
     return next(error);
   }

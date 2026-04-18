@@ -1,21 +1,104 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-void showProfileDialog(BuildContext context) {
-  final firstNameController = TextEditingController(text: 'SISA');
-  final lastNameController = TextEditingController(text: 'ANTIDO');
-  final nicknameController = TextEditingController(text: 'SISA SISIW');
-  final birthdayController = TextEditingController(text: 'JANUARY 1, 1999');
-  final areaController = TextEditingController(text: 'SAUYO');
-  int selectedSex = 1;
+import '../api_service.dart';
 
-  showDialog(
+const List<String> _areaOptions = [
+  'LAW STREET',
+  'KIMCO VILLAGE',
+  'WALING-WALING STREET',
+  'VICTORIA SUBDIVISION',
+  'SAMPAGUITA STREET',
+  'DRJ VILLAGE',
+  'LOWER SAUYO',
+  'SPAZIO BERNARDO CONDOMINIUM',
+  'VICTORIA STREET',
+  'RICHLAND SUBDIVISION',
+  'PASCUAL STREET',
+  'GREENVILLE SUBDIVISION',
+  'TEODORO COMPOUND',
+  'DEL NACIA VILLE 4',
+  'AREA 85',
+  'NIA VILLAGE',
+  'AREA 99',
+  'OCEAN PARK',
+  'AREA 135',
+  'GREENVIEW ROYALE',
+  'BISTEKVILLE 15',
+  'GREENVIEW EXECUTIVE',
+  'MARIAN EXTENSION',
+  'BIR VILLAGE',
+  'MARIAN SUBDIVISION',
+  'VICTORIAN HEIGHTS',
+  'MOZART EXTENSION',
+  'VILLA HERMANO 1',
+  'COMMERCIO',
+  'VILLA HERMANO 2',
+  'UPPER GULOD',
+  'PRIVADA HOMES',
+  'LOWER GULOD',
+  'MERRY HOMES',
+  'AREA 169',
+  'ATHERTON',
+  'AREA 160-168',
+  'LAGKITAN',
+  'DEL MUNDO COMPOUND',
+  'HERMINIGILDO COMPOUND',
+  'MABUHAY COMPOUND',
+  'AREA 5A',
+  'AREA 5B',
+  'AREA 6A',
+  'NAVAL',
+  'VILLA ROSARIO',
+  'LIPTON STREET',
+  'OLD CABUYAO',
+  'BALUYOT 1',
+  'BALUYOT 2A',
+  'BALUYOT 2B',
+  'MONTINOLA',
+  'BALUYOT PARK',
+  'PAPELAN',
+  'DAANG NAWASA',
+];
+
+Future<void> showProfileDialog(BuildContext context) async {
+  final parentContext = context;
+  final profile = await ApiService.getCurrentProfile();
+  if (!context.mounted) {
+    return;
+  }
+
+  final storedBirthday = (profile?['birthday'] as String?)?.trim() ?? '';
+  final parsedBirthday = _parseBirthday(storedBirthday);
+
+  final firstNameController = TextEditingController(
+    text: (profile?['first_name'] as String?) ?? '',
+  );
+  final lastNameController = TextEditingController(
+    text: (profile?['last_name'] as String?) ?? '',
+  );
+  final nicknameController = TextEditingController(
+    text: (profile?['nickname'] as String?) ?? '',
+  );
+  final birthdayController = TextEditingController(
+    text: parsedBirthday != null
+        ? _formatBirthdayDisplay(parsedBirthday)
+        : storedBirthday,
+  );
+  final areaController = TextEditingController(
+    text: (profile?['area'] as String?) ?? '',
+  );
+  int selectedSex = _sexIndexFromValue(profile?['sex'] as String?);
+  bool isSaving = false;
+  DateTime selectedBirthday = parsedBirthday ?? DateTime(1999, 1, 1);
+
+  await showDialog(
     context: context,
     barrierDismissible: true,
     builder: (context) {
-      return StatefulBuilder(builder: (context, setState) {
-        final screenWidth = MediaQuery.of(context).size.width;
-        final screenHeight = MediaQuery.of(context).size.height;
+      return StatefulBuilder(builder: (dialogContext, setState) {
+        final screenWidth = MediaQuery.of(dialogContext).size.width;
+        final screenHeight = MediaQuery.of(dialogContext).size.height;
         final isTablet = screenWidth > 600;
 
         final dialogWidth = isTablet ? screenWidth * 0.65 : screenWidth * 0.75;
@@ -30,7 +113,7 @@ void showProfileDialog(BuildContext context) {
         final fieldFontSize = 14.0 * scale;
         final avatarSize = 62.0 * scale;
         final buttonHeight = 42.0 * scale;
-        final buttonFontSize = 14.0 * scale;
+        final buttonFontSize = 13.0 * scale;
         final fieldHeight = 44.0 * scale;
         final spacing = 8.0 * scale;
 
@@ -121,12 +204,13 @@ void showProfileDialog(BuildContext context) {
                     onTap: () async {
                       final picked = await showDatePicker(
                         context: context,
-                        initialDate: DateTime(1999, 1, 1),
+                        initialDate: selectedBirthday,
                         firstDate: DateTime(1900),
                         lastDate: DateTime.now(),
                       );
                       if (picked != null) {
-                        birthdayController.text = '${_monthName(picked.month)} ${picked.day}, ${picked.year}';
+                        selectedBirthday = picked;
+                        birthdayController.text = _formatBirthdayDisplay(picked);
                       }
                     },
                   ),
@@ -135,7 +219,83 @@ void showProfileDialog(BuildContext context) {
 
                 Text('Area', style: TextStyle(fontSize: labelFontSize, fontWeight: FontWeight.w800, color: Colors.black87)),
                 SizedBox(height: 3 * scale),
-                SizedBox(height: fieldHeight, child: TextField(controller: areaController, style: TextStyle(fontSize: fieldFontSize, fontWeight: FontWeight.w700), decoration: fieldDecoration('Area'))),
+                SizedBox(
+                  height: fieldHeight,
+                  child: TextField(
+                    controller: areaController,
+                    style: TextStyle(fontSize: fieldFontSize, fontWeight: FontWeight.w700),
+                    decoration: fieldDecoration('Area'),
+                    readOnly: true,
+                    onTap: () async {
+                      final selected = await showModalBottomSheet<String>(
+                        context: context,
+                        isScrollControlled: true,
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+                        ),
+                        builder: (sheetContext) {
+                          return SafeArea(
+                            child: SizedBox(
+                              height: MediaQuery.of(sheetContext).size.height * 0.62,
+                              child: Column(
+                                children: [
+                                  const SizedBox(height: 10),
+                                  Container(
+                                    width: 42,
+                                    height: 4,
+                                    decoration: BoxDecoration(
+                                      color: Colors.black26,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  const Text(
+                                    'SELECT AREA',
+                                    style: TextStyle(
+                                      fontFamily: 'SuperCartoon',
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w900,
+                                      color: Color(0xFF2D2D2D),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Expanded(
+                                    child: ListView.separated(
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                      itemCount: _areaOptions.length,
+                                      separatorBuilder: (_, _) => const Divider(height: 1),
+                                      itemBuilder: (context, index) {
+                                        final area = _areaOptions[index];
+                                        return ListTile(
+                                          dense: true,
+                                          title: Text(
+                                            area,
+                                            style: const TextStyle(
+                                              fontFamily: 'SuperCartoon',
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          onTap: () => Navigator.of(sheetContext).pop(area),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      );
+
+                      if (selected != null) {
+                        setState(() {
+                          areaController.text = selected;
+                        });
+                      }
+                    },
+                  ),
+                ),
                 SizedBox(height: spacing * 1.2),
 
                 Center(child: Text('Sex', style: TextStyle(fontSize: labelFontSize, fontWeight: FontWeight.w800, color: Colors.black87))),
@@ -163,8 +323,53 @@ void showProfileDialog(BuildContext context) {
                           ),
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25))),
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: Text('CONFIRM', style: TextStyle(fontWeight: FontWeight.w900, fontSize: buttonFontSize, letterSpacing: 1.5)),
+                            onPressed: isSaving ? null : () async {
+                              if (firstNameController.text.trim().isEmpty ||
+                                  lastNameController.text.trim().isEmpty ||
+                                  nicknameController.text.trim().isEmpty ||
+                                  birthdayController.text.trim().isEmpty) {
+                                ScaffoldMessenger.of(parentContext).showSnackBar(
+                                  const SnackBar(content: Text('Please fill all required fields.')),
+                                );
+                                return;
+                              }
+
+                              setState(() => isSaving = true);
+                              try {
+                                await ApiService.updateProfile(
+                                  firstName: firstNameController.text.trim(),
+                                  lastName: lastNameController.text.trim(),
+                                  nickname: nicknameController.text.trim(),
+                                  birthday: _toApiBirthday(
+                                    birthdayController.text.trim(),
+                                  ),
+                                  sex: selectedSex == 0 ? 'MALE' : 'FEMALE',
+                                  area: areaController.text.trim().isEmpty ? null : areaController.text.trim(),
+                                );
+
+                                if (parentContext.mounted) {
+                                  Navigator.of(dialogContext).pop();
+                                  ScaffoldMessenger.of(parentContext).showSnackBar(
+                                    const SnackBar(content: Text('Profile updated successfully!')),
+                                  );
+                                }
+                              } on ApiException catch (e) {
+                                if (parentContext.mounted) {
+                                  ScaffoldMessenger.of(parentContext).showSnackBar(
+                                    SnackBar(content: Text(e.message)),
+                                  );
+                                  setState(() => isSaving = false);
+                                }
+                              } catch (_) {
+                                if (parentContext.mounted) {
+                                  ScaffoldMessenger.of(parentContext).showSnackBar(
+                                    const SnackBar(content: Text('Could not update profile. Try again.')),
+                                  );
+                                  setState(() => isSaving = false);
+                                }
+                              }
+                            },
+                            child: Text(isSaving ? 'SAVING...' : 'CONFIRM', style: TextStyle(fontWeight: FontWeight.w900, fontSize: buttonFontSize, letterSpacing: 1.5)),
                           ),
                         ),
                       ),
@@ -181,7 +386,7 @@ void showProfileDialog(BuildContext context) {
                           ),
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25))),
-                            onPressed: () => Navigator.of(context).pop(),
+                            onPressed: isSaving ? null : () => Navigator.of(context).pop(),
                             child: Text('CANCEL', style: TextStyle(fontWeight: FontWeight.w900, fontSize: buttonFontSize, letterSpacing: 1.5)),
                           ),
                         ),
@@ -201,6 +406,78 @@ void showProfileDialog(BuildContext context) {
 String _monthName(int month) {
   const months = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
   return months[month - 1];
+}
+
+int _sexIndexFromValue(String? sex) {
+  final normalized = (sex ?? '').trim().toUpperCase();
+  if (normalized == 'MALE' || normalized == 'M') {
+    return 0;
+  }
+  return 1;
+}
+
+DateTime? _parseBirthday(String? value) {
+  final raw = (value ?? '').trim();
+  if (raw.isEmpty) return null;
+
+  final iso = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(raw);
+  if (iso != null) {
+    return DateTime(
+      int.parse(iso.group(1)!),
+      int.parse(iso.group(2)!),
+      int.parse(iso.group(3)!),
+    );
+  }
+
+  final long = RegExp(r'^([A-Z]+)\s+(\d{1,2}),\s*(\d{4})$').firstMatch(
+    raw.toUpperCase(),
+  );
+  if (long != null) {
+    final month = _monthIndex(long.group(1)!);
+    if (month != null) {
+      return DateTime(
+        int.parse(long.group(3)!),
+        month,
+        int.parse(long.group(2)!),
+      );
+    }
+  }
+
+  return null;
+}
+
+int? _monthIndex(String monthName) {
+  const months = [
+    'JANUARY',
+    'FEBRUARY',
+    'MARCH',
+    'APRIL',
+    'MAY',
+    'JUNE',
+    'JULY',
+    'AUGUST',
+    'SEPTEMBER',
+    'OCTOBER',
+    'NOVEMBER',
+    'DECEMBER',
+  ];
+  final i = months.indexOf(monthName.toUpperCase());
+  return i < 0 ? null : i + 1;
+}
+
+String _formatBirthdayDisplay(DateTime date) {
+  return '${_monthName(date.month)} ${date.day}, ${date.year}';
+}
+
+String _toApiBirthday(String value) {
+  final parsed = _parseBirthday(value);
+  if (parsed == null) {
+    return value;
+  }
+  final yyyy = parsed.year.toString();
+  final mm = parsed.month.toString().padLeft(2, '0');
+  final dd = parsed.day.toString().padLeft(2, '0');
+  return '$yyyy-$mm-$dd';
 }
 
 class _SexAvatar extends StatelessWidget {

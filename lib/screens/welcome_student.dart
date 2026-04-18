@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../api_service.dart';
 import '../navigation/route_transitions.dart';
 import '../widgets/form.dart';
 import '../widgets/kow_animated_button.dart';
@@ -12,7 +13,6 @@ import 'welcome_back.dart';
 /// Student registration form screen.
 class WelcomeStudentScreen extends StatelessWidget {
   const WelcomeStudentScreen({super.key});
-
   static const double _maxContentWidth = 560;
 
   @override
@@ -33,7 +33,11 @@ class WelcomeStudentScreen extends StatelessWidget {
                   onSubmit: () => pushFade(context, const MenuScreen()),
                   onAlreadyHaveAccountTap: () =>
                       pushFade(context, const WelcomeBackScreen()),
-                  onClose: () => Navigator.of(context).pop(),
+                  onClose: () {
+                    if (Navigator.of(context).canPop()) {
+                      Navigator.of(context).pop();
+                    }
+                  },
                 ),
               ),
             ),
@@ -130,12 +134,80 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
 
   String? _selectedSex;
   bool _agreedToTerms = false;
+  bool _isSubmitting = false;
   DateTime? _selectedBirthday;
 
   late final AnimationController _popupController;
   late final Animation<double> _popupOpacity;
   late final Animation<Offset> _popupSlide;
   late final Animation<double> _popupScale;
+
+  void _showImportantAlert(String message) {
+    final overlay = Overlay.of(context, rootOverlay: true);
+
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (overlayContext) {
+        return SafeArea(
+          child: IgnorePointer(
+            ignoring: true,
+            child: Material(
+              color: Colors.transparent,
+              child: Stack(
+                children: [
+                  Positioned(
+                    top: 14,
+                    left: 16,
+                    right: 16,
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 560),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1E1E1E),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black38,
+                                blurRadius: 18,
+                                offset: Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
+                            child: Text(
+                              message,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontFamily: 'SuperCartoon',
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                height: 1.25,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    overlay.insert(entry);
+    Future.delayed(const Duration(seconds: 4), () {
+      entry.remove();
+    });
+  }
 
   @override
   void initState() {
@@ -206,10 +278,62 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
   }
 
   String _formatBirthday(DateTime date) {
+    final yyyy = date.year.toString();
     final mm = date.month.toString().padLeft(2, '0');
     final dd = date.day.toString().padLeft(2, '0');
-    final yyyy = date.year.toString();
-    return '$mm/$dd/$yyyy';
+    return '$yyyy-$mm-$dd';
+  }
+
+  Future<void> _handleSubmit() async {
+    if (_isSubmitting) {
+      return;
+    }
+
+    if (_firstNameController.text.trim().isEmpty ||
+        _lastNameController.text.trim().isEmpty ||
+        _nicknameController.text.trim().isEmpty ||
+        _birthdayController.text.trim().isEmpty ||
+        _selectedSex == null ||
+        !_agreedToTerms) {
+      _showImportantAlert('Please fill all required fields.');
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+    try {
+      await ApiService.register(
+        firstName: _firstNameController.text.trim(),
+        lastName: _lastNameController.text.trim(),
+        nickname: _nicknameController.text.trim(),
+        birthday: _birthdayController.text.trim(),
+        sex: _selectedSex!,
+        area: _areaController.text.trim().isEmpty
+            ? null
+            : _areaController.text.trim(),
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      widget.onSubmit?.call();
+    } on ApiException catch (e) {
+      if (!mounted) {
+        return;
+      }
+      _showImportantAlert(e.message);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      _showImportantAlert(
+        'Sign-up failed. Check backend connection and try again.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
   }
 
   Future<void> _pickArea(BuildContext context) async {
@@ -324,6 +448,79 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
     );
   }
 
+  Widget _buildSexAvatar({
+    required String assetPath,
+    required bool selected,
+    required double size,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Stack(
+        children: [
+          Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: selected ? const Color(0xFF3DBE64) : Colors.grey[300]!,
+                width: 3,
+              ),
+              color: Colors.grey[200],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(11),
+              child: assetPath.endsWith('.svg')
+                  ? SvgPicture.asset(
+                      assetPath,
+                      fit: BoxFit.fill,
+                      width: size,
+                      height: size,
+                    )
+                  : Image.asset(
+                      assetPath,
+                      fit: BoxFit.fill,
+                      width: size,
+                      height: size,
+                      errorBuilder: (context, error, stackTrace) => Icon(
+                        Icons.person,
+                        size: size * 0.5,
+                        color: Colors.grey[400],
+                      ),
+                    ),
+            ),
+          ),
+          if (selected)
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          if (selected)
+            Positioned.fill(
+              child: Center(
+                child: Image.asset(
+                  'assets/icons/check.png',
+                  width: size * 0.55,
+                  height: size * 0.55,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) => Icon(
+                    Icons.check_circle,
+                    color: const Color(0xFF3DBE64),
+                    size: size * 0.55,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -338,9 +535,7 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
         final titleSize = 36.0 * scale;
         final subtitleSize = 12.5 * scale;
 
-        final sexWidth = (140.0 * scale).clamp(126.0, 180.0);
-        final sexHeight = (118.0 * scale).clamp(110.0, 150.0);
-        final sexIconHeight = (94.0 * scale).clamp(86.0, 120.0);
+        final avatarSize = (62.0 * scale).clamp(56.0, 80.0);
 
         final promptStyle = TextStyle(
           fontFamily: 'SuperCartoon',
@@ -511,37 +706,22 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
                               color: const Color(0xFF2D2D2D),
                             ),
                           ),
-                          SizedBox(height: 0.01),
+                          SizedBox(height: 6 * scale),
                           Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Expanded(
-                                child: Center(
-                                  child: SexCard(
-                                    iconPath: 'assets/Icons/KOWICONS/male.svg',
-                                    label: 'MALE',
-                                    selected: _selectedSex == 'MALE',
-                                    width: sexWidth,
-                                    height: sexHeight,
-                                    iconHeight: sexIconHeight,
-                                    onTap: () =>
-                                        setState(() => _selectedSex = 'MALE'),
-                                  ),
-                                ),
+                              _buildSexAvatar(
+                                assetPath: 'assets/misc/boy.png',
+                                selected: _selectedSex == 'MALE',
+                                size: avatarSize,
+                                onTap: () => setState(() => _selectedSex = 'MALE'),
                               ),
-                              SizedBox(width: 4 * scale),
-                              Expanded(
-                                child: Center(
-                                  child: SexCard(
-                                    iconPath: 'assets/Icons/KOWICONS/female.svg',
-                                    label: 'FEMALE',
-                                    selected: _selectedSex == 'FEMALE',
-                                    width: sexWidth,
-                                    height: sexHeight,
-                                    iconHeight: sexIconHeight,
-                                    onTap: () =>
-                                        setState(() => _selectedSex = 'FEMALE'),
-                                  ),
-                                ),
+                              SizedBox(width: 20 * scale),
+                              _buildSexAvatar(
+                                assetPath: 'assets/misc/girl.png',
+                                selected: _selectedSex == 'FEMALE',
+                                size: avatarSize,
+                                onTap: () => setState(() => _selectedSex = 'FEMALE'),
                               ),
                             ],
                           ),
@@ -607,10 +787,10 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
                             width: 160 * scale,
                             height: 48 * scale,
                             child: KowAnimatedButton(
-                              label: 'SUBMIT',
+                              label: _isSubmitting ? 'SUBMITTING...' : 'SUBMIT',
                               backgroundColor: const Color(0xFF8CFF9A),
                               textColor: Colors.black,
-                              onPressed: widget.onSubmit,
+                              onPressed: _isSubmitting ? null : _handleSubmit,
                               height: 48 * scale,
                               fontSize: 14 * scale,
                               width: 160 * scale,
@@ -651,7 +831,7 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
                     child: GestureDetector(
                       onTap: widget.onClose,
                       child: SvgPicture.asset(
-                        'assets/Icons/exit.svg',
+                        'assets/icons/exit.svg',
                         width: 55 * scale,
                         height: 55 * scale,
                         fit: BoxFit.contain,

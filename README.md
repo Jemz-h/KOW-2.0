@@ -1,16 +1,74 @@
-# Test Drive
+# KOW Application
 
-Backend
+This project consists of a **Flutter** frontend interface and a **Node.js backend** that supports **Oracle SQL** and **SQLite**.
 
-## Getting Started
+## Quick Links
 
-This project is a starting point for a Flutter application.
+- [Documentation Index](docs/README.md)
+- [Project Overview](docs/01_PROJECT_OVERVIEW.md)
+- [Tech Stack](docs/02_TECH_STACK.md)
+- [Backend Setup](backend/SETUP_INSTRUCTIONS.md)
+- [Implementation Status](IMPLEMENTATION_STATUS.md)
 
-A few resources to get you started if this is your first Flutter project:
+##  First Time Setup
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+### Option 1: Setting up the Backend (Node.js & Oracle SQL)
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+The backend provides the API necessary for the Flutter application to interact with your data.
+
+1. **Install Prerequisites**: Assure you have [Node.js](https://nodejs.org/) installed.
+2. **Navigate to the Backend Directory**:
+   ```bash
+   cd backend
+   ```
+3. **Install Dependencies**:
+   ```bash
+   npm install
+   ```
+4. **Configure Oracle Database Environment**:
+   Use `backend/.env.development` for local development. Add your Oracle credentials:
+   ```env
+   PORT=3010
+   NODE_ENV=development
+   DB_CLIENT=oracle
+   DB_FALLBACK_SQLITE=false
+   DB_USER=your_oracle_username
+   DB_PASSWORD=your_oracle_password
+   DB_CONNECTION_STRING=localhost:1521/XEPDB1
+   ```
+   *Note: Install Oracle locally or use Oracle cloud. Run `backend/src/config/KOW.sql` in SQL Developer/DataGrip to initialize schema. For strict Oracle testing, keep `DB_FALLBACK_SQLITE=false`.*
+5. **Start the Development Server**:
+   ```bash
+   npm run dev
+   ```
+   The backend will attempt to connect to Oracle and run on `http://localhost:3010` (or the next free port if 3010 is occupied).
+
+---
+
+### Option 2: Setting up the Frontend (Flutter)
+
+The frontend project is located in the root of the workspace.
+
+1. **Install Prerequisites**: Ensure you have [Flutter SDK](https://docs.flutter.dev/get-started/install) installed.
+2. **Retrieve Packages**: 
+   Inside the main project folder run:
+   ```bash
+   flutter pub get
+   ```
+3. **Connect to the Backend**:
+    Confirm API target matches backend host/port:
+    - Android emulator: `http://10.0.2.2:3010`
+    - Physical Android device: run with
+       `flutter run --dart-define=API_BASE_URL=http://<YOUR_PC_IP>:3010`
+    - Optional adb reverse flow:
+       `adb reverse tcp:3010 tcp:3010` then use `http://localhost:3010`
+4. **Run the App**:
+   ```bash
+   flutter run
+   ```
+
+## 📂 Backend Structure
+Endpoints have been separated dynamically within the backend configuration:
+* `src/config/db.js` Handles the active pool connecting Node to Oracle.
+* `src/controllers/` Contains logic and direct SQL mapping functions (`userController.js`, `levelController.js`).
+* `src/routes/` Defines access point URIs connecting to controllers (`/api/users`, `/api/levels`).
