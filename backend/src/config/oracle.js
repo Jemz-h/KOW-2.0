@@ -1,6 +1,8 @@
 const oracledb = require('oracledb');
 const { oracle } = require('./env');
 
+oracledb.fetchAsBuffer = [oracledb.BLOB];
+
 let pool;
 
 async function connectOracle() {

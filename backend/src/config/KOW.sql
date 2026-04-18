@@ -356,10 +356,15 @@ CREATE TABLE questionTb (
     gradelvl_id  NUMBER(3)     NOT NULL REFERENCES gradelvlTb(gradelvl_id),
     diff_id      NUMBER(3)     NOT NULL REFERENCES diffTb(diff_id),
     question_txt VARCHAR2(500) NOT NULL,
+    question_image BLOB,
     option_a     VARCHAR2(200) NOT NULL,
     option_b     VARCHAR2(200) NOT NULL,
     option_c     VARCHAR2(200) NOT NULL,
     option_d     VARCHAR2(200) NOT NULL,
+    option_a_image BLOB,
+    option_b_image BLOB,
+    option_c_image BLOB,
+    option_d_image BLOB,
     correct_opt  CHAR(1)       NOT NULL,  -- 'A', 'B', 'C', or 'D'
     is_active    NUMBER(1)     DEFAULT 1,
     created_at   DATE          DEFAULT SYSDATE,
@@ -813,26 +818,26 @@ WHEN NOT MATCHED THEN
 -- Sample questions (idempotent - won't insert same question twice)
 -- Mathematics, Punla, Easy
 MERGE INTO questionTb q
-USING (SELECT 1 subject_id, 1 gradelvl_id, 1 diff_id, 'What is 1 + 1?' question_txt, '1' option_a, '2' option_b, '3' option_c, '4' option_d, 'B' correct_opt FROM DUAL) s
+USING (SELECT 1 subject_id, 1 gradelvl_id, 1 diff_id, 'What is 1 + 1?' question_txt, NULL question_image, '1' option_a, '2' option_b, '3' option_c, '4' option_d, 'B' correct_opt FROM DUAL) s
 ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
 WHEN NOT MATCHED THEN
-  INSERT (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt) 
-  VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
+    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt) 
+    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.question_image, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
 
 MERGE INTO questionTb q
-USING (SELECT 1 subject_id, 1 gradelvl_id, 1 diff_id, 'How many fingers on one hand?' question_txt, '3' option_a, '4' option_b, '5' option_c, '6' option_d, 'C' correct_opt FROM DUAL) s
+USING (SELECT 1 subject_id, 1 gradelvl_id, 1 diff_id, 'How many fingers on one hand?' question_txt, NULL question_image, '3' option_a, '4' option_b, '5' option_c, '6' option_d, 'C' correct_opt FROM DUAL) s
 ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
 WHEN NOT MATCHED THEN
-  INSERT (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt) 
-  VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
+    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt) 
+    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.question_image, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
 
 -- English, Punla, Easy
 MERGE INTO questionTb q
-USING (SELECT 4 subject_id, 1 gradelvl_id, 1 diff_id, 'What color is the sky?' question_txt, 'Red' option_a, 'Green' option_b, 'Blue' option_c, 'Yellow' option_d, 'C' correct_opt FROM DUAL) s
+USING (SELECT 4 subject_id, 1 gradelvl_id, 1 diff_id, 'What color is the sky?' question_txt, NULL question_image, 'Red' option_a, 'Green' option_b, 'Blue' option_c, 'Yellow' option_d, 'C' correct_opt FROM DUAL) s
 ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
 WHEN NOT MATCHED THEN
-  INSERT (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt) 
-  VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
+    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt) 
+    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.question_image, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
 
 -- Initial content version (idempotent)
 MERGE INTO contentVersionTb c

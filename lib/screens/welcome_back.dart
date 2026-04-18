@@ -8,7 +8,7 @@ import '../navigation/route_transitions.dart';
 import '../widgets/form.dart';
 import '../widgets/kow_animated_button.dart';
 import '../widgets/mock_background.dart';
-import 'menu.dart';
+import 'start.dart';
 import 'welcome_student.dart';
 
 const double _kFigmaW = 412;
@@ -114,7 +114,7 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
       if (!context.mounted) {
         return;
       }
-      pushFadeReplacement(context, const MenuScreen());
+      pushFadeReplacement(context, const StartScreen());
     } on ApiException catch (e) {
       if (!context.mounted) {
         return;
@@ -180,7 +180,7 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
                   onClose: () => Navigator.of(dialogContext).pop(),
                   onSubmit: () {
                     Navigator.of(dialogContext).pop();
-                    pushFadeReplacement(context, const MenuScreen());
+                    pushFadeReplacement(context, const StartScreen());
                   },
                   onAlreadyHaveAccountTap: () => Navigator.of(dialogContext).pop(),
                 ),

@@ -17,6 +17,54 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _dialogOpen = false;
+  bool _didPrecacheAssets = false;
+
+  static const List<String> _settingsImageAssets = [
+    'assets/icons/check.png',
+    'assets/settings/classroom_thm.png',
+    'assets/settings/sauyo_thm.png',
+    'assets/settings/space_thm.png',
+    'assets/misc/boy.png',
+    'assets/misc/girl.png',
+  ];
+
+  static const List<String> _settingsSvgAssets = [
+    'assets/icons/exit.svg',
+    'assets/icons/unmute.svg',
+    'assets/icons/mute.svg',
+    'assets/icons/smiley.svg',
+    'assets/icons/gold.svg',
+    'assets/icons/brush.svg',
+    'assets/icons/back.svg',
+  ];
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didPrecacheAssets) {
+      return;
+    }
+    _didPrecacheAssets = true;
+    // Keep first paint fast, then warm assets in the background.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _precacheSettingsAssets();
+    });
+  }
+
+  Future<void> _precacheSettingsAssets() async {
+    for (final asset in _settingsImageAssets) {
+      if (!mounted) return;
+      await precacheImage(AssetImage(asset), context);
+      // Yield so one screen entry does not decode everything in one burst.
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    for (final asset in _settingsSvgAssets) {
+      if (!mounted) return;
+      await SvgAssetLoader(asset).loadBytes(context);
+      await Future<void>.delayed(Duration.zero);
+    }
+  }
 
   Future<void> _handleSignOut(BuildContext context) async {
     await ApiService.signOut();
@@ -907,7 +955,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: SizedBox(
                         width: 56 * scale,
                         height: 56 * scale,
-                        child: SvgPicture.asset('assets/icons/back.svg'),
+                        child: SvgPicture.asset(
+                          'assets/icons/back.svg',
+                        ),
                       ),
                     ),
                   ),

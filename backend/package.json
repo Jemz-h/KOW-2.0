@@ -5,7 +5,9 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "import:kow-questions": "node src/scripts/importKowQuestions.js",
+    "import:kow-questions:all": "node src/scripts/importKowQuestions.js --targets=all"
   },
   "license": "MIT",
   "dependencies": {

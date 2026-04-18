@@ -74,7 +74,41 @@ With backend running:
 node test_all.js
 ```
 
-## 6. API Notes (Current Contract)
+## 6. Import KOW Questions (HTML + Images)
+
+Source folder format:
+- `backend/data/kow_questions/KOWQuestions.html`
+- `backend/data/kow_questions/images/`
+
+Commands:
+
+```bash
+cd backend
+npm run import:kow-questions
+```
+
+- Imports to the currently active DB mode (`DB_MODE` / `DB_CLIENT`).
+- Imports both question images and answer option images (`option_a_image` ... `option_d_image`).
+
+```bash
+cd backend
+npm run import:kow-questions:all
+```
+
+- Runs import twice automatically:
+  - Oracle (`DB_MODE=online`)
+  - SQLite (`DB_MODE=offline`)
+- Useful when you want data available both online and offline.
+
+SQLite compatibility note:
+- The importer now auto-adds missing image columns in `questionTb` for older SQLite files:
+  - `question_image`
+  - `option_a_image`
+  - `option_b_image`
+  - `option_c_image`
+  - `option_d_image`
+
+## 7. API Notes (Current Contract)
 
 - `POST /api/auth/register`
   - body: `firstName`, `lastName`, `nickname`, `birthday`, optional `sex`, `area`, `teacherId`, `deviceUuid`
@@ -90,7 +124,7 @@ node test_all.js
 - `POST /api/progress`
   - body: `studentId` (or `userID`), plus subject/grade identifiers
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 - ORA-01017: verify `DB_USER`/`DB_PASSWORD`.
 - ORA-12514 / ORA-12154: verify `DB_CONNECTION_STRING` (`localhost:1521/XEPDB1` for this setup).

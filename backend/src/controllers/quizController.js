@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const asyncHandler = require('express-async-handler');
+const { serializeQuestionImage } = require('../utils/questionImage');
 
 // @desc    Get quiz questions by grade, subject, and difficulty
 // @route   GET /api/quiz/questions
@@ -7,19 +8,27 @@ const asyncHandler = require('express-async-handler');
 const getQuestions = asyncHandler(async (req, res) => {
   const { grade, subject, difficulty } = req.query;
 
-  if (!grade || !subject || !difficulty) {
+  if (!grade || !subject) {
     res.status(400);
-    throw new Error('Please provide grade, subject, and difficulty query parameters');
+    throw new Error('Please provide grade and subject query parameters');
   }
 
   const activeFilter = db.isOracle() ? 'NVL(q.is_active, 1) = 1' : 'COALESCE(q.is_active, 1) = 1';
+  const difficultyFilter = difficulty
+    ? 'AND UPPER(d.difficulty) = UPPER(:difficulty)'
+    : '';
   const result = await db.execute(`
     SELECT q.question_id,
            q.question_txt,
+           q.question_image,
            q.option_a,
            q.option_b,
            q.option_c,
            q.option_d,
+          q.option_a_image,
+          q.option_b_image,
+          q.option_c_image,
+          q.option_d_image,
            q.correct_opt,
            q.is_active,
            q.updated_at
@@ -29,10 +38,10 @@ const getQuestions = asyncHandler(async (req, res) => {
     JOIN diffTb d ON q.diff_id = d.diff_id
     WHERE UPPER(g.gradelvl) = UPPER(:grade)
       AND UPPER(s.subject) = UPPER(:subject)
-      AND UPPER(d.difficulty) = UPPER(:difficulty)
+      ${difficultyFilter}
       AND ${activeFilter}
     ORDER BY q.question_id
-  `, { grade, subject, difficulty });
+  `, difficulty ? { grade, subject, difficulty } : { grade, subject });
 
   if (result.rows.length === 0) {
     return res.status(404).json({ success: false, message: 'No questions found for the provided filters' });
@@ -40,16 +49,30 @@ const getQuestions = asyncHandler(async (req, res) => {
 
   const letterToIndex = { A: 0, B: 1, C: 2, D: 3 };
   const questions = result.rows.map((row) => {
-    const correctOpt = String(row.CORRECT_OPT || '').toUpperCase();
+    const normalizedRow = Object.entries(row).reduce((accumulator, [key, value]) => {
+      accumulator[key.toUpperCase()] = value;
+      return accumulator;
+    }, {});
+    const correctOpt = String(normalizedRow.CORRECT_OPT || '').toUpperCase();
+    const imageBlob = serializeQuestionImage(normalizedRow.QUESTION_IMAGE);
+    const choiceImageBlobs = [
+      serializeQuestionImage(normalizedRow.OPTION_A_IMAGE),
+      serializeQuestionImage(normalizedRow.OPTION_B_IMAGE),
+      serializeQuestionImage(normalizedRow.OPTION_C_IMAGE),
+      serializeQuestionImage(normalizedRow.OPTION_D_IMAGE),
+    ];
     return {
-      id: row.QUESTION_ID,
-      prompt: row.QUESTION_TXT,
-      imagePath: null,
+      id: normalizedRow.QUESTION_ID,
+      prompt: normalizedRow.QUESTION_TXT,
+      imageBlob,
+      imagePath: imageBlob,
       funFact: null,
       points: 1,
-      choices: [row.OPTION_A, row.OPTION_B, row.OPTION_C, row.OPTION_D],
+      choices: [normalizedRow.OPTION_A, normalizedRow.OPTION_B, normalizedRow.OPTION_C, normalizedRow.OPTION_D],
+      choiceImageBlobs,
+      choiceImages: choiceImageBlobs,
       correctIndex: letterToIndex[correctOpt] ?? 0,
-      updatedAt: row.UPDATED_AT
+      updatedAt: normalizedRow.UPDATED_AT
     };
   });
 

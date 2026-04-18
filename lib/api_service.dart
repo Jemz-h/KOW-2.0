@@ -30,6 +30,8 @@ class ApiService {
   static bool _hasDeferredContentRefresh = false;
   static int _activeLearningSessions = 0;
   static Timer? _contentPoller;
+  static Future<void>? _oracleReconciliationTask;
+  static String? _oracleReconciliationIdentity;
   static final Map<String, List<Map<String, dynamic>>> _questionCache = {};
 
   static Map<String, String> get _headers => {
@@ -90,6 +92,10 @@ class ApiService {
 
     startContentVersionPolling();
     unawaited(syncPending());
+    _scheduleOracleReconciliation(
+      nickname: _currentNickname!,
+      birthday: _currentBirthday ?? '',
+    );
     return true;
   }
 
@@ -283,6 +289,11 @@ class ApiService {
         birthday: resolvedBirthday,
       );
 
+      _scheduleOracleReconciliation(
+        nickname: _currentNickname!,
+        birthday: resolvedBirthday,
+      );
+
       return student;
     } on ApiException catch (e) {
       final shouldAttemptLookupFallback = e.statusCode == 400 || e.statusCode == 404;
@@ -339,6 +350,11 @@ class ApiService {
 
             await LocalSyncStore.instance.saveSyncedStudent(
               student: fallbackStudent,
+              birthday: resolvedBirthday,
+            );
+
+            _scheduleOracleReconciliation(
+              nickname: resolvedNickname,
               birthday: resolvedBirthday,
             );
 
@@ -531,13 +547,14 @@ class ApiService {
   static Future<List<Map<String, dynamic>>> getQuestions({
     required String grade,
     required String subject,
-    required String difficulty,
+    String? difficulty,
   }) async {
+    final normalizedDifficulty = difficulty?.trim();
     final normalizedSubject = _normalizeSubject(subject);
     final cacheKey = _questionCacheKey(
       grade: grade,
       subject: normalizedSubject,
-      difficulty: difficulty,
+      difficulty: normalizedDifficulty,
     );
 
     final cached = _questionCache[cacheKey];
@@ -547,7 +564,7 @@ class ApiService {
           cacheKey: cacheKey,
           grade: grade,
           subject: normalizedSubject,
-          difficulty: difficulty,
+          difficulty: normalizedDifficulty,
         ),
       );
       return cached;
@@ -557,7 +574,7 @@ class ApiService {
       cacheKey: cacheKey,
       grade: grade,
       subject: normalizedSubject,
-      difficulty: difficulty,
+      difficulty: normalizedDifficulty,
     );
   }
 
@@ -565,15 +582,19 @@ class ApiService {
     required String cacheKey,
     required String grade,
     required String subject,
-    required String difficulty,
+    String? difficulty,
   }) async {
 
+    final queryParameters = <String, String>{
+      'grade': grade,
+      'subject': subject,
+    };
+    if (difficulty != null && difficulty.isNotEmpty) {
+      queryParameters['difficulty'] = difficulty;
+    }
+
     final uri = Uri.parse('$_base/api/quiz/questions').replace(
-      queryParameters: {
-        'grade':      grade,
-        'subject':    subject,
-        'difficulty': difficulty,
-      },
+      queryParameters: queryParameters,
     );
     final res = await _sendWithTimeout(_client.get(uri, headers: _headers));
     _checkStatus(res);
@@ -586,9 +607,12 @@ class ApiService {
   static String _questionCacheKey({
     required String grade,
     required String subject,
-    required String difficulty,
+    String? difficulty,
   }) {
-    return '${grade.trim().toUpperCase()}|${subject.trim().toUpperCase()}|${difficulty.trim().toUpperCase()}';
+    final difficultyKey = (difficulty != null && difficulty.trim().isNotEmpty)
+        ? difficulty.trim().toUpperCase()
+        : 'ALL';
+    return '${grade.trim().toUpperCase()}|${subject.trim().toUpperCase()}|$difficultyKey';
   }
 
   /// Submit a quiz score.
@@ -848,6 +872,10 @@ class ApiService {
     return e.statusCode == 408 || e.statusCode == 503;
   }
 
+  static bool _isIgnorableOracleParentKeyError(ApiException e) {
+    return e.statusCode == 500 && e.message.contains('ORA-02291');
+  }
+
   static bool _isRetryableSyncError(Object error) {
     return error is ApiException && _isConnectivityException(error);
   }
@@ -963,6 +991,357 @@ class ApiService {
     } catch (_) {
       // Best-effort device auth; offline flows continue using local data/queue.
     }
+  }
+
+  static Future<Map<String, dynamic>?> _lookupRemoteStudent({
+    required String nickname,
+    required String birthday,
+  }) async {
+    final normalizedBirthday = _normalizeBirthday(birthday);
+    final res = await _sendWithTimeout(
+      _client.post(
+        Uri.parse('$_base/api/students/lookup'),
+        headers: _headers,
+        body: jsonEncode({
+          'nickname': nickname,
+          'birthday': normalizedBirthday,
+        }),
+      ),
+      timeout: _interactiveAuthTimeout,
+    );
+    _checkStatus(res);
+
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    if (body['found'] != true) {
+      return null;
+    }
+
+    final nested = body['student'];
+    if (nested is Map<String, dynamic>) {
+      return nested;
+    }
+
+    return body;
+  }
+
+  static Future<Map<String, dynamic>?> _resolveLocalProfileForReconciliation({
+    required String nickname,
+    required String birthday,
+  }) async {
+    var localProfile = await LocalSyncStore.instance.getStudentProfileByIdentity(
+      nickname: nickname,
+      birthday: birthday,
+    );
+
+    if (localProfile == null && _currentStudentId != null && _currentStudentId! > 0) {
+      localProfile = await LocalSyncStore.instance.getStudentProfileById(_currentStudentId!);
+    }
+
+    return localProfile;
+  }
+
+  static String _normalizedTextValue(dynamic value) {
+    return (value == null ? '' : '$value').trim();
+  }
+
+  static bool _sameTextValue(String a, String b) {
+    return a.trim().toLowerCase() == b.trim().toLowerCase();
+  }
+
+  static bool _needsRemoteProfileUpdate({
+    required Student remoteStudent,
+    required Map<String, dynamic> localProfile,
+    required String fallbackNickname,
+    required String fallbackBirthday,
+  }) {
+    final localFirstName = _normalizedTextValue(localProfile['first_name']);
+    final localLastName = _normalizedTextValue(localProfile['last_name']);
+    final localNickname = _normalizedTextValue(localProfile['nickname']).isEmpty
+        ? fallbackNickname
+        : _normalizedTextValue(localProfile['nickname']);
+    final localBirthday = _normalizeBirthday(
+      _normalizedTextValue(localProfile['birthday']).isEmpty
+          ? fallbackBirthday
+          : _normalizedTextValue(localProfile['birthday']),
+    );
+    final localSex = _normalizedTextValue(localProfile['sex']);
+    final localArea = _normalizedTextValue(localProfile['area']);
+
+    final remoteFirstName = _normalizedTextValue(remoteStudent.firstName);
+    final remoteLastName = _normalizedTextValue(remoteStudent.lastName);
+    final remoteNickname = _normalizedTextValue(remoteStudent.nickname);
+    final remoteBirthday = _normalizeBirthday(
+      _normalizedTextValue(remoteStudent.birthday).isEmpty
+          ? fallbackBirthday
+          : _normalizedTextValue(remoteStudent.birthday),
+    );
+    final remoteSex = _normalizedTextValue(remoteStudent.sex);
+    final remoteArea = _normalizedTextValue(remoteStudent.area);
+
+    if (localFirstName.isEmpty || localLastName.isEmpty) {
+      return false;
+    }
+
+    return !_sameTextValue(localFirstName, remoteFirstName) ||
+        !_sameTextValue(localLastName, remoteLastName) ||
+        !_sameTextValue(localNickname, remoteNickname) ||
+        !_sameTextValue(localBirthday, remoteBirthday) ||
+        (localSex.isNotEmpty && !_sameTextValue(localSex, remoteSex)) ||
+        !_sameTextValue(localArea, remoteArea);
+  }
+
+  static Future<void> _applyRemoteProfileUpdateFromLocal({
+    required int remoteStudentId,
+    required Map<String, dynamic> localProfile,
+    required String fallbackNickname,
+    required String fallbackBirthday,
+  }) async {
+    final firstName = _normalizedTextValue(localProfile['first_name']);
+    final lastName = _normalizedTextValue(localProfile['last_name']);
+    final nickname = _normalizedTextValue(localProfile['nickname']).isEmpty
+        ? fallbackNickname
+        : _normalizedTextValue(localProfile['nickname']);
+    final birthday = _normalizeBirthday(
+      _normalizedTextValue(localProfile['birthday']).isEmpty
+          ? fallbackBirthday
+          : _normalizedTextValue(localProfile['birthday']),
+    );
+    final sex = _normalizedTextValue(localProfile['sex']).isEmpty
+        ? 'Unknown'
+        : _normalizedTextValue(localProfile['sex']);
+    final area = _normalizedTextValue(localProfile['area']);
+
+    if (firstName.isEmpty || lastName.isEmpty || nickname.isEmpty || birthday.isEmpty) {
+      return;
+    }
+
+    final res = await _sendWithTimeout(
+      _client.put(
+        Uri.parse('$_base/api/users/$remoteStudentId/profile'),
+        headers: _headers,
+        body: jsonEncode({
+          'firstName': firstName,
+          'lastName': lastName,
+          'nickname': nickname,
+          'birthday': birthday,
+          'sex': sex,
+          if (area.isNotEmpty) 'area': area,
+        }),
+      ),
+    );
+    _checkStatus(res);
+  }
+
+  static Future<void> _registerRemoteFromLocalProfileWithFallback({
+    required String firstName,
+    required String lastName,
+    required String nickname,
+    required String birthday,
+    required String sex,
+    String? area,
+  }) async {
+    try {
+      await _registerRemote(
+        firstName: firstName,
+        lastName: lastName,
+        nickname: nickname,
+        birthday: birthday,
+        sex: sex,
+        area: area,
+      );
+      return;
+    } on ApiException catch (e) {
+      if (_isConnectivityException(e)) {
+        rethrow;
+      }
+
+      if (!_isIgnorableOracleParentKeyError(e)) {
+        rethrow;
+      }
+    }
+
+    // Retry with safer defaults in case legacy Oracle lookups reject
+    // area/sex references in partially migrated databases.
+    await _registerRemote(
+      firstName: firstName,
+      lastName: lastName,
+      nickname: nickname,
+      birthday: birthday,
+      sex: 'Unknown',
+      area: null,
+    );
+  }
+
+  static Future<void> _ensureStudentExistsAndSyncedWithOracle({
+    required String nickname,
+    required String birthday,
+  }) async {
+    final normalizedNickname = nickname.trim();
+    final normalizedBirthday = _normalizeBirthday(birthday);
+    if (normalizedNickname.isEmpty || normalizedBirthday.isEmpty) {
+      return;
+    }
+
+    await _tryEnsureDeviceAuth();
+    if (_deviceToken == null || _deviceToken!.isEmpty) {
+      return;
+    }
+
+    Map<String, dynamic>? remoteRow;
+    try {
+      remoteRow = await _lookupRemoteStudent(
+        nickname: normalizedNickname,
+        birthday: normalizedBirthday,
+      );
+    } on ApiException catch (e) {
+      if (_isConnectivityException(e)) {
+        return;
+      }
+      rethrow;
+    }
+
+    final localProfile = await _resolveLocalProfileForReconciliation(
+      nickname: normalizedNickname,
+      birthday: normalizedBirthday,
+    );
+
+    if (remoteRow == null) {
+
+      if (localProfile == null) {
+        return;
+      }
+
+      final firstName = (localProfile['first_name'] as String?)?.trim() ?? '';
+      final lastName = (localProfile['last_name'] as String?)?.trim() ?? '';
+      final sex = (localProfile['sex'] as String?)?.trim().isNotEmpty == true
+          ? (localProfile['sex'] as String).trim()
+          : 'Unknown';
+      final area = (localProfile['area'] as String?)?.trim();
+
+      if (firstName.isEmpty || lastName.isEmpty) {
+        return;
+      }
+
+      try {
+        await _registerRemoteFromLocalProfileWithFallback(
+          firstName: firstName,
+          lastName: lastName,
+          nickname: normalizedNickname,
+          birthday: normalizedBirthday,
+          sex: sex,
+          area: area,
+        );
+      } on ApiException catch (e) {
+        if (_isConnectivityException(e) || _isIgnorableOracleParentKeyError(e)) {
+          return;
+        }
+        rethrow;
+      }
+
+      remoteRow = await _lookupRemoteStudent(
+        nickname: normalizedNickname,
+        birthday: normalizedBirthday,
+      );
+      if (remoteRow == null) {
+        return;
+      }
+    }
+
+    final syncedStudent = Student.fromJson(remoteRow);
+    if (syncedStudent.studentId <= 0) {
+      return;
+    }
+
+    if (localProfile != null &&
+        _needsRemoteProfileUpdate(
+          remoteStudent: syncedStudent,
+          localProfile: localProfile,
+          fallbackNickname: normalizedNickname,
+          fallbackBirthday: normalizedBirthday,
+        )) {
+      try {
+        await _applyRemoteProfileUpdateFromLocal(
+          remoteStudentId: syncedStudent.studentId,
+          localProfile: localProfile,
+          fallbackNickname: normalizedNickname,
+          fallbackBirthday: normalizedBirthday,
+        );
+
+        final refreshedRemote = await _lookupRemoteStudent(
+          nickname: normalizedNickname,
+          birthday: normalizedBirthday,
+        );
+        if (refreshedRemote != null) {
+          remoteRow = refreshedRemote;
+        }
+      } on ApiException catch (e) {
+        if (!_isConnectivityException(e) && !_isIgnorableOracleParentKeyError(e)) {
+          rethrow;
+        }
+      }
+    }
+
+    final mergedRow = remoteRow;
+    if (mergedRow == null) {
+      return;
+    }
+
+    final mergedStudent = Student.fromJson(mergedRow);
+    final resolvedBirthday = _normalizeBirthday(
+      mergedStudent.birthday == null || mergedStudent.birthday!.isEmpty
+          ? normalizedBirthday
+          : mergedStudent.birthday!,
+    );
+
+    await LocalSyncStore.instance.saveSyncedStudent(
+      student: mergedStudent,
+      birthday: resolvedBirthday,
+    );
+
+    _currentStudentId = mergedStudent.studentId;
+    _currentNickname = mergedStudent.nickname.isEmpty
+        ? normalizedNickname
+        : mergedStudent.nickname;
+    _currentBirthday = resolvedBirthday;
+
+    await LocalSyncStore.instance.saveActiveSession(
+      studentId: mergedStudent.studentId,
+      nickname: _currentNickname!,
+      birthday: resolvedBirthday,
+    );
+  }
+
+  static void _scheduleOracleReconciliation({
+    required String nickname,
+    required String birthday,
+  }) {
+    final normalizedNickname = nickname.trim();
+    final normalizedBirthday = _normalizeBirthday(birthday);
+    if (normalizedNickname.isEmpty || normalizedBirthday.isEmpty) {
+      return;
+    }
+
+    final identityKey = '$normalizedNickname|$normalizedBirthday';
+    if (_oracleReconciliationTask != null && _oracleReconciliationIdentity == identityKey) {
+      return;
+    }
+
+    _oracleReconciliationIdentity = identityKey;
+    _oracleReconciliationTask = Future<void>.delayed(Duration.zero, () async {
+      try {
+        await _ensureStudentExistsAndSyncedWithOracle(
+          nickname: normalizedNickname,
+          birthday: normalizedBirthday,
+        );
+      } catch (_) {
+        // Reconciliation is best-effort only.
+      } finally {
+        if (_oracleReconciliationIdentity == identityKey) {
+          _oracleReconciliationIdentity = null;
+          _oracleReconciliationTask = null;
+        }
+      }
+    });
   }
 
   static Future<T> _runWithRetry<T>(

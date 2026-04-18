@@ -7,7 +7,7 @@ import '../navigation/route_transitions.dart';
 import '../widgets/form.dart';
 import '../widgets/kow_animated_button.dart';
 import '../widgets/mock_background.dart';
-import 'menu.dart';
+import 'start.dart';
 import 'welcome_back.dart';
 
 /// Student registration form screen.
@@ -30,7 +30,7 @@ class WelcomeStudentScreen extends StatelessWidget {
                   vertical: 14,
                 ),
                 child: WelcomeStudentFormCard(
-                  onSubmit: () => pushFade(context, const MenuScreen()),
+                  onSubmit: () => pushFade(context, const StartScreen()),
                   onAlreadyHaveAccountTap: () =>
                       pushFade(context, const WelcomeBackScreen()),
                   onClose: () {

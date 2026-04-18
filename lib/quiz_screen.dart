@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'api_service.dart';
 import 'grade_select/level_map.dart';
 import 'widgets/mock_background.dart';
@@ -289,20 +291,24 @@ const double   kTapPressScale = 0.76;
 class QuizQuestion {
   final String questionNumber;
   final String? imagePath;
+  final String? imageBlob;
   final String? prompt;
   final String? wordType;
   final String? subPrompt;
   final List<String> choices;
+  final List<String?>? choiceImageBlobs;
   final int correctIndex;
   final String funFact;
 
   const QuizQuestion({
     required this.questionNumber,
     this.imagePath,
+    this.imageBlob,
     this.prompt,
     this.wordType,
     this.subPrompt,
     required this.choices,
+    this.choiceImageBlobs,
     required this.correctIndex,
     required this.funFact,
   });
@@ -566,7 +572,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
       final rows = await ApiService.getQuestions(
         grade: widget.grade,
         subject: widget.subject,
-        difficulty: widget.difficulty,
       );
 
       if (!mounted) return;
@@ -578,7 +583,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
 
       if (rows.isEmpty) {
         setState(() {
-          _quizErrorMessage = 'There are no questions available for this grade and subject yet. Please try another selection.';
+          _quizErrorMessage = 'We have not created questions for this category yet. Please choose another one for now.';
           _remoteQuestions = const [];
         });
         return;
@@ -597,10 +602,16 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
           return QuizQuestion(
             questionNumber: 'QUESTION ${index + 1}',
             imagePath: null,
+            imageBlob: (row['imageBlob'] as String?) ?? (row['imagePath'] as String?),
             prompt: (row['prompt'] as String?) ?? '',
             wordType: null,
             subPrompt: (row['prompt'] as String?) ?? '',
             choices: choices,
+            choiceImageBlobs: _normalizeChoiceImageBlobs(
+              (row['choiceImageBlobs'] as List<dynamic>?) ??
+              (row['choiceImages'] as List<dynamic>?),
+              choices.length,
+            ),
             correctIndex: (row['correctIndex'] as num?)?.toInt() ?? 0,
             funFact: (row['funFact'] as String?) ?? '',
           );
@@ -611,7 +622,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
 
       if (e.statusCode == 404) {
         setState(() {
-          _quizErrorMessage = 'There are no questions available for this grade and subject yet. Please try another selection.';
+          _quizErrorMessage = 'We have not created questions for this category yet. Please choose another one for now.';
           _remoteQuestions = const [];
         });
         return;
@@ -733,6 +744,81 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
     if (idx == _q.correctIndex) return const Color(0xFFA8E6A3);
     if (idx == _selectedIdx)    return const Color(0xFFFFD0A0);
     return const Color(0xFFDDDDDD);
+  }
+
+  List<String?>? _normalizeChoiceImageBlobs(List<dynamic>? raw, int choiceCount) {
+    if (raw == null || raw.isEmpty) {
+      return null;
+    }
+
+    final normalized = List<String?>.filled(choiceCount, null, growable: false);
+    for (int i = 0; i < raw.length && i < normalized.length; i++) {
+      final value = raw[i];
+      if (value == null) {
+        normalized[i] = null;
+      } else {
+        final text = value.toString().trim();
+        normalized[i] = text.isEmpty ? null : text;
+      }
+    }
+
+    return normalized.any((item) => item != null) ? normalized : null;
+  }
+
+  String? _choiceImageBlobAt(int idx) {
+    final blobs = _q.choiceImageBlobs;
+    if (blobs == null || idx < 0 || idx >= blobs.length) {
+      return null;
+    }
+    return blobs[idx];
+  }
+
+  Uint8List? _decodeImageBytes(String? base64Value) {
+    if (base64Value == null || base64Value.trim().isEmpty) {
+      return null;
+    }
+
+    try {
+      return Uint8List.fromList(UriData.parse('data:application/octet-stream;base64,$base64Value').contentAsBytes());
+    } catch (_) {
+      try {
+        return Uint8List.fromList(base64Decode(base64Value));
+      } catch (_) {
+        return null;
+      }
+    }
+  }
+
+  Widget _buildChoiceContent(double sw, int idx) {
+    final imageBytes = _decodeImageBytes(_choiceImageBlobAt(idx));
+    if (imageBytes != null) {
+      return Image.memory(
+        imageBytes,
+        fit: BoxFit.contain,
+        height: sw * 0.10,
+        errorBuilder: (_, _, _) => Text(
+          _q.choices[idx],
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: 'SuperCartoon',
+            fontSize: sw * kBtnFs,
+            fontWeight: FontWeight.bold,
+            color: _btnText(idx),
+          ),
+        ),
+      );
+    }
+
+    return Text(
+      _q.choices[idx],
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        fontFamily: 'SuperCartoon',
+        fontSize: sw * kBtnFs,
+        fontWeight: FontWeight.bold,
+        color: _btnText(idx),
+      ),
+    );
   }
 
   @override
@@ -973,13 +1059,44 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                                   ]),
                                 ),
 
-                                if (_isEasy && _q.imagePath != null) ...[
+                                if (_isEasy && (_q.imagePath != null || _q.imageBlob != null)) ...[
                                   SizedBox(height: sh * kImagePadT),
-                                  Image.asset(_q.imagePath!,
-                                    width: sw * kImageSize, height: sw * kImageSize,
-                                    fit: BoxFit.contain,
-                                    errorBuilder: (_, _, _) => Icon(Icons.image,
-                                        color: Colors.grey, size: sw * kImageSize * 0.75)),
+                                  (() {
+                                    final remoteImage = _decodeImageBytes(_q.imageBlob);
+                                    if (remoteImage != null) {
+                                      return Image.memory(
+                                        remoteImage,
+                                        width: sw * kImageSize,
+                                        height: sw * kImageSize,
+                                        fit: BoxFit.contain,
+                                        errorBuilder: (_, _, _) => Icon(
+                                          Icons.image,
+                                          color: Colors.grey,
+                                          size: sw * kImageSize * 0.75,
+                                        ),
+                                      );
+                                    }
+
+                                    if (_q.imagePath != null && _q.imagePath!.isNotEmpty) {
+                                      return Image.asset(
+                                        _q.imagePath!,
+                                        width: sw * kImageSize,
+                                        height: sw * kImageSize,
+                                        fit: BoxFit.contain,
+                                        errorBuilder: (_, _, _) => Icon(
+                                          Icons.image,
+                                          color: Colors.grey,
+                                          size: sw * kImageSize * 0.75,
+                                        ),
+                                      );
+                                    }
+
+                                    return Icon(
+                                      Icons.image,
+                                      color: Colors.grey,
+                                      size: sw * kImageSize * 0.75,
+                                    );
+                                  })(),
                                   SizedBox(height: sh * kImagePadB),
                                 ],
 
@@ -1133,9 +1250,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
               child: InkWell(
                 borderRadius: BorderRadius.circular(sw * kBtnRadius),
                 onTap: _selectedIdx == null ? () => _onAnswer(idx) : null,
-                child: Center(child: Text(_q.choices[idx], style: TextStyle(
-                  fontFamily: 'SuperCartoon', fontSize: sw * kBtnFs,
-                  fontWeight: FontWeight.bold, color: _btnText(idx)))),
+                child: Center(child: _buildChoiceContent(sw, idx)),
               )),
           ),
         )),
@@ -1155,7 +1270,9 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
 
   // ── In-quiz result card ───────────────────────────────────────────────────
   Widget _buildResultCard(double sw, double sh) {
-    final correctWord = _q.choices[_q.correctIndex];
+    final correctWord = _q.choices[_q.correctIndex].trim().isEmpty
+      ? 'Option ${String.fromCharCode(65 + _q.correctIndex)}'
+      : _q.choices[_q.correctIndex];
     final resultColor = _isCorrect
         ? const Color(0xFF66CC66) : const Color(0xFFBB77EE);
     const funFactColor = Color(0xFF44CCEE);

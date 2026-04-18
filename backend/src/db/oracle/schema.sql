@@ -1,9 +1,12 @@
 
- CREATE USER kow_admin IDENTIFIED BY "KOW_Password_2026!";
- GRANT CONNECT, RESOURCE TO kow_admin;
- GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW, CREATE SEQUENCE,
-       CREATE PROCEDURE, CREATE TRIGGER, CREATE SYNONYM TO kow_admin;
-ALTER USER kow_admin QUOTA UNLIMITED ON USERS;
+-- =============================================================================
+-- 0. OPTIONAL DBA BOOTSTRAP (run only as SYS/SYSTEM or a DBA account)
+-- =============================================================================
+-- CREATE USER kow_admin IDENTIFIED BY "KOW_Password_2026!";
+-- NOTE: Do not use deprecated CONNECT/RESOURCE roles. Grant system privileges directly.
+-- GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW, CREATE SEQUENCE,
+--       CREATE PROCEDURE, CREATE TRIGGER, CREATE SYNONYM TO kow_admin;
+-- ALTER USER kow_admin QUOTA UNLIMITED ON USERS;
 
 
 
@@ -289,10 +292,15 @@ CREATE TABLE questionTb (
     gradelvl_id  NUMBER(3)     NOT NULL REFERENCES gradelvlTb(gradelvl_id),
     diff_id      NUMBER(3)     NOT NULL REFERENCES diffTb(diff_id),
     question_txt VARCHAR2(500) NOT NULL,
+    question_image BLOB,
     option_a     VARCHAR2(200) NOT NULL,
     option_b     VARCHAR2(200) NOT NULL,
     option_c     VARCHAR2(200) NOT NULL,
     option_d     VARCHAR2(200) NOT NULL,
+    option_a_image BLOB,
+    option_b_image BLOB,
+    option_c_image BLOB,
+    option_d_image BLOB,
     correct_opt  CHAR(1)       NOT NULL,  -- 'A', 'B', 'C', or 'D'
     is_active    NUMBER(1)     DEFAULT 1,
     created_at   DATE          DEFAULT SYSDATE,
@@ -430,9 +438,9 @@ BEGIN
 
     IF v_count = 0 THEN
         INSERT INTO studentTb
-            (first_name, last_name, nickname, birthday, sex_id, device_origin, tmp_local_id)
+            (stud_id, first_name, last_name, nickname, birthday, sex_id, device_origin, tmp_local_id)
         VALUES
-            (p_first_name, p_last_name, p_nickname, p_birthday, p_sex_id, p_device_uuid, p_tmp_local_id)
+            (seq_stud_id.NEXTVAL, p_first_name, p_last_name, p_nickname, p_birthday, p_sex_id, p_device_uuid, p_tmp_local_id)
         RETURNING stud_id INTO p_new_stud_id;
     ELSE
         SELECT stud_id INTO p_new_stud_id
@@ -465,9 +473,9 @@ CREATE OR REPLACE PROCEDURE sp_upload_score (
 ) AS
 BEGIN
     INSERT INTO scoreTb
-        (stud_id, subject_id, gradelvl_id, diff_id, score, max_score, passed, played_at, device_uuid)
+        (score_id, stud_id, subject_id, gradelvl_id, diff_id, score, max_score, passed, played_at, device_uuid)
     VALUES
-        (p_stud_id, p_subject_id, p_gradelvl_id, p_diff_id,
+        (seq_score_id.NEXTVAL, p_stud_id, p_subject_id, p_gradelvl_id, p_diff_id,
          p_score, p_max_score, p_passed, p_played_at, p_device_uuid);
 
     -- Update progress: only advance if this attempt passed a higher difficulty
@@ -542,8 +550,8 @@ CREATE OR REPLACE PROCEDURE sp_bump_content_version (
 BEGIN
     SELECT seq_content_ver.NEXTVAL INTO v_ver_num FROM DUAL;
     v_new_tag := 'v' || TO_CHAR(v_ver_num);
-    INSERT INTO contentVersionTb (version_tag, changed_by, change_note)
-    VALUES (v_new_tag, p_admin_id, p_note);
+    INSERT INTO contentVersionTb (version_id, version_tag, changed_by, change_note)
+    VALUES (v_ver_num, v_new_tag, p_admin_id, p_note);
     COMMIT;
 END sp_bump_content_version;
 /
@@ -554,6 +562,9 @@ END sp_bump_content_version;
 -- =============================================================================
 -- Section A: Auto-increment PKs (Oracle 11g replacement for DEFAULT seq.NEXTVAL)
 -- Section B: Audit + timestamp triggers
+-- NOTE: If your account lacks CREATE TRIGGER privilege, this section will fail
+-- with ORA-01031, but the schema and seed data still work because IDs are now
+-- assigned using sequences directly in INSERT statements/procedures.
 
 -- A) Auto-increment: teacherTb
 CREATE OR REPLACE TRIGGER trg_ai_teacher
@@ -785,14 +796,17 @@ END;
 -- 13. SYNONYMS (simplify object references)
 -- =============================================================================
 
-CREATE OR REPLACE SYNONYM students  FOR studentTb;
-CREATE OR REPLACE SYNONYM scores    FOR scoreTb;
-CREATE OR REPLACE SYNONYM subjects  FOR subjectTb;
-CREATE OR REPLACE SYNONYM questions FOR questionTb;
-CREATE OR REPLACE SYNONYM analytics FOR analyticsTb;
-CREATE OR REPLACE SYNONYM progress  FOR progressTb;
-CREATE OR REPLACE SYNONYM devices   FOR deviceTb;
-CREATE OR REPLACE SYNONYM admins    FOR adminTb;
+BEGIN
+    BEGIN EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM students FOR studentTb'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM scores FOR scoreTb'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM subjects FOR subjectTb'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM questions FOR questionTb'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM analytics FOR analyticsTb'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM progress FOR progressTb'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM devices FOR deviceTb'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM admins FOR adminTb'; EXCEPTION WHEN OTHERS THEN NULL; END;
+END;
+/
 
 
 -- =============================================================================
@@ -800,49 +814,57 @@ CREATE OR REPLACE SYNONYM admins    FOR adminTb;
 -- =============================================================================
 
 -- Sample teacher
-INSERT INTO teacherTb (first_name, last_name)
-VALUES ('Mary Rose', 'Manandeg');
+INSERT INTO teacherTb (teacher_id, first_name, last_name)
+VALUES (seq_teacher_id.NEXTVAL, 'Mary Rose', 'Manandeg');
 
 -- Sample admin user
 -- Default password: Admin@KOW2026
 -- IMPORTANT: Regenerate this hash with bcryptjs before production:
 --   const bcrypt = require('bcryptjs');
 --   console.log(bcrypt.hashSync('YourNewPassword', 10));
-INSERT INTO adminTb (username, password_hash, role)
-VALUES ('kow_admin', '$2b$10$exampleHashChangeBeforeUse1234567890abcdefgh', 'admin');
+INSERT INTO adminTb (admin_id, username, password_hash, role)
+VALUES (seq_admin_id.NEXTVAL, 'kow_admin', '$2b$10$exampleHashChangeBeforeUse1234567890abcdefgh', 'admin');
 
 -- Sample students
-INSERT INTO studentTb (first_name, last_name, nickname, birthday, sex_id, teacher_id, barangay_id, device_origin)
-VALUES ('Maria', 'Santos', 'Mari', TO_DATE('2020-03-15', 'YYYY-MM-DD'), 2, 1, 1, 'DEV-001');
+INSERT INTO studentTb (stud_id, first_name, last_name, nickname, birthday, sex_id, teacher_id, barangay_id, device_origin)
+VALUES (seq_stud_id.NEXTVAL, 'Maria', 'Santos', 'Mari', TO_DATE('2020-03-15', 'YYYY-MM-DD'), 2, 1, 1, 'DEV-001');
 
-INSERT INTO studentTb (first_name, last_name, nickname, birthday, sex_id, teacher_id, barangay_id, device_origin)
-VALUES ('Jose', 'Reyes', 'Pepe', TO_DATE('2019-07-22', 'YYYY-MM-DD'), 1, 1, 1, 'DEV-001');
+INSERT INTO studentTb (stud_id, first_name, last_name, nickname, birthday, sex_id, teacher_id, barangay_id, device_origin)
+VALUES (seq_stud_id.NEXTVAL, 'Jose', 'Reyes', 'Pepe', TO_DATE('2019-07-22', 'YYYY-MM-DD'), 1, 1, 1, 'DEV-001');
 
 -- Sample device
-INSERT INTO deviceTb (device_uuid, device_name, registered_at)
-VALUES ('DEV-001', 'Barangay Sauyo Tablet 1', SYSDATE);
+INSERT INTO deviceTb (device_id, device_uuid, device_name, registered_at)
+VALUES (seq_device_id.NEXTVAL, 'DEV-001', 'Barangay Sauyo Tablet 1', SYSDATE);
 
 -- Sample scores
-INSERT INTO scoreTb (stud_id, subject_id, gradelvl_id, diff_id, score, max_score, passed, played_at, device_uuid)
-VALUES (1001, 1, 2, 1, 8, 10, 1, SYSDATE - 1, 'DEV-001');
+INSERT INTO scoreTb (score_id, stud_id, subject_id, gradelvl_id, diff_id, score, max_score, passed, played_at, device_uuid)
+VALUES (
+    seq_score_id.NEXTVAL,
+    (SELECT stud_id FROM studentTb WHERE nickname = 'Mari' AND birthday = TO_DATE('2020-03-15', 'YYYY-MM-DD')),
+    1, 2, 1, 8, 10, 1, SYSDATE - 1, 'DEV-001'
+);
 
-INSERT INTO scoreTb (stud_id, subject_id, gradelvl_id, diff_id, score, max_score, passed, played_at, device_uuid)
-VALUES (1002, 2, 2, 1, 7, 10, 1, SYSDATE, 'DEV-001');
+INSERT INTO scoreTb (score_id, stud_id, subject_id, gradelvl_id, diff_id, score, max_score, passed, played_at, device_uuid)
+VALUES (
+    seq_score_id.NEXTVAL,
+    (SELECT stud_id FROM studentTb WHERE nickname = 'Pepe' AND birthday = TO_DATE('2019-07-22', 'YYYY-MM-DD')),
+    2, 2, 1, 7, 10, 1, SYSDATE, 'DEV-001'
+);
 
 -- Sample questions (Mathematics, Punla, Easy)
-INSERT INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt)
-VALUES (1, 1, 1, 'What is 1 + 1?', '1', '2', '3', '4', 'B');
+INSERT INTO questionTb (question_id, subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
+VALUES (seq_question_id.NEXTVAL, 1, 1, 1, 'What is 1 + 1?', NULL, '1', '2', '3', '4', 'B');
 
-INSERT INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt)
-VALUES (1, 1, 1, 'How many fingers on one hand?', '3', '4', '5', '6', 'C');
+INSERT INTO questionTb (question_id, subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
+VALUES (seq_question_id.NEXTVAL, 1, 1, 1, 'How many fingers on one hand?', NULL, '3', '4', '5', '6', 'C');
 
 -- Sample questions (English, Punla, Easy)
-INSERT INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt)
-VALUES (4, 1, 1, 'What color is the sky?', 'Red', 'Green', 'Blue', 'Yellow', 'C');
+INSERT INTO questionTb (question_id, subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
+VALUES (seq_question_id.NEXTVAL, 4, 1, 1, 'What color is the sky?', NULL, 'Red', 'Green', 'Blue', 'Yellow', 'C');
 
 -- Initial content version
-INSERT INTO contentVersionTb (version_tag, change_note)
-VALUES ('v1', 'Initial schema load');
+INSERT INTO contentVersionTb (version_id, version_tag, change_note)
+VALUES (seq_content_ver.NEXTVAL, 'v1', 'Initial schema load');
 
 COMMIT;
 
@@ -860,16 +882,29 @@ WHERE table_name IN (
 );
 -- Expected: 18
 
-SELECT 'Sequences:  ' || COUNT(*) AS status FROM user_sequences;
+SELECT 'Sequences:  ' || COUNT(*) AS status FROM user_sequences
+WHERE sequence_name IN (
+    'SEQ_STUD_ID','SEQ_SCORE_ID','SEQ_TEACHER_ID','SEQ_ANALYTICS_ID','SEQ_TIMEPLAY_ID',
+    'SEQ_DEVICE_ID','SEQ_ADMIN_ID','SEQ_QUESTION_ID','SEQ_SYNC_ID','SEQ_CONTENT_VER','SEQ_AUDIT_ID'
+);
 -- Expected: 11
 
 SELECT 'Views:      ' || COUNT(*) AS status FROM user_views;
 -- Expected: 4
 
-SELECT 'Procedures: ' || COUNT(*) AS status FROM user_procedures WHERE object_type = 'PROCEDURE';
+SELECT 'Procedures: ' || COUNT(*) AS status FROM user_procedures
+WHERE object_type = 'PROCEDURE'
+  AND object_name IN (
+      'SP_UPSERT_STUDENT','SP_UPLOAD_SCORE','SP_REFRESH_ANALYTICS','SP_BUMP_CONTENT_VERSION'
+  );
 -- Expected: 4
 
-SELECT 'Triggers:   ' || COUNT(*) AS status FROM user_triggers;
+SELECT 'Triggers:   ' || COUNT(*) AS status FROM user_triggers
+WHERE trigger_name IN (
+    'TRG_AI_TEACHER','TRG_AI_STUDENT','TRG_AI_ADMIN','TRG_AI_DEVICE','TRG_AI_SCORE',
+    'TRG_AI_TIMEPLAY','TRG_AI_ANALYTICS','TRG_AI_QUESTION','TRG_AI_CONTENTVER','TRG_AI_SYNCLOG',
+    'TRG_STUDENT_AUDIT','TRG_STUDENT_UPDATED','TRG_QUESTION_UPDATED'
+);
 -- Expected: 13  (10 auto-increment + trg_student_audit + trg_student_updated + trg_question_updated)
 
 -- =============================================================================
