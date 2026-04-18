@@ -1,21 +1,48 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // ← add this
+import 'package:flutter/services.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 import 'screens/start.dart';
 
-void main() {
-  // 1. Configure fullscreen / navigation bar behavior globally
+// ─── GLOBAL AUDIO SERVICE ─────────────────────────────
+class AudioService {
+  static final AudioService _instance = AudioService._internal();
+  factory AudioService() => _instance;
+
+  late AudioPlayer _player;
+
+  AudioService._internal() {
+    _player = AudioPlayer();
+    _player.setReleaseMode(ReleaseMode.loop); // loop forever
+  }
+
+  Future<void> playBackgroundMusic() async {
+    await _player.play(AssetSource('sounds/bittown.mp3'));
+  }
+
+  Future<void> stop() async {
+    await _player.stop();
+  }
+}
+
+// ─── MAIN ─────────────────────────────────────────────
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky); // nav bar hides, shows on swipe
+
+  // Fullscreen setup
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       systemNavigationBarColor: Colors.transparent,
     ),
   );
 
-  // 2. Error handling (keep your existing code)
+  // Start background music BEFORE app runs
+  await AudioService().playBackgroundMusic();
+
+  // Error handling
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
     Zone.current.handleUncaughtError(
@@ -39,12 +66,40 @@ void main() {
   );
 }
 
-class MyApp extends StatelessWidget {
+// ─── APP WITH LIFECYCLE CONTROL ──────────────────────
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      AudioService().stop();
+    } else if (state == AppLifecycleState.resumed) {
+      AudioService().playBackgroundMusic();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final baseTheme = ThemeData(useMaterial3: true);
+
     return MaterialApp(
       // debugShowCheckedModeBanner: false,
       theme: ThemeData(
