@@ -2,78 +2,52 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:audioplayers/audioplayers.dart';
 
 import 'api_service.dart';
 import 'local_sync_store.dart';
+import 'services/audio.dart';
 import 'screens/menu.dart';
 import 'screens/start.dart';
 import 'widgets/mock_background.dart';
 
-<<<<<<< HEAD
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  final savedTheme = await LocalSyncStore.instance.getSelectedTheme();
-  if (savedTheme != null && themeBackgrounds.containsKey(savedTheme)) {
-    selectedThemeNotifier.value = savedTheme;
-  }
-  ApiService.syncPending();
-  runApp(const MyApp());
-=======
-// ─── GLOBAL AUDIO SERVICE ─────────────────────────────
-class AudioService {
-  static final AudioService _instance = AudioService._internal();
-  factory AudioService() => _instance;
-
-  late AudioPlayer _player;
-
-  AudioService._internal() {
-    _player = AudioPlayer();
-    _player.setReleaseMode(ReleaseMode.loop); // loop forever
-  }
-
-  Future<void> playBackgroundMusic() async {
-    await _player.play(AssetSource('sounds/bittown.mp3'));
-  }
-
-  Future<void> stop() async {
-    await _player.stop();
-  }
->>>>>>> 50596e6deeea80c069a5998050186a37243c272b
-}
-
 // ─── MAIN ─────────────────────────────────────────────
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  // Fullscreen setup
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      systemNavigationBarColor: Colors.transparent,
-    ),
-  );
-
-  // Start background music BEFORE app runs
-  await AudioService().playBackgroundMusic();
-
-  // Error handling
-  FlutterError.onError = (FlutterErrorDetails details) {
-    FlutterError.presentError(details);
-    Zone.current.handleUncaughtError(
-      details.exception,
-      details.stack ?? StackTrace.current,
-    );
-  };
-
-  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
-    debugPrint('Unhandled platform error: $error');
-    debugPrintStack(stackTrace: stack);
-    return true;
-  };
-
   runZonedGuarded(
-    () => runApp(const MyApp()),
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+
+      final savedTheme = await LocalSyncStore.instance.getSelectedTheme();
+      if (savedTheme != null && themeBackgrounds.containsKey(savedTheme)) {
+        selectedThemeNotifier.value = savedTheme;
+      }
+      await AudioService().init();
+      unawaited(ApiService.syncPending());
+
+      // Fullscreen setup
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      SystemChrome.setSystemUIOverlayStyle(
+        const SystemUiOverlayStyle(
+          systemNavigationBarColor: Colors.transparent,
+        ),
+      );
+
+      // Error handling
+      FlutterError.onError = (FlutterErrorDetails details) {
+        FlutterError.presentError(details);
+        Zone.current.handleUncaughtError(
+          details.exception,
+          details.stack ?? StackTrace.current,
+        );
+      };
+
+      PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+        debugPrint('Unhandled platform error: $error');
+        debugPrintStack(stackTrace: stack);
+        return true;
+      };
+
+      runApp(const MyApp());
+    },
     (Object error, StackTrace stack) {
       debugPrint('Unhandled zoned error: $error');
       debugPrintStack(stackTrace: stack);
@@ -104,10 +78,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) {
-      AudioService().stop();
-    } else if (state == AppLifecycleState.resumed) {
-      AudioService().playBackgroundMusic();
+    if (state == AppLifecycleState.resumed) {
+      unawaited(AudioService().onAppResumed());
+      return;
+    }
+
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(AudioService().onAppPaused());
     }
   }
 

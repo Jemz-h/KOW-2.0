@@ -1,98 +1,59 @@
-<<<<<<< HEAD
-const { loadEnv } = require('./loadEnv');
-loadEnv();
-
-const oracleProvider = require('./providers/oracleProvider');
-const sqliteProvider = require('./providers/sqliteProvider');
-
-const configuredClient = (process.env.DB_CLIENT || 'sqlite').toLowerCase();
-const allowFallback = (process.env.DB_FALLBACK_SQLITE || 'true').toLowerCase() !== 'false';
-
-let activeClient = configuredClient;
-let provider = configuredClient === 'sqlite' ? sqliteProvider : oracleProvider;
-
-function setProvider(clientName) {
-  activeClient = clientName;
-  provider = clientName === 'sqlite' ? sqliteProvider : oracleProvider;
-}
-
-async function initialize() {
-  try {
-    await provider.initialize();
-    console.log(`Database provider initialized: ${activeClient}`);
-  } catch (error) {
-    console.error(`Error initializing ${activeClient} database provider:`, error.message);
-
-    if (activeClient === 'oracle' && allowFallback) {
-      console.warn('Falling back to SQLite provider for offline mode');
-      setProvider('sqlite');
-      await provider.initialize();
-      console.log('Database provider initialized: sqlite (fallback)');
-      return;
-    }
-
-    throw error;
-  }
-}
-
-async function execute(sql, binds = [], opts = {}) {
-  try {
-    return await provider.execute(sql, binds, opts);
-  } catch (error) {
-    console.error('Database execution error:', error.message);
-    throw error;
-  }
-}
-
-async function close() {
-  await provider.close();
-}
-
-function isOracle() {
-  return activeClient === 'oracle';
-}
-
-function isSqlite() {
-  return activeClient === 'sqlite';
-}
-
-function getDriver() {
-  return provider.driver;
-}
-
-function getActiveClient() {
-  return activeClient;
-}
-
-async function closePoolAndExit() {
-  console.log('\nClosing database provider');
-  try {
-    await close();
-    console.log('Database provider closed');
-    process.exit(0);
-  } catch (error) {
-    console.error(error.message);
-    process.exit(1);
-  }
-}
-
-process.once('SIGTERM', closePoolAndExit).once('SIGINT', closePoolAndExit);
-
-module.exports = {
-  initialize,
-  execute,
-  close,
-  isOracle,
-  isSqlite,
-  getDriver,
-  getActiveClient,
-=======
 const { dbMode } = require('./env');
 const { connectOracle, closeOracle } = require('./oracle');
 const { connectSqlite, closeSqlite } = require('./sqlite');
+const oracledb = require('oracledb');
+
+function isOracle() {
+  return dbMode === 'online';
+}
+
+function isSqlite() {
+  return !isOracle();
+}
+
+function getActiveClient() {
+  return isOracle() ? 'oracle' : 'sqlite';
+}
+
+function getDriver() {
+  return isOracle() ? oracledb : null;
+}
+
+async function execute(sql, binds = {}, opts = {}) {
+  if (isOracle()) {
+    const pool = await connectOracle();
+    const connection = await pool.getConnection();
+    try {
+      return await connection.execute(sql, binds, {
+        autoCommit: Boolean(opts.autoCommit),
+        outFormat: opts.outFormat || require('oracledb').OUT_FORMAT_OBJECT,
+      });
+    } finally {
+      await connection.close();
+    }
+  }
+
+  const db = connectSqlite();
+  const statement = db.prepare(sql);
+  const isSelect = /^\s*select\b/i.test(sql);
+
+  if (isSelect) {
+    return {
+      rows: statement.all(binds),
+      rowsAffected: 0,
+    };
+  }
+
+  const result = statement.run(binds);
+  return {
+    rows: [],
+    rowsAffected: result.changes,
+    lastRowid: result.lastInsertRowid,
+  };
+}
 
 async function connectDatabase() {
-  if (dbMode === 'online') {
+  if (isOracle()) {
     await connectOracle();
     return;
   }
@@ -100,15 +61,29 @@ async function connectDatabase() {
 }
 
 async function closeDatabase() {
-  if (dbMode === 'online') {
+  if (isOracle()) {
     await closeOracle();
     return;
   }
   closeSqlite();
 }
 
+async function initialize() {
+  await connectDatabase();
+}
+
+async function close() {
+  await closeDatabase();
+}
+
 module.exports = {
   connectDatabase,
   closeDatabase,
->>>>>>> 50596e6deeea80c069a5998050186a37243c272b
+  initialize,
+  close,
+  execute,
+  isOracle,
+  isSqlite,
+  getDriver,
+  getActiveClient,
 };

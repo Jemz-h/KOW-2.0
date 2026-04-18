@@ -224,6 +224,8 @@ class ApiService {
         area: area,
       );
 
+      // Local-only registration succeeded while backend is unreachable.
+      _currentStudentId = null;
       _currentNickname = nickname;
       _currentBirthday = birthday;
       await LocalSyncStore.instance.saveActiveSession(
@@ -232,10 +234,9 @@ class ApiService {
         birthday: birthday,
       );
 
-      throw const ApiException(
-        503,
-        'Saved on this device only (offline). Connect to backend to sync to Oracle.',
-      );
+      // Continue as a successful sign-up so the app flow matches online behavior.
+      unawaited(syncPending());
+      return;
     }
   }
 
@@ -284,8 +285,68 @@ class ApiService {
 
       return student;
     } on ApiException catch (e) {
-      if (!_isConnectivityException(e)) {
-        rethrow;
+      final shouldAttemptLookupFallback = e.statusCode == 400 || e.statusCode == 404;
+      if (shouldAttemptLookupFallback) {
+        try {
+          final lookupRes = await _sendWithTimeout(
+            _client.post(
+              Uri.parse('$_base/api/students/lookup'),
+              headers: _headers,
+              body: jsonEncode({'nickname': nickname, 'birthday': birthday}),
+            ),
+            timeout: _interactiveAuthTimeout,
+          );
+          _checkStatus(lookupRes);
+
+          final lookupBody = jsonDecode(lookupRes.body) as Map<String, dynamic>;
+          if (lookupBody['found'] == true) {
+            final resolvedBirthday = _normalizeBirthday(birthday);
+            final resolvedStudentId = (lookupBody['stud_id'] as num?)?.toInt() ??
+                ((lookupBody['student'] as Map<String, dynamic>?)?['STUDENT_ID'] as num?)?.toInt();
+            if (resolvedStudentId == null || resolvedStudentId <= 0) {
+              throw const ApiException(404, 'Student lookup did not return a valid ID.');
+            }
+            final resolvedNickname =
+                (lookupBody['nickname'] as String?)?.trim().isNotEmpty == true
+                ? (lookupBody['nickname'] as String).trim()
+                : nickname;
+
+            _currentStudentId = resolvedStudentId;
+            _currentNickname = resolvedNickname;
+            _currentBirthday = resolvedBirthday;
+
+            await LocalSyncStore.instance.saveActiveSession(
+              studentId: resolvedStudentId,
+              nickname: resolvedNickname,
+              birthday: resolvedBirthday,
+            );
+
+            startContentVersionPolling();
+            unawaited(syncPending());
+
+            final fallbackStudent = Student(
+              studentId: resolvedStudentId,
+              firstName: (lookupBody['first_name'] as String?) ?? '',
+              lastName: (lookupBody['last_name'] as String?) ?? '',
+              nickname: resolvedNickname,
+              sex: ((lookupBody['sex'] as String?) ?? 'Unknown').trim(),
+              area: (lookupBody['area'] as String?)?.isEmpty == true
+                  ? null
+                  : lookupBody['area'] as String?,
+              birthday: resolvedBirthday,
+              totalScore: 0,
+            );
+
+            await LocalSyncStore.instance.saveSyncedStudent(
+              student: fallbackStudent,
+              birthday: resolvedBirthday,
+            );
+
+            return fallbackStudent;
+          }
+        } on ApiException {
+          // Continue to local/offline fallback.
+        }
       }
 
       final offlineStudent = await LocalSyncStore.instance.findOfflineStudent(
@@ -303,6 +364,10 @@ class ApiService {
           birthday: _currentBirthday!,
         );
         return offlineStudent;
+      }
+
+      if (!_isConnectivityException(e)) {
+        rethrow;
       }
 
       throw const ApiException(
@@ -579,20 +644,45 @@ class ApiService {
     );
     _checkStatus(res);
     final body = jsonDecode(res.body) as Map<String, dynamic>;
-    return List<Map<String, dynamic>>.from(body['scores'] as List);
+    final rows = body['scores'] ?? body['data'] ?? const <dynamic>[];
+    if (rows is! List) {
+      return const <Map<String, dynamic>>[];
+    }
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
   }
 
   /// Fetch all progress rows for a student.
   static Future<List<Map<String, dynamic>>> getProgress(int studentId) async {
-    final res = await _sendWithTimeout(
-      _client.get(
-        Uri.parse('$_base/api/progress/user/$studentId'),
-        headers: _headers,
-      ),
-    );
-    _checkStatus(res);
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
-    return List<Map<String, dynamic>>.from(body['data'] as List);
+    Future<List<Map<String, dynamic>>> fetchPath(String path) async {
+      final res = await _sendWithTimeout(
+        _client.get(
+          Uri.parse('$_base$path'),
+          headers: _headers,
+        ),
+      );
+      _checkStatus(res);
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final rows = body['data'] ?? body['progress'] ?? const <dynamic>[];
+      if (rows is! List) {
+        return const <Map<String, dynamic>>[];
+      }
+      return rows
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(growable: false);
+    }
+
+    try {
+      return await fetchPath('/api/progress/user/$studentId');
+    } on ApiException catch (e) {
+      if (e.statusCode != 404) {
+        rethrow;
+      }
+      return fetchPath('/api/progress/$studentId');
+    }
   }
 
   /// Save or update learner progress.
@@ -764,18 +854,28 @@ class ApiService {
 
   static String _normalizeBirthday(String value) {
     final raw = value.trim();
-    final match = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})$').firstMatch(raw);
-    if (match == null) {
+    final ymd = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})$').firstMatch(raw);
+    if (ymd != null) {
+      final month = int.tryParse(ymd.group(2) ?? '');
+      final day = int.tryParse(ymd.group(3) ?? '');
+      if (month == null || day == null || month < 1 || month > 12 || day < 1 || day > 31) {
+        return raw;
+      }
+      return '${ymd.group(1)}-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+    }
+
+    final mdy = RegExp(r'^(\d{1,2})/(\d{1,2})/(\d{4})$').firstMatch(raw);
+    if (mdy == null) {
       return raw;
     }
 
-    final month = int.tryParse(match.group(2) ?? '');
-    final day = int.tryParse(match.group(3) ?? '');
+    final month = int.tryParse(mdy.group(1) ?? '');
+    final day = int.tryParse(mdy.group(2) ?? '');
     if (month == null || day == null || month < 1 || month > 12 || day < 1 || day > 31) {
       return raw;
     }
 
-    return '${match.group(1)}-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+    return '${mdy.group(3)}-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
   }
 
   static Future<int?> _registerRemote({

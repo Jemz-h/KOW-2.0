@@ -44,23 +44,13 @@ class MockBackground extends StatelessWidget {
 
 /// Shared logo row displayed at the top of landing/menu screens.
 class LogoRow extends StatelessWidget {
-  const LogoRow({super.key, required this.width});
+  const LogoRow({super.key, this.top = 0, required this.width});
 
+  final double top;
   final double width;
 
   @override
   Widget build(BuildContext context) {
-<<<<<<< HEAD
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Image.asset('assets/misc/sauyo.png', height: width * 0.12),
-        SizedBox(width: width * 0.03),
-        Image.asset('assets/misc/qcu.png', height: width * 0.12),
-        SizedBox(width: width * 0.03),
-        Image.asset('assets/misc/bctpoc.png', height: width * 0.12),
-      ],
-=======
     return Transform.translate(
       offset: Offset(0, top),
       child: Row(
@@ -73,7 +63,6 @@ class LogoRow extends StatelessWidget {
           Image.asset('assets/misc/bctpoc.png', height: width * 0.12),
         ],
       ),
->>>>>>> 50596e6deeea80c069a5998050186a37243c272b
     );
   }
 }

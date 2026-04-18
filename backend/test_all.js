@@ -1,15 +1,49 @@
 const http = require('http');
+const path = require('path');
+const dotenv = require('dotenv');
 
-async function doFetch(path, method = 'GET', body = null) {
+dotenv.config({ path: path.resolve(__dirname, '.env.development') });
+dotenv.config({ path: path.resolve(__dirname, '.env') });
+dotenv.config();
+
+const HOST = process.env.TEST_HOST || 'localhost';
+const EXPLICIT_PORT = process.env.TEST_PORT ? Number(process.env.TEST_PORT) : null;
+const ENV_PORT = process.env.PORT ? Number(process.env.PORT) : null;
+const PORT_CANDIDATES = EXPLICIT_PORT
+  ? [EXPLICIT_PORT]
+  : Array.from(new Set([
+      ENV_PORT,
+      3010,
+      3011,
+      3012,
+      3013,
+      3014,
+      3000,
+      3001,
+      3002,
+      5000,
+      8080,
+    ].filter((port) => Number.isFinite(port) && port > 0)));
+
+let activePort = PORT_CANDIDATES[0];
+
+async function doFetch(path, method = 'GET', body = null, token = null) {
   return new Promise((resolve, reject) => {
+    const headers = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    };
+
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
     const options = {
-      hostname: 'localhost',
-      port: 3000,
-      path: path,
-      method: method,
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      hostname: HOST,
+      port: activePort,
+      path,
+      method,
+      headers,
     };
 
     const req = http.request(options, (res) => {
@@ -19,80 +53,151 @@ async function doFetch(path, method = 'GET', body = null) {
       });
       res.on('end', () => {
         let parsed = data;
-        try { parsed = JSON.parse(data); } catch(e) {}
+        try {
+          parsed = JSON.parse(data);
+        } catch (_) {
+          // Keep raw body when not JSON.
+        }
         resolve({ status: res.statusCode, body: parsed });
       });
     });
 
     req.on('error', (e) => reject(e));
 
-    if (body) req.write(JSON.stringify(body));
+    if (body) {
+      req.write(JSON.stringify(body));
+    }
     req.end();
   });
 }
 
-function resultOk(status) {
-    if(status === 404 || status === 500) return 'WARNING (Might be due to empty db)';
-    return status >= 200 && status < 400 ? 'PASSED' : 'FAILED';
+function logResult(label, response, expectedStatusCodes) {
+  const pass = expectedStatusCodes.includes(response.status);
+  const marker = pass ? 'PASSED' : 'FAILED';
+  console.log(`${label} -> ${response.status} ${marker}`);
+  if (!pass) {
+    console.log('Response:', response.body);
+  }
+  return pass;
 }
 
 async function runTests() {
-  console.log('--- STARTING CONTROLLER TESTS ---');
-  let testUserId = null;
-  const nickname = 'run_' + Date.now();
+  console.log('--- STARTING API FLOW TEST (LOGIN + ORACLE WRITES) ---');
+
+  let health = null;
+  for (const port of PORT_CANDIDATES) {
+    activePort = port;
+    try {
+      health = await doFetch('/api/health');
+      if (health.status === 200) {
+        break;
+      }
+    } catch (_) {
+      health = null;
+    }
+  }
+
+  if (!health || health.status !== 200) {
+    throw new Error(`Backend is not reachable on ${HOST} ports: ${PORT_CANDIDATES.join(', ')}`);
+  }
+
+  console.log(`Using backend at http://${HOST}:${activePort}`);
+
+  const nickname = `run_${Date.now()}`;
   const birthday = '2010-05-15';
+  const deviceUuid = `DEV-TEST-${Date.now()}`;
 
-  console.log('\\n[1] POST /api/auth/register');
-  const regRes = await doFetch('/api/auth/register', 'POST', {
-    firstName: 'Test', lastName: 'User', nickname, birthday, sex: 'Male', area: 'Barangay Sauyo', deviceUuid: 'DEV-TEST-001'
+  let studentId = null;
+  let authToken = null;
+
+  logResult('[1] GET /api/health', health, [200]);
+
+  const register = await doFetch('/api/students/register', 'POST', {
+    firstName: 'Test',
+    lastName: 'User',
+    nickname,
+    birthday,
+    sex: 'Male',
+    area: 'Barangay Sauyo',
+    deviceUuid,
   });
-  console.log(`Status: ${regRes.status} ${resultOk(regRes.status)}`);
-  if (regRes.status === 201) testUserId = regRes.body.userId;
+  logResult('[2] POST /api/students/register', register, [200, 201]);
+  studentId = register.body?.student?.studentId || null;
 
-  console.log('\\n[2] POST /api/auth/login');
-  const logRes = await doFetch('/api/auth/login', 'POST', { nickname, birthday });
-  console.log(`Status: ${logRes.status} ${resultOk(logRes.status)}`);
-
-  console.log('\\n[3] GET /api/users');
-  const usersRes = await doFetch('/api/users', 'GET');
-  console.log(`Status: ${usersRes.status} ${resultOk(usersRes.status)}`);
-
-  if (testUserId) {
-    console.log(`\\n[4] GET /api/users/${testUserId}`);
-    const userByIdRes = await doFetch(`/api/users/${testUserId}`, 'GET');
-    console.log(`Status: ${userByIdRes.status} ${resultOk(userByIdRes.status)}`);
+  const lookup = await doFetch('/api/students/lookup', 'POST', { nickname, birthday });
+  logResult('[3] POST /api/students/lookup', lookup, [200]);
+  if (!studentId) {
+    studentId = lookup.body?.stud_id || lookup.body?.student?.STUDENT_ID || null;
   }
 
-  console.log('\\n[5] GET /api/levels');
-  const levelsRes = await doFetch('/api/levels', 'GET');
-  console.log(`Status: ${levelsRes.status} ${resultOk(levelsRes.status)}`);
-
-  const testGradeId = 1; 
-  console.log(`\\n[6] GET /api/levels/grade/${testGradeId}`);
-  const levelsGradeRes = await doFetch(`/api/levels/grade/${testGradeId}`, 'GET');
-  console.log(`Status: ${levelsGradeRes.status} ${resultOk(levelsGradeRes.status)}`);
-
-  console.log('\\n[7] GET /api/quiz/questions');
-  const qRes = await doFetch('/api/quiz/questions?grade=Punla&subject=Mathematics&difficulty=Easy', 'GET');
-  console.log(`Status: ${qRes.status} ${resultOk(qRes.status)}`);
-
-  console.log('\\n[8] POST /api/quiz/score');
-  const scoreRes = await doFetch('/api/quiz/score', 'POST', {
-    studentId: testUserId || 1001, grade: 'Punla', subject: 'Mathematics', difficulty: 'Easy', score: 8, total: 10, deviceUuid: 'DEV-TEST-001'
-  });
-  console.log(`Status: ${scoreRes.status} ${resultOk(scoreRes.status)}`);
-
-  if (testUserId) {
-    console.log(`\\n[9] GET /api/quiz/scores/${testUserId}`);
-    const pastScoresRes = await doFetch(`/api/quiz/scores/${testUserId}`, 'GET');
-    console.log(`Status: ${pastScoresRes.status} ${resultOk(pastScoresRes.status)}`);
+  const login = await doFetch('/api/auth/login', 'POST', { nickname, birthday });
+  logResult('[4] POST /api/auth/login (nickname+birthday)', login, [200]);
+  authToken = login.body?.token || null;
+  if (!studentId) {
+    studentId = login.body?.student?.studentId || null;
   }
 
-  console.log('\\n[10] POST /api/progress');
-  const progRes = await doFetch('/api/progress', 'POST', {
-    studentId: testUserId || 1001, subject: 'Mathematics', grade: 'Punla', highestDiffPassed: 1, totalTimePlayed: 120
+  if (!studentId) {
+    console.log('FAILED: Could not resolve studentId from register/lookup/login responses.');
+    process.exitCode = 1;
+    return;
+  }
+
+  const initialScores = await doFetch(`/api/quiz/scores/${studentId}`);
+  logResult('[5] GET /api/quiz/scores/:studentId (before)', initialScores, [200]);
+  const beforeCount = Array.isArray(initialScores.body?.scores)
+    ? initialScores.body.scores.length
+    : 0;
+
+  const submitScore = await doFetch('/api/quiz/score', 'POST', {
+    studentId,
+    grade: 'Punla',
+    subject: 'Mathematics',
+    difficulty: 'Easy',
+    score: 8,
+    total: 10,
+    played_at: new Date().toISOString(),
+    device_uuid: deviceUuid,
   });
-  console.log(`Status: ${progRes.status} ${resultOk(progRes.status)}`);
+  logResult('[6] POST /api/quiz/score', submitScore, [200, 201]);
+
+  const scoresAfter = await doFetch(`/api/quiz/scores/${studentId}`);
+  logResult('[7] GET /api/quiz/scores/:studentId (after)', scoresAfter, [200]);
+  const afterCount = Array.isArray(scoresAfter.body?.scores)
+    ? scoresAfter.body.scores.length
+    : 0;
+
+  if (afterCount < beforeCount) {
+    console.log('FAILED: score count decreased unexpectedly.');
+    process.exitCode = 1;
+  } else if (afterCount === beforeCount) {
+    console.log('WARNING: score count unchanged (possible duplicate guard on identical payload).');
+  } else {
+    console.log(`PASSED: score rows increased from ${beforeCount} to ${afterCount}.`);
+  }
+
+  const progressUpsert = await doFetch('/api/progress', 'POST', {
+    studentId,
+    grade: 'Punla',
+    subject: 'Mathematics',
+    highest_diff_passed: 1,
+    total_time_played: 120,
+    last_played_at: new Date().toISOString(),
+  });
+  logResult('[8] POST /api/progress', progressUpsert, [200]);
+
+  const progressRows = await doFetch(`/api/progress/${studentId}`);
+  logResult('[9] GET /api/progress/:studentId', progressRows, [200]);
+
+  if (authToken) {
+    const users = await doFetch('/api/users', 'GET', null, authToken);
+    logResult('[10] GET /api/users (JWT)', users, [200]);
+  } else {
+    console.log('[10] SKIPPED /api/users because no JWT token was returned by login.');
+  }
 }
 
-runTests().catch(console.error);
+runTests().catch((error) => {
+  console.error('Test runner crashed:', error);
+  process.exitCode = 1;
+});

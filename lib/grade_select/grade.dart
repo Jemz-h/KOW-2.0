@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'level_map.dart';
 import '../screens/settings.dart';
+import '../widgets/mock_background.dart';
 
 // ── Responsive helper ──────────────────────────────────────────
 class R {
@@ -220,7 +221,17 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
           // ── Background ─────────────────────────────────────────
           // RepaintBoundary so background never repaints during animations
           RepaintBoundary(
-            child: Image.asset('assets/themes/space.png', fit: BoxFit.cover),
+            child: ValueListenableBuilder<String>(
+              valueListenable: selectedThemeNotifier,
+              builder: (context, theme, _) {
+                final bgAsset = themeBackgrounds[theme] ?? themeBackgrounds['space']!;
+                return Image.asset(
+                  bgAsset,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => Container(color: const Color(0xFF1A2A3A)),
+                );
+              },
+            ),
           ),
 
           // ── Title ──────────────────────────────────────────────

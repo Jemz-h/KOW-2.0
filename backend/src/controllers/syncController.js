@@ -156,6 +156,7 @@ async function upsertProgress({ studentId, subjectId, gradeLevelId, highestDiffP
            END
        WHEN NOT MATCHED THEN
          INSERT (
+           progress_id,
            stud_id,
            subject_id,
            gradelvl_id,
@@ -164,6 +165,7 @@ async function upsertProgress({ studentId, subjectId, gradeLevelId, highestDiffP
            last_played_at
          )
          VALUES (
+           seq_score_id.NEXTVAL,
            :studId,
            :subjectId,
            :gradeLevelId,

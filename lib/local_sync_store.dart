@@ -40,20 +40,32 @@ class LocalSyncStore {
 
   String _normalizeBirthday(String value) {
     final raw = value.trim();
-    final match = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})$').firstMatch(raw);
-    if (match == null) {
+    final ymd = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})$').firstMatch(raw);
+    if (ymd != null) {
+      final month = int.tryParse(ymd.group(2) ?? '');
+      final day = int.tryParse(ymd.group(3) ?? '');
+      if (month == null || day == null || month < 1 || month > 12 || day < 1 || day > 31) {
+        return raw;
+      }
+      final mm = month.toString().padLeft(2, '0');
+      final dd = day.toString().padLeft(2, '0');
+      return '${ymd.group(1)}-$mm-$dd';
+    }
+
+    final mdy = RegExp(r'^(\d{1,2})/(\d{1,2})/(\d{4})$').firstMatch(raw);
+    if (mdy == null) {
       return raw;
     }
 
-    final month = int.tryParse(match.group(2) ?? '');
-    final day = int.tryParse(match.group(3) ?? '');
+    final month = int.tryParse(mdy.group(1) ?? '');
+    final day = int.tryParse(mdy.group(2) ?? '');
     if (month == null || day == null || month < 1 || month > 12 || day < 1 || day > 31) {
       return raw;
     }
 
     final mm = month.toString().padLeft(2, '0');
     final dd = day.toString().padLeft(2, '0');
-    return '${match.group(1)}-$mm-$dd';
+    return '${mdy.group(3)}-$mm-$dd';
   }
 
   String _normalizeLowerText(String value) {
@@ -347,7 +359,29 @@ class LocalSyncStore {
       limit: 1,
     );
 
-    if (rows.isEmpty) return null;
+    if (rows.isEmpty) {
+      final pendingRows = await db.query(
+        'pending_registrations',
+        where: 'UPPER(nickname) = UPPER(?) AND (birthday = ? OR birthday = ?)',
+        whereArgs: [nickname.trim(), birthday.trim(), normalizedBirthday],
+        orderBy: 'created_at DESC, id DESC',
+        limit: 1,
+      );
+
+      if (pendingRows.isEmpty) return null;
+      final row = pendingRows.first;
+
+      return Student(
+        studentId: -((row['id'] as num?)?.toInt() ?? 1),
+        firstName: (row['first_name'] as String?) ?? '',
+        lastName: (row['last_name'] as String?) ?? '',
+        nickname: (row['nickname'] as String?) ?? nickname,
+        sex: (row['sex'] as String?) ?? 'Unknown',
+        area: row['area'] as String?,
+        totalScore: 0,
+      );
+    }
+
     final row = rows.first;
 
     return Student(
@@ -464,6 +498,138 @@ class LocalSyncStore {
     }
 
     return rows.first['value'] as String?;
+  }
+
+  Future<void> saveMusicEnabled(bool enabled) async {
+    final db = await _database();
+    await db.insert(
+      'app_settings',
+      {
+        'key': 'music_enabled',
+        'value': enabled ? '1' : '0',
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<bool?> getMusicEnabled() async {
+    final db = await _database();
+    final rows = await db.query(
+      'app_settings',
+      where: 'key = ?',
+      whereArgs: ['music_enabled'],
+      limit: 1,
+    );
+
+    if (rows.isEmpty) {
+      return null;
+    }
+
+    final value = rows.first['value'] as String?;
+    if (value == null) {
+      return null;
+    }
+
+    return value == '1' || value.toLowerCase() == 'true';
+  }
+
+  Future<void> saveMusicVolume(double volume) async {
+    final db = await _database();
+    await db.insert(
+      'app_settings',
+      {
+        'key': 'music_volume',
+        'value': volume.clamp(0.0, 1.0).toString(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<double?> getMusicVolume() async {
+    final db = await _database();
+    final rows = await db.query(
+      'app_settings',
+      where: 'key = ?',
+      whereArgs: ['music_volume'],
+      limit: 1,
+    );
+
+    if (rows.isEmpty) {
+      return null;
+    }
+
+    final value = rows.first['value'] as String?;
+    if (value == null) {
+      return null;
+    }
+
+    return double.tryParse(value);
+  }
+
+  Future<void> saveSfxEnabled(bool enabled) async {
+    final db = await _database();
+    await db.insert(
+      'app_settings',
+      {
+        'key': 'sfx_enabled',
+        'value': enabled ? '1' : '0',
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<bool?> getSfxEnabled() async {
+    final db = await _database();
+    final rows = await db.query(
+      'app_settings',
+      where: 'key = ?',
+      whereArgs: ['sfx_enabled'],
+      limit: 1,
+    );
+
+    if (rows.isEmpty) {
+      return null;
+    }
+
+    final value = rows.first['value'] as String?;
+    if (value == null) {
+      return null;
+    }
+
+    return value == '1' || value.toLowerCase() == 'true';
+  }
+
+  Future<void> saveSfxVolume(double volume) async {
+    final db = await _database();
+    await db.insert(
+      'app_settings',
+      {
+        'key': 'sfx_volume',
+        'value': volume.clamp(0.0, 1.0).toString(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<double?> getSfxVolume() async {
+    final db = await _database();
+    final rows = await db.query(
+      'app_settings',
+      where: 'key = ?',
+      whereArgs: ['sfx_volume'],
+      limit: 1,
+    );
+
+    if (rows.isEmpty) {
+      return null;
+    }
+
+    final value = rows.first['value'] as String?;
+    if (value == null) {
+      return null;
+    }
+
+    return double.tryParse(value);
   }
 
   Future<void> updateLocalStudentProfile({
@@ -669,5 +835,27 @@ class LocalSyncStore {
     if (lastError != null) {
       throw lastError;
     }
+  }
+
+  Future<List<Map<String, dynamic>>> getPendingScoresForStudent(int studentId) async {
+    final db = await _database();
+    final rows = await db.query(
+      'pending_scores',
+      where: 'student_id = ?',
+      whereArgs: [studentId],
+      orderBy: 'played_at DESC, id DESC',
+    );
+    return rows;
+  }
+
+  Future<List<Map<String, dynamic>>> getPendingProgressForStudent(int studentId) async {
+    final db = await _database();
+    final rows = await db.query(
+      'pending_progress',
+      where: 'student_id = ?',
+      whereArgs: [studentId],
+      orderBy: 'last_played_at DESC, id DESC',
+    );
+    return rows;
   }
 }

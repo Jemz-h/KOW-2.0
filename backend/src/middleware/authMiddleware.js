@@ -1,6 +1,9 @@
 const crypto = require('crypto');
 
-const TOKEN_SECRET = process.env.TOKEN_SECRET || 'kow-dev-secret-change-me';
+const TOKEN_SECRET =
+  process.env.TOKEN_SECRET ||
+  process.env.JWT_SECRET ||
+  'kow-dev-secret-change-me';
 
 function base64UrlDecode(value) {
   const normalized = value.replace(/-/g, '+').replace(/_/g, '/');

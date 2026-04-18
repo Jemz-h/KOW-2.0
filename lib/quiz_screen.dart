@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'api_service.dart';
 import 'grade_select/level_map.dart';
+import 'widgets/mock_background.dart';
 
 // ╔══════════════════════════════════════════════════════════════════════════╗
 // ║  LAYOUT & SIZE CONSTANTS                                                ║
@@ -744,10 +745,18 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
         body: Stack(
           fit: StackFit.expand,
           children: [
-            Image.asset('assets/themes/bg_spc_w_cloud.png',
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) =>
-                    Container(color: const Color(0xFF0D1B2E))),
+            ValueListenableBuilder<String>(
+              valueListenable: selectedThemeNotifier,
+              builder: (context, theme, _) {
+                final bgAsset = themeBackgrounds[theme] ?? themeBackgrounds['space']!;
+                return Image.asset(
+                  bgAsset,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) =>
+                      Container(color: const Color(0xFF0D1B2E)),
+                );
+              },
+            ),
             SafeArea(
               child: Center(
                 child: Padding(
@@ -829,10 +838,18 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
         fit: StackFit.expand,
         children: [
 
-          Image.asset('assets/themes/bg_spc_w_cloud.png',
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) =>
-                  Container(color: const Color(0xFF0D1B2E))),
+          ValueListenableBuilder<String>(
+            valueListenable: selectedThemeNotifier,
+            builder: (context, theme, _) {
+              final bgAsset = themeBackgrounds[theme] ?? themeBackgrounds['space']!;
+              return Image.asset(
+                bgAsset,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) =>
+                    Container(color: const Color(0xFF0D1B2E)),
+              );
+            },
+          ),
 
           SafeArea(
             child: Column(
@@ -1293,10 +1310,18 @@ class _LevelCompletePopupState extends State<_LevelCompletePopup>
       child: Stack(children: [
 
         Positioned.fill(
-          child: Image.asset('assets/themes/bg_spc_w_cloud.png',
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) =>
-                Container(color: const Color(0xFF0A1528))),
+          child: ValueListenableBuilder<String>(
+            valueListenable: selectedThemeNotifier,
+            builder: (context, theme, _) {
+              final bgAsset = themeBackgrounds[theme] ?? themeBackgrounds['space']!;
+              return Image.asset(
+                bgAsset,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) =>
+                    Container(color: const Color(0xFF0A1528)),
+              );
+            },
+          ),
         ),
 
         Positioned.fill(

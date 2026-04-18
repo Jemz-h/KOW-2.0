@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../api_service.dart';
+import '../local_sync_store.dart';
 
 class _AchievementStats {
   final String nickname;
@@ -97,41 +98,94 @@ void showAchievementDialog(BuildContext context) {
 
       Future<_AchievementStats> loadStats() async {
         final profile = await ApiService.getCurrentProfile();
-        final studentIdValue = profile?['student_id'] ?? profile?['studentId'];
-        if (studentIdValue is! num) {
-          return _AchievementStats.empty;
+        final session = await LocalSyncStore.instance.getActiveSession();
+
+        final nickname = _nonEmptyString(
+              _readValue(profile, const ['nickname', 'NICKNAME']),
+            ) ??
+            _nonEmptyString(session?['nickname']) ??
+            _AchievementStats.empty.nickname;
+
+        final studentIdValue = _readValue(
+          profile,
+          const ['student_id', 'studentId', 'STUDENT_ID', 'STUDENTID'],
+        );
+        final studentId = _asInt(studentIdValue);
+        if (studentId == null) {
+          return _AchievementStats(
+            nickname: nickname,
+            totalTimePlayed: _AchievementStats.empty.totalTimePlayed,
+            bronzeTokens: _AchievementStats.empty.bronzeTokens,
+            silverTokens: _AchievementStats.empty.silverTokens,
+            goldTokens: _AchievementStats.empty.goldTokens,
+            mathLessonsCompleted: _AchievementStats.empty.mathLessonsCompleted,
+            totalLevelsPassed: _AchievementStats.empty.totalLevelsPassed,
+          );
         }
 
-        final studentId = studentIdValue.toInt();
-        final nickname = (profile?['nickname'] as String?)?.trim().isNotEmpty == true
-            ? (profile?['nickname'] as String).trim()
-            : _AchievementStats.empty.nickname;
+        List<Map<String, dynamic>> remoteProgress = const [];
+        List<Map<String, dynamic>> remoteScores = const [];
 
-        final progress = await ApiService.getProgress(studentId);
-        final scores = await ApiService.getScores(studentId);
+        try {
+          remoteProgress = await ApiService.getProgress(studentId);
+        } catch (_) {
+          remoteProgress = const [];
+        }
 
-        final totalMinutes = progress.fold<int>(0, (sum, row) {
-          final minutesValue = row['total_time_played'];
-          if (minutesValue is num) {
-            return sum + minutesValue.toInt();
-          }
-          return sum;
+        try {
+          remoteScores = await ApiService.getScores(studentId);
+        } catch (_) {
+          remoteScores = const [];
+        }
+
+        final pendingProgress =
+            await LocalSyncStore.instance.getPendingProgressForStudent(studentId);
+        final pendingScores =
+            await LocalSyncStore.instance.getPendingScoresForStudent(studentId);
+
+        final progress = <Map<String, dynamic>>[
+          ...remoteProgress,
+          ...pendingProgress,
+        ];
+        final scores = <Map<String, dynamic>>[
+          ...remoteScores,
+          ...pendingScores,
+        ];
+
+        final totalTimeSeconds = progress.fold<int>(0, (sum, row) {
+          final timePlayed = _asInt(_readValue(
+            row,
+            const [
+              'total_time_played',
+              'TOTAL_TIME_PLAYED',
+              'totalTimePlayed',
+              'TOTALTIMEPLAYED',
+              'time_spent',
+              'TIME_SPENT',
+            ],
+          ));
+          return sum + (timePlayed ?? 0);
         });
 
-        final totalTimePlayed = _formatDuration(totalMinutes);
+        final totalTimePlayed = _formatDuration(totalTimeSeconds);
 
         var bronzeTokens = 0;
         var silverTokens = 0;
         var goldTokens = 0;
         for (final row in scores) {
-          final scoreValue = row['score'];
-          final maxScoreValue = row['max_score'];
-          final score = scoreValue is num ? scoreValue.toDouble() : 0.0;
-          final maxScore = maxScoreValue is num ? maxScoreValue.toDouble() : 0.0;
+          final score = (_asNum(_readValue(row, const ['score', 'SCORE'])) ?? 0).toDouble();
+          final maxScore = (_asNum(_readValue(
+            row,
+            const ['max_score', 'MAX_SCORE', 'total', 'TOTAL'],
+          )) ??
+                  0)
+              .toDouble();
+          final passed = _asBool(_readValue(row, const ['passed', 'PASSED'])) ||
+              (maxScore > 0 && (score / maxScore) >= 0.7);
 
-          if (maxScore > 0 && score == maxScore) {
+          if (maxScore > 0 && score >= maxScore) {
             goldTokens++;
-          } else if (score >= 3) {
+          } else if (passed) {
             silverTokens++;
           } else {
             bronzeTokens++;
@@ -139,14 +193,27 @@ void showAchievementDialog(BuildContext context) {
         }
 
         final mathLessonsCompleted = progress.where((row) {
-          final subject = (row['subject'] as String?)?.trim().toUpperCase() ?? '';
-          final diff = row['highest_diff_passed'];
-          return subject == 'MATHEMATICS' && diff is num && diff.toInt() > 0;
+          final subject = _nonEmptyString(
+                    _readValue(row, const ['subject', 'SUBJECT']),
+                  )
+                  ?.toUpperCase() ??
+              '';
+          final diff = _asInt(_readValue(
+            row,
+            const ['highest_diff_passed', 'HIGHEST_DIFF_PASSED', 'diffId', 'DIFFID'],
+          ));
+          final completed = _asBool(_readValue(row, const ['completed', 'COMPLETED'])) ||
+              ((diff ?? 0) > 0);
+          return (subject == 'MATH' || subject == 'MATHEMATICS') && completed;
         }).length;
 
         final totalLevelsPassed = progress.where((row) {
-          final diff = row['highest_diff_passed'];
-          return diff is num && diff.toInt() > 0;
+          final diff = _asInt(_readValue(
+            row,
+            const ['highest_diff_passed', 'HIGHEST_DIFF_PASSED', 'diffId', 'DIFFID'],
+          ));
+          final completed = _asBool(_readValue(row, const ['completed', 'COMPLETED']));
+          return completed || ((diff ?? 0) > 0);
         }).length;
 
         return _AchievementStats(
@@ -344,9 +411,49 @@ void showAchievementDialog(BuildContext context) {
 }
 
 String _formatDuration(int totalMinutes) {
-  final hours = totalMinutes ~/ 60;
-  final minutes = totalMinutes % 60;
+  if (totalMinutes <= 0) {
+    return '0h 0m';
+  }
+  final hours = totalMinutes ~/ 3600;
+  final minutes = (totalMinutes % 3600) ~/ 60;
   return '${hours}h ${minutes}m';
+}
+
+dynamic _readValue(Map<String, dynamic>? row, List<String> keys) {
+  if (row == null) return null;
+  for (final key in keys) {
+    if (row.containsKey(key)) {
+      return row[key];
+    }
+  }
+  return null;
+}
+
+String? _nonEmptyString(dynamic value) {
+  if (value is! String) return null;
+  final trimmed = value.trim();
+  return trimmed.isEmpty ? null : trimmed;
+}
+
+num? _asNum(dynamic value) {
+  if (value is num) return value;
+  if (value is String) return num.tryParse(value.trim());
+  return null;
+}
+
+int? _asInt(dynamic value) {
+  final parsed = _asNum(value);
+  return parsed?.toInt();
+}
+
+bool _asBool(dynamic value) {
+  if (value is bool) return value;
+  if (value is num) return value != 0;
+  if (value is String) {
+    final normalized = value.trim().toLowerCase();
+    return normalized == '1' || normalized == 'true' || normalized == 'yes';
+  }
+  return false;
 }
 
 class _CoinBadge extends StatelessWidget {

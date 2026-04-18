@@ -20,20 +20,24 @@ class Student {
     required this.totalScore,
   });
 
-  static T? _read<T>(Map<String, dynamic> json, String upper, String lower) {
-    final value = json.containsKey(upper) ? json[upper] : json[lower];
-    return value as T?;
+  static T? _readAny<T>(Map<String, dynamic> json, List<String> keys) {
+    for (final key in keys) {
+      if (json.containsKey(key) && json[key] != null) {
+        return json[key] as T?;
+      }
+    }
+    return null;
   }
 
   factory Student.fromJson(Map<String, dynamic> json) {
-    final studentId = _read<num>(json, 'STUDENT_ID', 'student_id')?.toInt() ?? 0;
-    final firstName = (_read<String>(json, 'FIRST_NAME', 'first_name') ?? '').trim();
-    final lastName = (_read<String>(json, 'LAST_NAME', 'last_name') ?? '').trim();
-    final nickname = (_read<String>(json, 'NICKNAME', 'nickname') ?? '').trim();
-    final birthday = _read<String>(json, 'BIRTHDAY', 'birthday')?.trim();
-    final sex = (_read<String>(json, 'SEX', 'sex') ?? 'Unknown').trim();
-    final area = _read<String>(json, 'AREA', 'area')?.trim();
-    final totalScore = _read<num>(json, 'TOTAL_SCORE', 'total_score')?.toInt() ?? 0;
+    final studentId = _readAny<num>(json, ['STUDENT_ID', 'student_id', 'studentId'])?.toInt() ?? 0;
+    final firstName = (_readAny<String>(json, ['FIRST_NAME', 'first_name', 'firstName']) ?? '').trim();
+    final lastName = (_readAny<String>(json, ['LAST_NAME', 'last_name', 'lastName']) ?? '').trim();
+    final nickname = (_readAny<String>(json, ['NICKNAME', 'nickname']) ?? '').trim();
+    final birthday = _readAny<String>(json, ['BIRTHDAY', 'birthday'])?.trim();
+    final sex = (_readAny<String>(json, ['SEX', 'sex']) ?? 'Unknown').trim();
+    final area = _readAny<String>(json, ['AREA', 'area'])?.trim();
+    final totalScore = _readAny<num>(json, ['TOTAL_SCORE', 'total_score', 'totalScore'])?.toInt() ?? 0;
 
     return Student(
       studentId: studentId,

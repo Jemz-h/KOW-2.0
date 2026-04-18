@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../screens/settings.dart'; // ← adjust path to match where settings.dart lives
 import '../quiz_screen.dart';
 import '../api_service.dart';
+import '../widgets/mock_background.dart';
 
 // ── Grade → planet image paths ────────────────────────────────
 const _gradePlanets = {
@@ -269,7 +270,17 @@ class _LevelMapScreenState extends State<LevelMapScreen>
         children: [
 
           // 1. Background
-          Image.asset('assets/themes/bg_spc_w_cloud.png', fit: BoxFit.cover),
+          ValueListenableBuilder<String>(
+            valueListenable: selectedThemeNotifier,
+            builder: (context, theme, _) {
+              final bgAsset = themeBackgrounds[theme] ?? themeBackgrounds['space']!;
+              return Image.asset(
+                bgAsset,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => Container(color: const Color(0xFF0D1B2E)),
+              );
+            },
+          ),
 
           // 2. Dashed path — behind everything
           CustomPaint(
@@ -380,7 +391,6 @@ class _LevelMapScreenState extends State<LevelMapScreen>
 
                   // ▶ Play
                   _TapIcon(
-<<<<<<< HEAD
                     onTap: () {
                       if (widget.grade.toUpperCase() == 'COMING') {
                         _showNoQuestionsDialog();
@@ -399,9 +409,6 @@ class _LevelMapScreenState extends State<LevelMapScreen>
                         transitionDuration: const Duration(milliseconds: 300),
                       ));
                     },
-=======
-                    onTap: () { /* game navigation hook */ },
->>>>>>> 50596e6deeea80c069a5998050186a37243c272b
                     child: SvgPicture.asset(
                       'assets/icons/play.svg',
                       width: kPlaySize, height: kPlaySize,

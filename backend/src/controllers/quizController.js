@@ -227,6 +227,7 @@ const submitScore = asyncHandler(async (req, res) => {
            END
        WHEN NOT MATCHED THEN
          INSERT (
+           progress_id,
            stud_id,
            subject_id,
            gradelvl_id,
@@ -235,6 +236,7 @@ const submitScore = asyncHandler(async (req, res) => {
            last_played_at
          )
          VALUES (
+           seq_score_id.NEXTVAL,
            :studentId,
            :subjectId,
            :gradeLevelId,
