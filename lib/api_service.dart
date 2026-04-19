@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import 'api_config.dart';
 import 'local_sync_store.dart';
+import 'seeded_question_store.dart';
 import 'student_model.dart';
 
 /// Thin HTTP client for the KOW Node.js / Oracle backend.
@@ -584,6 +585,16 @@ class ApiService {
     required String subject,
     String? difficulty,
   }) async {
+
+    final localRows = await SeededQuestionStore.instance.getQuestions(
+      grade: grade,
+      subject: subject,
+      difficulty: difficulty,
+    );
+    if (localRows.isNotEmpty) {
+      _questionCache[cacheKey] = localRows;
+      return localRows;
+    }
 
     final queryParameters = <String, String>{
       'grade': grade,

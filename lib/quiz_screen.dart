@@ -628,9 +628,17 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
         return;
       }
 
-      rethrow;
+      setState(() {
+        _quizErrorMessage = 'Unable to load questions right now. Please try again in a moment.';
+        _remoteQuestions = const [];
+      });
+      return;
     } catch (_) {
-      // Keep local fallback questions without interrupting gameplay.
+      if (!mounted) return;
+      setState(() {
+        _quizErrorMessage = 'Unable to load questions right now. Please try again in a moment.';
+        _remoteQuestions = const [];
+      });
     }
   }
 
