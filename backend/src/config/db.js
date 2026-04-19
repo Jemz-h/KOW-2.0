@@ -1,6 +1,6 @@
 const { dbMode } = require('./env');
 const { connectOracle, closeOracle } = require('./oracle');
-const { connectSqlite, closeSqlite } = require('./sqlite');
+const sqliteProvider = require('./providers/sqliteProvider');
 const oracledb = require('oracledb');
 
 function isOracle() {
@@ -33,23 +33,7 @@ async function execute(sql, binds = {}, opts = {}) {
     }
   }
 
-  const db = connectSqlite();
-  const statement = db.prepare(sql);
-  const isSelect = /^\s*select\b/i.test(sql);
-
-  if (isSelect) {
-    return {
-      rows: statement.all(binds),
-      rowsAffected: 0,
-    };
-  }
-
-  const result = statement.run(binds);
-  return {
-    rows: [],
-    rowsAffected: result.changes,
-    lastRowid: result.lastInsertRowid,
-  };
+  return sqliteProvider.execute(sql, binds, opts);
 }
 
 async function connectDatabase() {
@@ -57,7 +41,7 @@ async function connectDatabase() {
     await connectOracle();
     return;
   }
-  connectSqlite();
+  await sqliteProvider.initialize();
 }
 
 async function closeDatabase() {
@@ -65,7 +49,7 @@ async function closeDatabase() {
     await closeOracle();
     return;
   }
-  closeSqlite();
+  await sqliteProvider.close();
 }
 
 async function initialize() {

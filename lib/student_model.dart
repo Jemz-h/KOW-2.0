@@ -29,8 +29,43 @@ class Student {
     return null;
   }
 
+  static int _parseStudentId(Map<String, dynamic> json) {
+    final raw = _readAny<dynamic>(json, [
+      'STUDENT_ID',
+      'student_id',
+      'studentId',
+      'stud_id',
+    ]);
+
+    if (raw is num) {
+      return raw.toInt();
+    }
+
+    final text = (raw == null ? '' : '$raw').trim();
+    if (text.isEmpty) {
+      return 0;
+    }
+
+    final direct = int.tryParse(text);
+    if (direct != null) {
+      return direct;
+    }
+
+    final canonical = RegExp(r'^STU-(\d+)$', caseSensitive: false).firstMatch(text);
+    if (canonical != null) {
+      return int.tryParse(canonical.group(1)!) ?? 0;
+    }
+
+    final trailingDigits = RegExp(r'(\d+)$').firstMatch(text);
+    if (trailingDigits != null) {
+      return int.tryParse(trailingDigits.group(1)!) ?? 0;
+    }
+
+    return 0;
+  }
+
   factory Student.fromJson(Map<String, dynamic> json) {
-    final studentId = _readAny<num>(json, ['STUDENT_ID', 'student_id', 'studentId'])?.toInt() ?? 0;
+    final studentId = _parseStudentId(json);
     final firstName = (_readAny<String>(json, ['FIRST_NAME', 'first_name', 'firstName']) ?? '').trim();
     final lastName = (_readAny<String>(json, ['LAST_NAME', 'last_name', 'lastName']) ?? '').trim();
     final nickname = (_readAny<String>(json, ['NICKNAME', 'nickname']) ?? '').trim();

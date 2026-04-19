@@ -151,14 +151,16 @@ class SeededQuestionStore {
     List<String> subjectAliases(String value) {
       switch (value) {
         case 'ENGLISH':
-          return const <String>['ENGLISH', 'READING', 'WRITING'];
+        case 'READING':
+          return const <String>['ENGLISH', 'READING'];
+        case 'FILIPINO':
+        case 'WRITING':
+          return const <String>['FILIPINO', 'WRITING'];
         case 'MATHEMATICS':
         case 'MATH':
           return const <String>['MATHEMATICS', 'MATH'];
         case 'SCIENCE':
           return const <String>['SCIENCE'];
-        case 'FILIPINO':
-          return const <String>['FILIPINO'];
         default:
           return <String>[value];
       }

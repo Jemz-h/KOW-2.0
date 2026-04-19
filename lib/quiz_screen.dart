@@ -469,7 +469,7 @@ class QuizScreen extends StatefulWidget {
     super.key,
     required this.difficulty,
     this.grade    = 'PUNLA',
-    this.subject  = 'READING',
+    this.subject  = 'ENGLISH',
     this.gradeImg = 'assets/grade_select/moon.png',
     this.nodeIndex = 0,
   });
@@ -494,7 +494,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
   String? _quizErrorMessage;
   late final DateTime _sessionStartedAt;
 
-  static const List<String> _nodeDifficultyOrder = ['EASY', 'AVERAGE', 'EASY'];
+  static const List<String> _nodeDifficultyOrder = ['EASY', 'AVERAGE', 'HARD'];
 
   late final AnimationController _fadeCtrl;
 
@@ -553,6 +553,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
       final rows = await ApiService.getQuestions(
         grade: widget.grade,
         subject: widget.subject,
+        difficulty: widget.difficulty,
       );
 
       if (!mounted) return;
@@ -576,6 +577,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
       final seed = Object.hash(
         widget.grade.trim().toUpperCase(),
         widget.subject.trim().toUpperCase(),
+        widget.difficulty.trim().toUpperCase(),
         widget.nodeIndex,
       );
       shuffledRows.shuffle(Random(seed));
@@ -595,11 +597,13 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
 
           return QuizQuestion(
             questionNumber: 'QUESTION ${index + 1}',
-            imagePath: null,
-            imageBlob: (row['imageBlob'] as String?) ?? (row['imagePath'] as String?),
+            imagePath: (row['imagePath'] as String?)?.trim(),
+            imageBlob: (row['imageBlob'] as String?)?.trim(),
             prompt: (row['prompt'] as String?) ?? '',
-            wordType: null,
-            subPrompt: (row['prompt'] as String?) ?? '',
+            wordType: (row['wordType'] as String?)?.trim(),
+            subPrompt: ((row['subPrompt'] as String?)?.trim().isNotEmpty ?? false)
+                ? (row['subPrompt'] as String).trim()
+                : (row['prompt'] as String?) ?? '',
             choices: choices,
             choiceImageBlobs: _normalizeChoiceImageBlobs(
               (row['choiceImageBlobs'] as List<dynamic>?) ??
@@ -667,7 +671,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
       final diffId = switch (widget.difficulty) {
         'EASY' => 1,
         'AVERAGE' => 2,
-        'HARD' => 2,
+        'HARD' => 3,
         _ => null,
       };
 
@@ -800,6 +804,15 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
     return blobs[idx];
   }
 
+  bool _isNetworkImagePath(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return false;
+    }
+
+    final uri = Uri.tryParse(value.trim());
+    return uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
+  }
+
   Uint8List? _decodeImageBytes(String? base64Value) {
     if (base64Value == null || base64Value.trim().isEmpty) {
       return null;
@@ -846,6 +859,46 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
         color: _btnText(idx),
       ),
     );
+  }
+
+  Widget? _buildQuestionImage(double sw) {
+    final imageBlob = _q.imageBlob?.trim();
+    final imagePath = _q.imagePath?.trim();
+
+    if (imageBlob != null && imageBlob.isNotEmpty) {
+      final bytes = _decodeImageBytes(imageBlob);
+      if (bytes != null) {
+        return Image.memory(
+          bytes,
+          width: sw * kImageSize,
+          height: sw * kImageSize,
+          fit: BoxFit.contain,
+          errorBuilder: (_, _, _) => const SizedBox.shrink(),
+        );
+      }
+    }
+
+    if (imagePath != null && imagePath.isNotEmpty) {
+      if (_isNetworkImagePath(imagePath)) {
+        return Image.network(
+          imagePath,
+          width: sw * kImageSize,
+          height: sw * kImageSize,
+          fit: BoxFit.contain,
+          errorBuilder: (_, _, _) => const SizedBox.shrink(),
+        );
+      }
+
+      return Image.asset(
+        imagePath,
+        width: sw * kImageSize,
+        height: sw * kImageSize,
+        fit: BoxFit.contain,
+        errorBuilder: (_, _, _) => const SizedBox.shrink(),
+      );
+    }
+
+    return null;
   }
 
   @override
@@ -1111,45 +1164,22 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                                   ]),
                                 ),
 
-                                if (_isEasy && (_q.imagePath != null || _q.imageBlob != null)) ...[
-                                  SizedBox(height: sh * kImagePadT),
-                                  (() {
-                                    final remoteImage = _decodeImageBytes(_q.imageBlob);
-                                    if (remoteImage != null) {
-                                      return Image.memory(
-                                        remoteImage,
-                                        width: sw * kImageSize,
-                                        height: sw * kImageSize,
-                                        fit: BoxFit.contain,
-                                        errorBuilder: (_, _, _) => Icon(
-                                          Icons.image,
-                                          color: Colors.grey,
-                                          size: sw * kImageSize * 0.75,
-                                        ),
-                                      );
+                                if (_isEasy) ...[
+                                  () {
+                                    final questionImage = _buildQuestionImage(sw);
+                                    if (questionImage == null) {
+                                      return const SizedBox.shrink();
                                     }
 
-                                    if (_q.imagePath != null && _q.imagePath!.isNotEmpty) {
-                                      return Image.asset(
-                                        _q.imagePath!,
-                                        width: sw * kImageSize,
-                                        height: sw * kImageSize,
-                                        fit: BoxFit.contain,
-                                        errorBuilder: (_, _, _) => Icon(
-                                          Icons.image,
-                                          color: Colors.grey,
-                                          size: sw * kImageSize * 0.75,
-                                        ),
-                                      );
-                                    }
-
-                                    return Icon(
-                                      Icons.image,
-                                      color: Colors.grey,
-                                      size: sw * kImageSize * 0.75,
+                                    return Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        SizedBox(height: sh * kImagePadT),
+                                        questionImage,
+                                        SizedBox(height: sh * kImagePadB),
+                                      ],
                                     );
-                                  })(),
-                                  SizedBox(height: sh * kImagePadB),
+                                  }(),
                                 ],
 
                                 if (!_isEasy && _q.prompt != null) ...[
@@ -1346,6 +1376,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
     final correctWord = _q.choices[_q.correctIndex].trim().isEmpty
       ? 'Option ${String.fromCharCode(65 + _q.correctIndex)}'
       : _q.choices[_q.correctIndex];
+    final hasFunFact = _q.funFact.trim().isNotEmpty;
     final resultColor = _isCorrect
         ? const Color(0xFF66CC66) : const Color(0xFFBB77EE);
     const funFactColor = Color(0xFF44CCEE);
@@ -1395,12 +1426,14 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                    TextSpan(text: correctWord, style: TextStyle(color: resultColor)),
                    const TextSpan(text: '.')], // same here
           )),
-          SizedBox(height: sh * kFunFactGapT),
-          outlinedTitle('Fun Fact!', funFactColor, sw * kFunFactLabelFs, kFunFactLabelLS),
-          SizedBox(height: sh * kFunFactBodyGapT),
-          Text(_q.funFact, textAlign: TextAlign.center,
-            style: TextStyle(fontFamily: 'SuperCartoon', fontSize: sw * kFunFactBodyFs,
-                fontWeight: FontWeight.bold, color: const Color(0xFF1A2340), height: 1.45)),
+          if (hasFunFact) ...[
+            SizedBox(height: sh * kFunFactGapT),
+            outlinedTitle('Fun Fact!', funFactColor, sw * kFunFactLabelFs, kFunFactLabelLS),
+            SizedBox(height: sh * kFunFactBodyGapT),
+            Text(_q.funFact, textAlign: TextAlign.center,
+              style: TextStyle(fontFamily: 'SuperCartoon', fontSize: sw * kFunFactBodyFs,
+                  fontWeight: FontWeight.bold, color: const Color(0xFF1A2340), height: 1.45)),
+          ],
           SizedBox(height: sh * kContinueGapT),
           _ContinueButton(padH: sw * kContinuePadH, padV: sh * kContinuePadV,
               radius: sw * kContinueRadius, fontSize: sw * kContinueFs,

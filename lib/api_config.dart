@@ -8,7 +8,7 @@ class ApiConfig {
   /// Base URL of the KOW Node.js backend.
   /// Priority:
   /// 1) --dart-define=API_BASE_URL=...
-  /// 2) Platform-aware local defaults on port 3010.
+  /// 2) Platform-aware local defaults for the PM2 Oracle backend on port 3000.
   static String get baseUrl {
     const configured = String.fromEnvironment('API_BASE_URL', defaultValue: '');
     if (configured.isNotEmpty) {
@@ -16,14 +16,15 @@ class ApiConfig {
     }
 
     if (kIsWeb) {
-      return 'http://localhost:3010';
+      return 'http://localhost:3000';
     }
 
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
-        return 'http://localhost:3010';
+        // Android emulator reaches the Windows host through 10.0.2.2.
+        return 'http://10.0.2.2:3000';
       default:
-        return 'http://localhost:3010';
+        return 'http://localhost:3000';
     }
   }
 }

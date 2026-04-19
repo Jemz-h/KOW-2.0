@@ -6,7 +6,9 @@ const {
   createStudent,
   findStudentById,
 } = require('../repositories/students.repository');
+const db = require('../config/db');
 const { jwtSecret, dbMode } = require('../config/env');
+const { normalizeDateOnly } = require('../utils/dateTime');
 
 const tokenSecret = process.env.TOKEN_SECRET || process.env.JWT_SECRET || 'kow-dev-secret-change-me';
 
@@ -35,32 +37,93 @@ function signCustomToken(payload) {
 }
 
 function normalizeDateKey(input) {
-  if (!input) return null;
-  const raw = String(input).trim();
+  return normalizeDateOnly(input);
+}
 
-  // Already canonical.
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    return raw;
+function sha256(value) {
+  return crypto.createHash('sha256').update(String(value)).digest('hex');
+}
+
+async function verifyAdminPassword(password, passwordHash) {
+  const normalizedHash = String(passwordHash || '').trim();
+  if (!normalizedHash) {
+    return false;
   }
 
-  // Handle mm/dd/yyyy.
-  const slash = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (slash) {
-    const mm = slash[1].padStart(2, '0');
-    const dd = slash[2].padStart(2, '0');
-    return `${slash[3]}-${mm}-${dd}`;
+  if (normalizedHash.startsWith('sha256$')) {
+    return normalizedHash === `sha256$${sha256(password)}`;
   }
 
-  // Handle textual dates like "MARCH 5, 2020".
-  const parsed = new Date(raw);
-  if (!Number.isNaN(parsed.getTime())) {
-    const y = parsed.getUTCFullYear();
-    const m = String(parsed.getUTCMonth() + 1).padStart(2, '0');
-    const d = String(parsed.getUTCDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+  if (normalizedHash.startsWith('$2')) {
+    return bcrypt.compare(String(password), normalizedHash);
   }
 
-  return null;
+  return normalizedHash === String(password);
+}
+
+async function adminLogin(req, res, next) {
+  try {
+    const username = String(req.body?.username || '').trim();
+    const password = String(req.body?.password || '');
+
+    if (!username || !password) {
+      return res.status(400).json({ error: 'username and password are required.' });
+    }
+
+    const result = await db.execute(
+      `SELECT admin_id,
+              username,
+              password_hash,
+              role
+       FROM adminTb
+       WHERE LOWER(username) = LOWER(:username)`,
+      { username }
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      return res.status(401).json({ error: 'Invalid credentials.' });
+    }
+
+    const adminId = Number(row.ADMIN_ID ?? row.admin_id);
+    const resolvedUsername = row.USERNAME ?? row.username ?? username;
+    const role = row.ROLE ?? row.role ?? 'admin';
+    const passwordHash = row.PASSWORD_HASH ?? row.password_hash;
+    const isValid = await verifyAdminPassword(password, passwordHash);
+
+    if (!isValid || !Number.isFinite(adminId)) {
+      return res.status(401).json({ error: 'Invalid credentials.' });
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const payload = {
+      sub: String(adminId),
+      adminId,
+      username: resolvedUsername,
+      role,
+      iat: now,
+      exp: now + (60 * 60 * 8),
+    };
+
+    const token = signCustomToken(payload);
+    const lastLoginExpression = db.isOracle() ? 'SYSDATE' : 'CURRENT_TIMESTAMP';
+    await db.execute(
+      `UPDATE adminTb
+       SET last_login_at = ${lastLoginExpression}
+       WHERE admin_id = :adminId`,
+      { adminId },
+      { autoCommit: true }
+    );
+
+    return res.status(200).json({
+      token,
+      admin_id: adminId,
+      username: resolvedUsername,
+      role,
+    });
+  } catch (error) {
+    return next(error);
+  }
 }
 
 // @desc    Register a new student account
@@ -291,5 +354,6 @@ async function registerDevice(req, res, next) {
 module.exports = {
   register,
   login,
+  adminLogin,
   registerDevice,
 };

@@ -3,6 +3,69 @@ const {
 } = require('../repositories/progress.repository');
 const { dbMode } = require('../config/env');
 const db = require('../config/db');
+const { broadcastToAdmins } = require('../services/wsHub');
+const { normalizeTimestamp } = require('../utils/dateTime');
+
+async function insertTimePlayed({ studentId, subjectId, totalTimePlayed, sessionDate, deviceUuid = null }) {
+  if (!totalTimePlayed || Number(totalTimePlayed) <= 0) {
+    return;
+  }
+
+  if (db.isOracle()) {
+    await db.execute(
+      `INSERT INTO timeplTb (
+         timeplay_id,
+         stud_id,
+         subject_id,
+         time_played,
+         session_date,
+         device_uuid
+       )
+       VALUES (
+         seq_timeplay_id.NEXTVAL,
+         :studentId,
+         :subjectId,
+         :timePlayed,
+         TO_DATE(:sessionDate, 'YYYY-MM-DD HH24:MI:SS'),
+         :deviceUuid
+       )`,
+      {
+        studentId,
+        subjectId,
+        timePlayed: Number(totalTimePlayed),
+        sessionDate,
+        deviceUuid,
+      },
+      { autoCommit: true }
+    );
+    return;
+  }
+
+  await db.execute(
+    `INSERT INTO timeplTb (
+       stud_id,
+       subject_id,
+       time_played,
+       session_date,
+       device_uuid
+     )
+     VALUES (
+       :studentId,
+       :subjectId,
+       :timePlayed,
+       :sessionDate,
+       :deviceUuid
+     )`,
+    {
+      studentId,
+      subjectId,
+      timePlayed: Number(totalTimePlayed),
+      sessionDate,
+      deviceUuid,
+    },
+    { autoCommit: true }
+  );
+}
 
 // @desc    Create or update progress
 // @route   POST /api/progress
@@ -74,7 +137,7 @@ async function createOrUpdateProgress(req, res, next) {
         0,
         Number(total_time_played ?? 0) || 0
       );
-      const playedAt = last_played_at || new Date().toISOString();
+      const playedAt = normalizeTimestamp(last_played_at, new Date());
 
       if (db.isOracle()) {
         await db.execute(
@@ -97,7 +160,7 @@ async function createOrUpdateProgress(req, res, next) {
              UPDATE SET
                p.highest_diff_passed = GREATEST(NVL(p.highest_diff_passed, 0), src.highest_diff_passed),
                p.total_time_played = NVL(p.total_time_played, 0) + NVL(src.total_time_played, 0),
-               p.last_played_at = TO_DATE(SUBSTR(REPLACE(src.played_at, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
+               p.last_played_at = TO_DATE(src.played_at, 'YYYY-MM-DD HH24:MI:SS')
            WHEN NOT MATCHED THEN
              INSERT (
                progress_id,
@@ -115,7 +178,7 @@ async function createOrUpdateProgress(req, res, next) {
                src.gradelvl_id,
                src.highest_diff_passed,
                src.total_time_played,
-               TO_DATE(SUBSTR(REPLACE(src.played_at, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
+               TO_DATE(src.played_at, 'YYYY-MM-DD HH24:MI:SS')
              )`,
           {
             studentId: numericStudentId,
@@ -165,6 +228,23 @@ async function createOrUpdateProgress(req, res, next) {
           { autoCommit: true }
         );
       }
+
+      await insertTimePlayed({
+        studentId: numericStudentId,
+        subjectId: mappedSubjectId,
+        totalTimePlayed,
+        sessionDate: playedAt,
+      });
+
+      broadcastToAdmins({
+        type: 'progress_updated',
+        student_id: numericStudentId,
+        grade: String(grade),
+        subject: String(subject),
+        highest_diff_passed: highestDiffPassed,
+        total_time_played: totalTimePlayed,
+        last_played_at: playedAt,
+      });
 
       return res.status(200).json({
         message: 'Progress saved.',
@@ -224,13 +304,16 @@ async function getProgress(req, res, next) {
       ? 'CASE WHEN NVL(p.highest_diff_passed, 0) > 0 THEN 1 ELSE 0 END'
       : 'CASE WHEN COALESCE(p.highest_diff_passed, 0) > 0 THEN 1 ELSE 0 END';
 
+    const lastPlayedAtColumn = db.isOracle()
+      ? `TO_CHAR(p.last_played_at, 'YYYY-MM-DD HH24:MI:SS')`
+      : `strftime('%Y-%m-%d %H:%M:%S', p.last_played_at)`;
     const rows = await db.execute(
       `SELECT p.stud_id,
               p.subject_id,
               p.gradelvl_id,
               p.highest_diff_passed,
               p.total_time_played,
-              p.last_played_at,
+              ${lastPlayedAtColumn} AS last_played_at,
               s.subject,
               g.gradelvl,
               ${completedExpr} AS completed
@@ -241,7 +324,18 @@ async function getProgress(req, res, next) {
        ORDER BY p.last_played_at DESC`,
       { studentId: Number(req.params.studentId) }
     );
-    return res.status(200).json({ count: rows.rows.length, data: rows.rows });
+    const data = rows.rows.map((row) => ({
+      stud_id: Number(row.STUD_ID ?? row.stud_id ?? 0),
+      subject_id: Number(row.SUBJECT_ID ?? row.subject_id ?? 0),
+      gradelvl_id: Number(row.GRADELVL_ID ?? row.gradelvl_id ?? 0),
+      highest_diff_passed: Number(row.HIGHEST_DIFF_PASSED ?? row.highest_diff_passed ?? 0),
+      total_time_played: Number(row.TOTAL_TIME_PLAYED ?? row.total_time_played ?? 0),
+      last_played_at: normalizeTimestamp(row.LAST_PLAYED_AT ?? row.last_played_at),
+      subject: row.SUBJECT ?? row.subject ?? '',
+      gradelvl: row.GRADELVL ?? row.gradelvl ?? '',
+      completed: Number(row.COMPLETED ?? row.completed ?? 0),
+    }));
+    return res.status(200).json({ count: data.length, data });
   } catch (error) {
     return next(error);
   }

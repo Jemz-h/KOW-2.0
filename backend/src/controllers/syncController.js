@@ -2,6 +2,7 @@ const asyncHandler = require('express-async-handler');
 const db = require('../config/db');
 const UserModel = require('../models/userModel');
 const { broadcastToAdmins } = require('../services/wsHub');
+const { normalizeTimestamp } = require('../utils/dateTime');
 
 function isTmpId(value) {
   return typeof value === 'string' && value.toUpperCase().startsWith('TMP-');
@@ -68,6 +69,69 @@ async function writeSyncLog({ deviceUuid, studId, eventType, payload, status }) 
   );
 }
 
+async function insertTimePlayed({ studentId, subjectId, totalTimePlayed, sessionDate, deviceUuid }) {
+  if (!totalTimePlayed || Number(totalTimePlayed) <= 0) {
+    return;
+  }
+
+  const normalizedSessionDate = normalizeTimestamp(sessionDate, new Date());
+
+  if (db.isOracle()) {
+    await db.execute(
+      `INSERT INTO timeplTb (
+         timeplay_id,
+         stud_id,
+         subject_id,
+         time_played,
+         session_date,
+         device_uuid
+       )
+       VALUES (
+         seq_timeplay_id.NEXTVAL,
+         :studentId,
+         :subjectId,
+         :timePlayed,
+         TO_DATE(:sessionDate, 'YYYY-MM-DD HH24:MI:SS'),
+         :deviceUuid
+       )`,
+      {
+        studentId,
+        subjectId,
+        timePlayed: Number(totalTimePlayed),
+        sessionDate: normalizedSessionDate,
+        deviceUuid: deviceUuid || null,
+      },
+      { autoCommit: true }
+    );
+    return;
+  }
+
+  await db.execute(
+    `INSERT INTO timeplTb (
+       stud_id,
+       subject_id,
+       time_played,
+       session_date,
+       device_uuid
+     )
+     VALUES (
+       :studentId,
+       :subjectId,
+       :timePlayed,
+       :sessionDate,
+       :deviceUuid
+     )`,
+    {
+      studentId,
+      subjectId,
+      timePlayed: Number(totalTimePlayed),
+      sessionDate: normalizedSessionDate,
+      deviceUuid: deviceUuid || null,
+    },
+    { autoCommit: true }
+  );
+}
+
 async function resolveStudentId(rawStudentId, registrationMap) {
   if (rawStudentId === null || rawStudentId === undefined) {
     return null;
@@ -128,6 +192,8 @@ async function resolveSubjectGradeDiff({ subject, grade, difficulty, subjectId, 
 }
 
 async function upsertProgress({ studentId, subjectId, gradeLevelId, highestDiffPassed, totalTimePlayed, lastPlayedAt }) {
+  const normalizedLastPlayedAt = normalizeTimestamp(lastPlayedAt, new Date());
+
   if (db.isOracle()) {
     await db.execute(
       `MERGE INTO progressTb p
@@ -152,7 +218,7 @@ async function upsertProgress({ studentId, subjectId, gradeLevelId, highestDiffP
            p.total_time_played = NVL(p.total_time_played, 0) + NVL(:totalTimePlayed, 0),
            p.last_played_at = CASE
              WHEN :lastPlayedAt IS NULL THEN SYSDATE
-             ELSE TO_DATE(SUBSTR(REPLACE(:lastPlayedAt, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
+             ELSE TO_DATE(:lastPlayedAt, 'YYYY-MM-DD HH24:MI:SS')
            END
        WHEN NOT MATCHED THEN
          INSERT (
@@ -173,7 +239,7 @@ async function upsertProgress({ studentId, subjectId, gradeLevelId, highestDiffP
            NVL(:totalTimePlayed, 0),
            CASE
              WHEN :lastPlayedAt IS NULL THEN SYSDATE
-             ELSE TO_DATE(SUBSTR(REPLACE(:lastPlayedAt, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
+             ELSE TO_DATE(:lastPlayedAt, 'YYYY-MM-DD HH24:MI:SS')
            END
          )`,
       {
@@ -182,7 +248,7 @@ async function upsertProgress({ studentId, subjectId, gradeLevelId, highestDiffP
         gradeLevelId,
         highestDiffPassed: highestDiffPassed || null,
         totalTimePlayed: totalTimePlayed || 0,
-        lastPlayedAt: lastPlayedAt || null,
+        lastPlayedAt: normalizedLastPlayedAt,
       },
       { autoCommit: true }
     );
@@ -221,13 +287,14 @@ async function upsertProgress({ studentId, subjectId, gradeLevelId, highestDiffP
       gradeLevelId,
       highestDiffPassed: highestDiffPassed || null,
       totalTimePlayed: totalTimePlayed || 0,
-      lastPlayedAt: lastPlayedAt || null,
+      lastPlayedAt: normalizedLastPlayedAt,
     },
     { autoCommit: true }
   );
 }
 
 async function insertScore({ studentId, subjectId, gradeLevelId, diffId, score, total, playedAt, deviceUuid }) {
+  const normalizedPlayedAt = normalizeTimestamp(playedAt, new Date());
   const maxScore = Number(total) > 0 ? Number(total) : 10;
   const scoreValue = Number(score);
   const passed = scoreValue / maxScore >= 0.7 ? 1 : 0;
@@ -240,14 +307,14 @@ async function insertScore({ studentId, subjectId, gradeLevelId, diffId, score, 
          AND subject_id = :subjectId
          AND gradelvl_id = :gradeLevelId
          AND diff_id = :diffId
-         AND played_at = TO_DATE(SUBSTR(REPLACE(:playedAt, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
+         AND played_at = TO_DATE(:playedAt, 'YYYY-MM-DD HH24:MI:SS')
          AND (:deviceUuid IS NULL OR NVL(device_uuid, '__NONE__') = NVL(:deviceUuid, '__NONE__'))`,
       {
         studentId,
         subjectId,
         gradeLevelId,
         diffId,
-        playedAt,
+        playedAt: normalizedPlayedAt,
         deviceUuid: deviceUuid || null,
       }
     );
@@ -279,7 +346,7 @@ async function insertScore({ studentId, subjectId, gradeLevelId, diffId, score, 
          :passed,
          CASE
            WHEN :playedAt IS NULL THEN SYSDATE
-           ELSE TO_DATE(SUBSTR(REPLACE(:playedAt, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
+           ELSE TO_DATE(:playedAt, 'YYYY-MM-DD HH24:MI:SS')
          END,
          :deviceUuid,
          SYSDATE
@@ -292,16 +359,15 @@ async function insertScore({ studentId, subjectId, gradeLevelId, diffId, score, 
         score: scoreValue,
         maxScore,
         passed,
-        playedAt: playedAt || null,
+        playedAt: normalizedPlayedAt,
         deviceUuid: deviceUuid || null,
       },
       { autoCommit: true }
     );
 
-    return { duplicate: false, passed };
+    return { duplicate: false, passed, playedAt: normalizedPlayedAt };
   }
 
-  const playedAtValue = playedAt || new Date().toISOString();
   const duplicate = await db.execute(
     `SELECT COUNT(*) AS CNT
      FROM scoreTb
@@ -316,13 +382,13 @@ async function insertScore({ studentId, subjectId, gradeLevelId, diffId, score, 
       subjectId,
       gradeLevelId,
       diffId,
-      playedAt: playedAtValue,
+      playedAt: normalizedPlayedAt,
       deviceUuid: deviceUuid || null,
     }
   );
 
   if (Number(duplicate.rows?.[0]?.CNT || 0) > 0) {
-    return { duplicate: true, passed };
+    return { duplicate: true, passed, playedAt: normalizedPlayedAt };
   }
 
   await db.execute(
@@ -358,13 +424,13 @@ async function insertScore({ studentId, subjectId, gradeLevelId, diffId, score, 
       score: scoreValue,
       maxScore,
       passed,
-      playedAt: playedAtValue,
+      playedAt: normalizedPlayedAt,
       deviceUuid: deviceUuid || null,
     },
     { autoCommit: true }
   );
 
-  return { duplicate: false, passed };
+  return { duplicate: false, passed, playedAt: normalizedPlayedAt };
 }
 
 // @desc    Batch sync endpoint
@@ -572,6 +638,14 @@ const syncBatch = asyncHandler(async (req, res) => {
         });
       }
 
+      await insertTimePlayed({
+        studentId,
+        subjectId: mapping.subjectId,
+        totalTimePlayed: entry.totalTimePlayed || entry.total_time_played || entry.timeSpent || 0,
+        sessionDate: result.playedAt || entry.playedAt || entry.played_at || null,
+        deviceUuid,
+      });
+
       acceptedScores.push({
         studentId,
         duplicate: result.duplicate,
@@ -623,6 +697,14 @@ const syncBatch = asyncHandler(async (req, res) => {
         highestDiffPassed: entry.highestDiffPassed || entry.highest_diff_passed || null,
         totalTimePlayed: entry.totalTimePlayed || entry.total_time_played || entry.timeSpent || 0,
         lastPlayedAt: entry.lastPlayedAt || entry.last_played_at || null,
+      });
+
+      await insertTimePlayed({
+        studentId,
+        subjectId: mapping.subjectId,
+        totalTimePlayed: entry.totalTimePlayed || entry.total_time_played || entry.timeSpent || 0,
+        sessionDate: entry.lastPlayedAt || entry.last_played_at || null,
+        deviceUuid,
       });
 
       acceptedProgress.push({ studentId });

@@ -27,6 +27,7 @@ class ApiService {
   static String? _currentBirthday;
   static String? _deviceUuid;
   static String? _deviceToken;
+  static bool _supportsStudentAuthLogin = true;
   static String? _lastContentVersionTag;
   static bool _hasDeferredContentRefresh = false;
   static int _activeLearningSessions = 0;
@@ -253,75 +254,117 @@ class ApiService {
     required String nickname,
     required String birthday,
   }) async {
-    // Keep login path responsive; warm background auth/sync concurrently.
-    unawaited(_tryEnsureDeviceAuth());
+    final normalizedNickname = nickname.trim();
+    final normalizedBirthday = _normalizeBirthday(birthday);
+
+    // Ensure lookup-capable backends receive a device token before login attempts.
+    await _tryEnsureDeviceAuth();
     unawaited(syncPending());
 
-    try {
-      final res = await _sendWithTimeout(
-        _client.post(
-          Uri.parse('$_base/api/auth/login'),
-          headers: _headers,
-          body: jsonEncode({'nickname': nickname, 'birthday': birthday}),
-        ),
-        timeout: _interactiveAuthTimeout,
-      );
-      _checkStatus(res);
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
-      final student = Student.fromJson(body['student'] as Map<String, dynamic>);
-      final resolvedBirthday = _normalizeBirthday(
-        student.birthday == null || student.birthday!.isEmpty
-            ? birthday
-            : student.birthday!,
-      );
-      _currentStudentId = student.studentId;
-      _currentNickname = student.nickname.isEmpty ? nickname : student.nickname;
-      _currentBirthday = resolvedBirthday;
-      await LocalSyncStore.instance.saveActiveSession(
-        studentId: student.studentId,
-        nickname: _currentNickname!,
-        birthday: resolvedBirthday,
-      );
-      startContentVersionPolling();
-      unawaited(syncPending());
+    ApiException? loginError;
 
-      await LocalSyncStore.instance.saveSyncedStudent(
-        student: student,
-        birthday: resolvedBirthday,
-      );
+    if (_supportsStudentAuthLogin) {
+      try {
+        final res = await _sendWithTimeout(
+          _client.post(
+            Uri.parse('$_base/api/auth/login'),
+            headers: _headers,
+            body: jsonEncode({
+              'nickname': normalizedNickname,
+              'birthday': normalizedBirthday,
+            }),
+          ),
+          timeout: _interactiveAuthTimeout,
+        );
+        _checkStatus(res);
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        final student = Student.fromJson(body['student'] as Map<String, dynamic>);
+        final resolvedBirthday = _normalizeBirthday(
+          student.birthday == null || student.birthday!.isEmpty
+              ? normalizedBirthday
+              : student.birthday!,
+        );
+        _currentStudentId = student.studentId;
+        _currentNickname =
+            student.nickname.isEmpty ? normalizedNickname : student.nickname;
+        _currentBirthday = resolvedBirthday;
+        await LocalSyncStore.instance.saveActiveSession(
+          studentId: student.studentId,
+          nickname: _currentNickname!,
+          birthday: resolvedBirthday,
+        );
+        startContentVersionPolling();
+        unawaited(syncPending());
 
-      _scheduleOracleReconciliation(
-        nickname: _currentNickname!,
-        birthday: resolvedBirthday,
-      );
+        await LocalSyncStore.instance.saveSyncedStudent(
+          student: student,
+          birthday: resolvedBirthday,
+        );
 
-      return student;
-    } on ApiException catch (e) {
-      final shouldAttemptLookupFallback = e.statusCode == 400 || e.statusCode == 404;
-      if (shouldAttemptLookupFallback) {
-        try {
-          final lookupRes = await _sendWithTimeout(
-            _client.post(
-              Uri.parse('$_base/api/students/lookup'),
-              headers: _headers,
-              body: jsonEncode({'nickname': nickname, 'birthday': birthday}),
-            ),
-            timeout: _interactiveAuthTimeout,
-          );
-          _checkStatus(lookupRes);
+        _scheduleOracleReconciliation(
+          nickname: _currentNickname!,
+          birthday: resolvedBirthday,
+        );
 
-          final lookupBody = jsonDecode(lookupRes.body) as Map<String, dynamic>;
-          if (lookupBody['found'] == true) {
-            final resolvedBirthday = _normalizeBirthday(birthday);
-            final resolvedStudentId = (lookupBody['stud_id'] as num?)?.toInt() ??
-                ((lookupBody['student'] as Map<String, dynamic>?)?['STUDENT_ID'] as num?)?.toInt();
+        return student;
+      } on ApiException catch (e) {
+        loginError = e;
+        if (e.statusCode == 404) {
+          // PM2 kow-backend exposes lookup-based student login only.
+          _supportsStudentAuthLogin = false;
+        }
+      }
+    }
+
+    ApiException? lookupError;
+    final shouldAttemptLookupFallback = !_supportsStudentAuthLogin ||
+        loginError == null ||
+        loginError.statusCode == 400 ||
+        loginError.statusCode == 404;
+    if (shouldAttemptLookupFallback) {
+      try {
+          final lookupCandidates = _nicknameCandidates(normalizedNickname);
+          Map<String, dynamic>? lookupBody;
+
+          for (final candidate in lookupCandidates) {
+            final lookupRes = await _sendWithTimeout(
+              _client.post(
+                Uri.parse('$_base/api/students/lookup'),
+                headers: _headers,
+                body: jsonEncode({
+                  'nickname': candidate,
+                  'birthday': normalizedBirthday,
+                }),
+              ),
+              timeout: _interactiveAuthTimeout,
+            );
+            _checkStatus(lookupRes);
+
+            final parsed = jsonDecode(lookupRes.body) as Map<String, dynamic>;
+            if (parsed['found'] == true) {
+              lookupBody = parsed;
+              break;
+            }
+          }
+
+          if (lookupBody != null && lookupBody['found'] == true) {
+            final resolvedBirthday = _normalizeBirthday(normalizedBirthday);
+            final resolvedStudentId =
+                _parseStudentId(lookupBody['stud_id']) ??
+                _parseStudentId(lookupBody['student_id']) ??
+                _parseStudentId(
+                  (lookupBody['student'] as Map<String, dynamic>?)?['STUDENT_ID'],
+                ) ??
+                _parseStudentId(
+                  (lookupBody['student'] as Map<String, dynamic>?)?['student_id'],
+                );
             if (resolvedStudentId == null || resolvedStudentId <= 0) {
               throw const ApiException(404, 'Student lookup did not return a valid ID.');
             }
             final resolvedNickname =
                 (lookupBody['nickname'] as String?)?.trim().isNotEmpty == true
                 ? (lookupBody['nickname'] as String).trim()
-                : nickname;
+                : normalizedNickname;
 
             _currentStudentId = resolvedStudentId;
             _currentNickname = resolvedNickname;
@@ -361,37 +404,44 @@ class ApiService {
 
             return fallbackStudent;
           }
-        } on ApiException {
-          // Continue to local/offline fallback.
-        }
+      } on ApiException catch (e) {
+        lookupError = e;
+        // Continue to local/offline fallback.
       }
-
-      final offlineStudent = await LocalSyncStore.instance.findOfflineStudent(
-        nickname: nickname,
-        birthday: birthday,
-      );
-
-      if (offlineStudent != null) {
-        _currentStudentId = offlineStudent.studentId;
-        _currentNickname = offlineStudent.nickname;
-        _currentBirthday = _normalizeBirthday(birthday);
-        await LocalSyncStore.instance.saveActiveSession(
-          studentId: offlineStudent.studentId,
-          nickname: offlineStudent.nickname,
-          birthday: _currentBirthday!,
-        );
-        return offlineStudent;
-      }
-
-      if (!_isConnectivityException(e)) {
-        rethrow;
-      }
-
-      throw const ApiException(
-        401,
-        'Offline login failed: account not found on this device.',
-      );
     }
+
+    final offlineStudent = await LocalSyncStore.instance.findOfflineStudent(
+      nickname: normalizedNickname,
+      birthday: normalizedBirthday,
+    );
+
+    if (offlineStudent != null) {
+      _currentStudentId = offlineStudent.studentId;
+      _currentNickname = offlineStudent.nickname;
+      _currentBirthday = _normalizeBirthday(normalizedBirthday);
+      await LocalSyncStore.instance.saveActiveSession(
+        studentId: offlineStudent.studentId,
+        nickname: offlineStudent.nickname,
+        birthday: _currentBirthday!,
+      );
+      return offlineStudent;
+    }
+
+    if (lookupError != null && !_isConnectivityException(lookupError)) {
+      throw lookupError;
+    }
+
+    if (loginError != null &&
+        !_isConnectivityException(loginError) &&
+        loginError.statusCode != 400 &&
+        loginError.statusCode != 404) {
+      throw loginError;
+    }
+
+    throw const ApiException(
+      401,
+      'Offline login failed: account not found on this device.',
+    );
   }
 
   /// Returns best-known current student profile data from local cache.
@@ -602,13 +652,102 @@ class ApiService {
     required String subject,
     String? difficulty,
   }) async {
+    final previousRows = _questionCache[cacheKey];
+
+    try {
+      final remoteRows = await _fetchRemoteQuestions(
+        grade: grade,
+        subject: subject,
+        difficulty: difficulty,
+      );
+      if (remoteRows.isNotEmpty) {
+        _questionCache[cacheKey] = remoteRows;
+        return remoteRows;
+      }
+    } catch (_) {
+      // Fall back to bundled/local data when the backend is unavailable.
+    }
+
     final localRows = await SeededQuestionStore.instance.getQuestions(
       grade: grade,
       subject: subject,
       difficulty: difficulty,
     );
-    _questionCache[cacheKey] = localRows;
-    return localRows;
+    if (localRows.isNotEmpty) {
+      _questionCache[cacheKey] = localRows;
+      return localRows;
+    }
+
+    if (previousRows != null && previousRows.isNotEmpty) {
+      return previousRows;
+    }
+
+    _questionCache.remove(cacheKey);
+    return const <Map<String, dynamic>>[];
+  }
+
+  static Future<List<Map<String, dynamic>>> _fetchRemoteQuestions({
+    required String grade,
+    required String subject,
+    String? difficulty,
+  }) async {
+    await _tryEnsureDeviceAuth();
+
+    final uri = Uri.parse('$_base/api/content');
+
+    final res = await _runWithRetry(
+      () => _sendWithTimeout(_client.get(uri, headers: _headers)),
+      shouldRetry: _isRetryableSyncError,
+    );
+    _checkStatus(res);
+
+    final decoded = jsonDecode(res.body);
+    List<dynamic>? rawQuestions;
+
+    if (decoded is Map<String, dynamic>) {
+      final versionTag = _asString(decoded['version_tag']) ?? _asString(decoded['versionTag']);
+      if (versionTag != null) {
+        _lastContentVersionTag = versionTag;
+      }
+
+      rawQuestions = _extractQuestionsFromContentPayload(decoded);
+    } else if (decoded is List) {
+      rawQuestions = decoded;
+    }
+
+    if (rawQuestions == null || rawQuestions.isEmpty) {
+      return const <Map<String, dynamic>>[];
+    }
+
+    final gradeLevelId = _gradeLevelIdFor(grade);
+    final subjectId = _subjectIdFor(subject);
+    final diffId = _difficultyIdFor(difficulty);
+
+    return rawQuestions
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .map(_mapContentQuestionToQuizRow)
+        .where((row) => row.isNotEmpty)
+        .where((row) {
+          final rowGradeLevelId = _asInt(row['gradelvl_id']);
+          final rowSubjectId = _asInt(row['subject_id']);
+          final rowDiffId = _asInt(row['diff_id']);
+          final rowGradeLevelName = _asString(row['gradelvl']);
+          final rowSubjectName = _asString(row['subject']);
+          final rowDifficultyName = _asString(row['difficulty']);
+
+          final resolvedGradeLevelId =
+              rowGradeLevelId ?? _safeGradeLevelIdFor(rowGradeLevelName);
+          final resolvedSubjectId =
+              rowSubjectId ?? _safeSubjectIdFor(rowSubjectName);
+          final resolvedDiffId =
+              rowDiffId ?? _safeDifficultyIdFor(rowDifficultyName);
+
+          return resolvedGradeLevelId == gradeLevelId &&
+              resolvedSubjectId == subjectId &&
+              (diffId == null || resolvedDiffId == diffId);
+        })
+        .toList(growable: false);
   }
 
   static String _questionCacheKey({
@@ -903,7 +1042,7 @@ class ApiService {
       queryParameters: {
         ...?(_lastContentVersionTag == null
             ? null
-            : {'sinceVersion': _lastContentVersionTag!}),
+            : {'version': _lastContentVersionTag!}),
       },
     );
 
@@ -920,6 +1059,9 @@ class ApiService {
     final upToDate = body['up_to_date'] == true;
 
     if (versionTag != null && versionTag.isNotEmpty) {
+      if (_lastContentVersionTag != null && _lastContentVersionTag != versionTag) {
+        _questionCache.clear();
+      }
       _lastContentVersionTag = versionTag;
     }
 
@@ -975,7 +1117,7 @@ class ApiService {
       return 'Average';
     }
     if (normalized == 'HARD' || normalized == 'ADVANCED' || normalized == 'DIFFICULT') {
-      return 'Average';
+      return 'Hard';
     }
     return 'Average';
   }
@@ -987,7 +1129,7 @@ class ApiService {
 
     final normalized = difficulty.trim().toUpperCase();
     if (normalized == 'HARD' || normalized == 'ADVANCED' || normalized == 'DIFFICULT') {
-      return null;
+      return 'Hard';
     }
 
     if (normalized == 'EASY') {
@@ -1025,6 +1167,59 @@ class ApiService {
     }
 
     return '${mdy.group(3)}-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+  }
+
+  static List<String> _nicknameCandidates(String nickname) {
+    final trimmed = nickname.trim();
+    if (trimmed.isEmpty) {
+      return const <String>[];
+    }
+
+    final candidates = <String>{trimmed};
+    candidates.add(trimmed.toLowerCase());
+    candidates.add(trimmed.toUpperCase());
+
+    if (trimmed.length == 1) {
+      candidates.add(trimmed.toUpperCase());
+    } else {
+      candidates.add(
+        '${trimmed[0].toUpperCase()}${trimmed.substring(1).toLowerCase()}',
+      );
+    }
+
+    return candidates.where((value) => value.isNotEmpty).toList(growable: false);
+  }
+
+  static int? _parseStudentId(dynamic raw) {
+    if (raw == null) {
+      return null;
+    }
+
+    if (raw is num) {
+      return raw.toInt();
+    }
+
+    final text = '$raw'.trim();
+    if (text.isEmpty) {
+      return null;
+    }
+
+    final direct = int.tryParse(text);
+    if (direct != null) {
+      return direct;
+    }
+
+    final canonical = RegExp(r'^STU-(\d+)$', caseSensitive: false).firstMatch(text);
+    if (canonical != null) {
+      return int.tryParse(canonical.group(1)!);
+    }
+
+    final trailingDigits = RegExp(r'(\d+)$').firstMatch(text);
+    if (trailingDigits != null) {
+      return int.tryParse(trailingDigits.group(1)!);
+    }
+
+    return null;
   }
 
   static Future<int?> _registerRemote({
@@ -1520,8 +1715,253 @@ class ApiService {
         return 'English';
       case 'WRITING':
         return 'Filipino';
+      case 'ENGLISH':
+        return 'English';
+      case 'FILIPINO':
+        return 'Filipino';
       default:
-        return subject;
+        return subject.trim();
+    }
+  }
+
+  static int _gradeLevelIdFor(String grade) {
+    switch (grade.trim().toUpperCase()) {
+      case 'PUNLA':
+        return 1;
+      case 'BINHI':
+        return 2;
+      default:
+        throw ApiException(400, 'Unsupported grade for remote content: $grade');
+    }
+  }
+
+  static int _subjectIdFor(String subject) {
+    switch (_normalizeSubject(subject).trim().toUpperCase()) {
+      case 'MATHEMATICS':
+        return 1;
+      case 'SCIENCE':
+        return 2;
+      case 'FILIPINO':
+        return 3;
+      case 'ENGLISH':
+        return 4;
+      default:
+        throw ApiException(400, 'Unsupported subject for remote content: $subject');
+    }
+  }
+
+  static int? _difficultyIdFor(String? difficulty) {
+    final normalized = _normalizeQuestionDifficulty(difficulty);
+    switch (normalized?.trim().toUpperCase()) {
+      case 'EASY':
+        return 1;
+      case 'AVERAGE':
+        return 2;
+      case 'HARD':
+        return 3;
+      case null:
+        return null;
+      default:
+        throw ApiException(
+          400,
+          'Unsupported difficulty for remote content: ${difficulty ?? ''}',
+        );
+    }
+  }
+
+  static Map<String, dynamic> _mapContentQuestionToQuizRow(
+    Map<String, dynamic> row,
+  ) {
+    final questionId =
+        _asInt(row['question_id']) ??
+        _asInt(row['questionId']) ??
+        _asInt(row['id']);
+    final gradeLevelId =
+        _asInt(row['gradelvl_id']) ??
+        _asInt(row['gradelevel_id']) ??
+        _asInt(row['grade_level_id']);
+    final subjectId =
+        _asInt(row['subject_id']) ??
+        _asInt(row['subjectId']);
+    final diffId =
+        _asInt(row['diff_id']) ??
+        _asInt(row['difficulty_id']) ??
+        _asInt(row['difficultyId']);
+
+    final prompt =
+        _asString(row['question_txt']) ??
+        _asString(row['question_text']) ??
+        _asString(row['question']) ??
+        _asString(row['prompt']) ??
+        '';
+    final choices = _extractChoices(row);
+    if (prompt.trim().isEmpty || choices.length != 4) {
+      return const <String, dynamic>{};
+    }
+
+    final imagePath =
+        _asString(row['image_url']) ??
+        _asString(row['image_path']) ??
+        _asString(row['imageUrl']) ??
+        _asString(row['imagePath']);
+    final imageBlob =
+        _asString(row['image_blob']) ??
+        _asString(row['imageBlob']) ??
+        _asString(row['question_image']) ??
+        _asString(row['questionImage']);
+    final funFact = _asString(row['fun_fact']) ?? _asString(row['funFact']) ?? '';
+    final wordType = _asString(row['word_type']) ?? _asString(row['wordType']) ?? '';
+    final subPrompt = _asString(row['sub_prompt']) ?? _asString(row['subPrompt']) ?? '';
+
+    return <String, dynamic>{
+      'id': questionId,
+      'gradelvl_id': gradeLevelId,
+      'subject_id': subjectId,
+      'diff_id': diffId,
+      'gradelvl': _asString(row['gradelvl']) ?? _asString(row['grade']) ?? _asString(row['grade_level']),
+      'subject': _asString(row['subject']) ?? _asString(row['subject_name']),
+      'difficulty': _asString(row['difficulty']) ?? _asString(row['difficulty_name']),
+      'prompt': prompt,
+      'imagePath': imagePath,
+      'imageBlob': imageBlob,
+      'funFact': funFact,
+      'wordType': wordType,
+      'subPrompt': subPrompt,
+      'choices': choices,
+      'choiceImageBlobs': null,
+      'choiceImages': null,
+      'correctIndex': _correctIndexFor(row),
+    };
+  }
+
+  static List<dynamic>? _extractQuestionsFromContentPayload(
+    Map<String, dynamic> body,
+  ) {
+    final direct = body['questions'];
+    if (direct is List) {
+      return direct;
+    }
+
+    final data = body['data'];
+    if (data is List) {
+      return data;
+    }
+
+    if (data is Map<String, dynamic>) {
+      final nestedQuestions = data['questions'] ?? data['items'];
+      if (nestedQuestions is List) {
+        return nestedQuestions;
+      }
+    }
+
+    final items = body['items'];
+    if (items is List) {
+      return items;
+    }
+
+    return null;
+  }
+
+  static int? _asInt(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    return int.tryParse('$value');
+  }
+
+  static String? _asString(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+    final text = '$value'.trim();
+    return text.isEmpty ? null : text;
+  }
+
+  static List<String> _extractChoices(Map<String, dynamic> row) {
+    final fromArray = row['choices'] ?? row['options'];
+    if (fromArray is List) {
+      final normalized = fromArray
+          .map((entry) => (entry == null ? '' : '$entry').trim())
+          .where((entry) => entry.isNotEmpty)
+          .toList(growable: false);
+      if (normalized.length == 4) {
+        return normalized;
+      }
+    }
+
+    final options = <String>[
+      _asString(row['option_a']) ?? _asString(row['optionA']) ?? '',
+      _asString(row['option_b']) ?? _asString(row['optionB']) ?? '',
+      _asString(row['option_c']) ?? _asString(row['optionC']) ?? '',
+      _asString(row['option_d']) ?? _asString(row['optionD']) ?? '',
+    ];
+
+    if (options.any((entry) => entry.isEmpty)) {
+      return const <String>[];
+    }
+    return options;
+  }
+
+  static int _correctIndexFor(Map<String, dynamic> row) {
+    const letterToIndex = <String, int>{'A': 0, 'B': 1, 'C': 2, 'D': 3};
+
+    final indexCandidate =
+        _asInt(row['correct_index']) ??
+        _asInt(row['correctIndex']);
+    if (indexCandidate != null && indexCandidate >= 0 && indexCandidate <= 3) {
+      return indexCandidate;
+    }
+
+    final letterCandidate =
+        _asString(row['correct_opt']) ??
+        _asString(row['correct_option']) ??
+        _asString(row['correctOpt']) ??
+        _asString(row['correctOption']) ??
+        _asString(row['answer']) ??
+        _asString(row['correct_answer']);
+    if (letterCandidate != null) {
+      final letter = letterCandidate.toUpperCase();
+      if (letterToIndex.containsKey(letter)) {
+        return letterToIndex[letter]!;
+      }
+    }
+
+    return 0;
+  }
+
+  static int? _safeGradeLevelIdFor(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return null;
+    }
+    try {
+      return _gradeLevelIdFor(value);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static int? _safeSubjectIdFor(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return null;
+    }
+    try {
+      return _subjectIdFor(value);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static int? _safeDifficultyIdFor(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return null;
+    }
+    try {
+      return _difficultyIdFor(value);
+    } catch (_) {
+      return null;
     }
   }
 }

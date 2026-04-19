@@ -1,7 +1,10 @@
 const { WebSocketServer } = require('ws');
 const crypto = require('crypto');
 
-const TOKEN_SECRET = process.env.TOKEN_SECRET || 'kow-dev-secret-change-me';
+const TOKEN_SECRET =
+  process.env.TOKEN_SECRET ||
+  process.env.JWT_SECRET ||
+  'kow-dev-secret-change-me';
 
 let wss;
 const adminClients = new Set();

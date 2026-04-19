@@ -5,6 +5,7 @@ loadEnv();
 const app = require('./app');
 const { port, dbMode } = require('./config/env');
 const { connectDatabase, closeDatabase } = require('./config/db');
+const { initWebSocket } = require('./services/wsHub');
 
 const maxPortAttempts = 20;
 
@@ -50,6 +51,7 @@ async function bootstrap() {
 
   const server = http.createServer(app);
   const actualPort = await listenWithFallback(server, port);
+  initWebSocket(server);
 
   console.log(`KOW backend listening on port ${actualPort} (${dbMode} mode)`);
   if (actualPort !== port) {

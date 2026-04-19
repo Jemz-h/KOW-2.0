@@ -29,7 +29,7 @@ const _subjectColors = {
   'WRITING': Color(0xFFFFCA28),
 };
 
-const _difficultyOrder = ['EASY', 'AVERAGE', 'EASY'];
+const _difficultyOrder = ['EASY', 'AVERAGE', 'HARD'];
 
 // ════════════════════════════════════════════════════
 // COORDINATES — tweak these to reposition anything
@@ -314,9 +314,9 @@ class _LevelMapScreenState extends State<LevelMapScreen>
       case 'SCIENCE':
         return 'SCIENCE';
       case 'READING':
-      case 'WRITING':
       case 'ENGLISH':
         return 'ENGLISH';
+      case 'WRITING':
       case 'FILIPINO':
         return 'FILIPINO';
       default:
@@ -465,6 +465,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
     final rows = await ApiService.getQuestions(
       grade: widget.grade,
       subject: widget.subject,
+      difficulty: selectedDifficulty,
     );
     if (!mounted) return;
 

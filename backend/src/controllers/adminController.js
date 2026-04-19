@@ -3,12 +3,83 @@ const db = require('../config/db');
 const UserModel = require('../models/userModel');
 const { broadcastToAdmins } = require('../services/wsHub');
 const { normalizeQuestionImage, serializeQuestionImage } = require('../utils/questionImage');
+const { normalizeDateOnly, normalizeTimestamp } = require('../utils/dateTime');
 
 async function getSingleValue(sql, binds = {}) {
   const result = await db.execute(sql, binds);
   const row = result.rows[0] || {};
   const firstKey = Object.keys(row)[0];
   return Number(row[firstKey] || 0);
+}
+
+function getRowValue(row, key) {
+  return row?.[key] ?? row?.[key.toUpperCase()] ?? row?.[key.toLowerCase()] ?? null;
+}
+
+function toNumber(value, fallback = 0) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : fallback;
+}
+
+function toText(value, fallback = '') {
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+
+  const text = String(value).trim();
+  return text || fallback;
+}
+
+function calculateAge(birthday) {
+  const normalizedBirthday = normalizeDateOnly(birthday);
+  if (!normalizedBirthday) {
+    return 0;
+  }
+
+  const [year, month, day] = normalizedBirthday.split('-').map(Number);
+  if (![year, month, day].every(Number.isFinite)) {
+    return 0;
+  }
+
+  const today = new Date();
+  let age = today.getFullYear() - year;
+  const hasBirthdayPassed =
+    today.getMonth() + 1 > month ||
+    ((today.getMonth() + 1) === month && today.getDate() >= day);
+
+  if (!hasBirthdayPassed) {
+    age -= 1;
+  }
+
+  return Math.max(age, 0);
+}
+
+function gradeLevelFromAge(age) {
+  if (age >= 6) {
+    return 'Binhi';
+  }
+
+  if (age >= 3) {
+    return 'Punla';
+  }
+
+  return '';
+}
+
+function proficiencyFromAverage(avgScore) {
+  if (avgScore >= 9) {
+    return 'Excelling';
+  }
+
+  if (avgScore >= 7) {
+    return 'On track';
+  }
+
+  if (avgScore >= 5) {
+    return 'Needs support';
+  }
+
+  return 'Needs significant support';
 }
 
 async function bumpContentVersion(note) {
@@ -75,19 +146,61 @@ async function bumpContentVersion(note) {
 // @route   GET /api/admin/dashboard
 // @access  Public
 const getDashboard = asyncHandler(async (req, res) => {
-  const students = await getSingleValue(`SELECT COUNT(*) AS CNT FROM studentTb`);
-  const scores = await getSingleValue(`SELECT COUNT(*) AS CNT FROM scoreTb`);
-  const devices = await getSingleValue(`SELECT COUNT(*) AS CNT FROM deviceTb`);
-  const avgScore = await getSingleValue(`SELECT COALESCE(AVG(score), 0) AS AVG_SCORE FROM scoreTb`);
+  const totalStudents = await getSingleValue(`SELECT COUNT(*) AS CNT FROM studentTb`);
+  const totalSessions = await getSingleValue(`SELECT COUNT(*) AS CNT FROM scoreTb`);
+  const activeDevices = await getSingleValue(`SELECT COUNT(*) AS CNT FROM deviceTb`);
+
+  const ageGroupProgressResult = await db.execute(
+    `SELECT g.gradelvl,
+            s.subject,
+            COUNT(DISTINCT sc.stud_id) AS active_students,
+            ROUND(AVG(sc.score), 2) AS avg_score,
+            ROUND(AVG(CASE WHEN sc.passed = 1 THEN 1 ELSE 0 END) * 100, 1) AS pass_rate_pct
+     FROM scoreTb sc
+     JOIN gradelvlTb g ON sc.gradelvl_id = g.gradelvl_id
+     JOIN subjectTb s ON sc.subject_id = s.subject_id
+     GROUP BY g.gradelvl, s.subject
+     ORDER BY g.gradelvl_id, s.subject_id`
+  );
+
+  const syncTimestampColumn = db.isOracle()
+    ? `TO_CHAR(d.last_synced_at, 'YYYY-MM-DD HH24:MI:SS')`
+    : `strftime('%Y-%m-%d %H:%M:%S', d.last_synced_at)`;
+  const recentSyncsResult = await db.execute(
+    `SELECT d.device_uuid,
+            d.device_name,
+            ${syncTimestampColumn} AS last_synced_at,
+            COUNT(DISTINCT sl.stud_id) AS students_synced
+     FROM deviceTb d
+     LEFT JOIN syncLogTb sl ON d.device_uuid = sl.device_uuid
+     GROUP BY d.device_uuid, d.device_name, d.last_synced_at`
+  );
+
+  const ageGroupProgress = ageGroupProgressResult.rows.map((row) => ({
+    gradelvl: toText(getRowValue(row, 'gradelvl')),
+    subject: toText(getRowValue(row, 'subject')),
+    active_students: toNumber(getRowValue(row, 'active_students')),
+    avg_score: toNumber(getRowValue(row, 'avg_score')),
+    pass_rate_pct: toNumber(getRowValue(row, 'pass_rate_pct')),
+  }));
+
+  const recentSyncs = recentSyncsResult.rows
+    .map((row) => ({
+      device_uuid: toText(getRowValue(row, 'device_uuid')),
+      device_name: toText(getRowValue(row, 'device_name'), 'Unknown Device'),
+      last_synced_at: normalizeTimestamp(getRowValue(row, 'last_synced_at')),
+      students_synced: toNumber(getRowValue(row, 'students_synced')),
+    }))
+    .sort((left, right) => right.last_synced_at.localeCompare(left.last_synced_at))
+    .slice(0, 8);
 
   res.status(200).json({
     success: true,
-    stats: {
-      students,
-      scores,
-      devices,
-      avgScore,
-    },
+    total_students: totalStudents,
+    total_sessions: totalSessions,
+    active_devices: activeDevices,
+    age_group_progress: ageGroupProgress,
+    recent_syncs: recentSyncs,
   });
 });
 
@@ -114,10 +227,54 @@ const listStudents = asyncHandler(async (req, res) => {
      ORDER BY s.stud_id DESC`
   );
 
+  const scoreStats = await db.execute(
+    `SELECT stud_id,
+            COUNT(*) AS total_sessions,
+            ROUND(AVG(score), 2) AS avg_score
+     FROM scoreTb
+     GROUP BY stud_id`
+  );
+
+  const statsByStudentId = new Map(
+    scoreStats.rows.map((row) => [
+      toNumber(getRowValue(row, 'stud_id')),
+      {
+        totalSessions: toNumber(getRowValue(row, 'total_sessions')),
+        avgScore: toNumber(getRowValue(row, 'avg_score')),
+      },
+    ])
+  );
+
+  const students = result.rows.map((row) => {
+    const studId = toNumber(getRowValue(row, 'stud_id'));
+    const birthday = normalizeDateOnly(getRowValue(row, 'birthday'));
+    const age = calculateAge(birthday);
+    const stats = statsByStudentId.get(studId) || { totalSessions: 0, avgScore: 0 };
+
+    return {
+      stud_id: studId,
+      nickname: toText(getRowValue(row, 'nickname')),
+      first_name: toText(getRowValue(row, 'first_name')),
+      last_name: toText(getRowValue(row, 'last_name')),
+      age,
+      gradelvl: gradeLevelFromAge(age),
+      sex: toText(getRowValue(row, 'sex')),
+      total_sessions: stats.totalSessions,
+      avg_score: stats.avgScore,
+      proficiency: proficiencyFromAverage(stats.avgScore),
+      birthday,
+      area: toText(getRowValue(row, 'area')),
+      device_origin: toText(getRowValue(row, 'device_origin')),
+      tmp_local_id: toText(getRowValue(row, 'tmp_local_id')),
+      created_at: normalizeTimestamp(getRowValue(row, 'created_at')),
+      updated_at: normalizeTimestamp(getRowValue(row, 'updated_at')),
+    };
+  });
+
   res.status(200).json({
     success: true,
-    count: result.rows.length,
-    students: result.rows,
+    count: students.length,
+    students,
   });
 });
 
@@ -151,6 +308,19 @@ const getStudentDetail = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, error: 'Student not found' });
   }
 
+  const studentRow = student.rows[0];
+  const scoreStats = await db.execute(
+    `SELECT COUNT(*) AS total_sessions,
+            ROUND(AVG(score), 2) AS avg_score
+     FROM scoreTb
+     WHERE stud_id = :studId`,
+    { studId }
+  );
+  const scoreStatRow = scoreStats.rows[0] || {};
+  const birthday = normalizeDateOnly(getRowValue(studentRow, 'birthday'));
+  const age = calculateAge(birthday);
+  const avgScore = toNumber(getRowValue(scoreStatRow, 'avg_score'));
+
   const progress = await db.execute(
     `SELECT p.progress_id,
             p.subject_id,
@@ -168,28 +338,85 @@ const getStudentDetail = asyncHandler(async (req, res) => {
     { studId }
   );
 
-  const scores = await db.execute(
-    `SELECT score_id,
-            subject_id,
-            gradelvl_id,
-            diff_id,
-            score,
-            max_score,
-            passed,
-            played_at,
-            synced_at,
-            device_uuid
-     FROM scoreTb
-     WHERE stud_id = :studId
-     ORDER BY played_at DESC`,
+  const analytics = await db.execute(
+    `SELECT sub.subject,
+            gl.gradelvl,
+            MIN(sc.score) AS lowest_score,
+            ROUND(AVG(sc.score), 2) AS average_score,
+            MAX(sc.score) AS highest_score,
+            COUNT(*) AS total_attempts
+     FROM scoreTb sc
+     JOIN subjectTb sub ON sc.subject_id = sub.subject_id
+     JOIN gradelvlTb gl ON sc.gradelvl_id = gl.gradelvl_id
+     WHERE sc.stud_id = :studId
+     GROUP BY sub.subject, gl.gradelvl
+     ORDER BY gl.gradelvl, sub.subject`,
     { studId }
   );
 
+  const scoreTimestampColumn = db.isOracle()
+    ? `TO_CHAR(sc.played_at, 'YYYY-MM-DD HH24:MI:SS')`
+    : `strftime('%Y-%m-%d %H:%M:%S', sc.played_at)`;
+  const scores = await db.execute(
+    `SELECT sub.subject,
+            d.difficulty,
+            sc.score,
+            sc.max_score,
+            sc.passed,
+            ${scoreTimestampColumn} AS played_at
+     FROM scoreTb sc
+     JOIN subjectTb sub ON sc.subject_id = sub.subject_id
+     JOIN diffTb d ON sc.diff_id = d.diff_id
+     WHERE sc.stud_id = :studId
+     ORDER BY sc.played_at DESC`,
+    { studId }
+  );
+
+  const profile = {
+    stud_id: toNumber(getRowValue(studentRow, 'stud_id')),
+    nickname: toText(getRowValue(studentRow, 'nickname')),
+    first_name: toText(getRowValue(studentRow, 'first_name')),
+    last_name: toText(getRowValue(studentRow, 'last_name')),
+    age,
+    gradelvl: gradeLevelFromAge(age),
+    sex: toText(getRowValue(studentRow, 'sex')),
+    total_sessions: toNumber(getRowValue(scoreStatRow, 'total_sessions')),
+    avg_score: avgScore,
+    proficiency: proficiencyFromAverage(avgScore),
+    birthday,
+    area: toText(getRowValue(studentRow, 'area')),
+    device_origin: toText(getRowValue(studentRow, 'device_origin')),
+    tmp_local_id: toText(getRowValue(studentRow, 'tmp_local_id')),
+    created_at: normalizeTimestamp(getRowValue(studentRow, 'created_at')),
+    updated_at: normalizeTimestamp(getRowValue(studentRow, 'updated_at')),
+  };
+
   res.status(200).json({
     success: true,
-    student: student.rows[0],
-    progress: progress.rows,
-    scores: scores.rows,
+    profile,
+    progress: progress.rows.map((row) => ({
+      subject: toText(getRowValue(row, 'subject')),
+      gradelvl: toText(getRowValue(row, 'gradelvl')),
+      highest_diff_passed: toNumber(getRowValue(row, 'highest_diff_passed')),
+      total_time_played: toNumber(getRowValue(row, 'total_time_played')),
+      last_played_at: normalizeTimestamp(getRowValue(row, 'last_played_at')),
+    })),
+    analytics: analytics.rows.map((row) => ({
+      subject: toText(getRowValue(row, 'subject')),
+      gradelvl: toText(getRowValue(row, 'gradelvl')),
+      lowest_score: toNumber(getRowValue(row, 'lowest_score')),
+      average_score: toNumber(getRowValue(row, 'average_score')),
+      highest_score: toNumber(getRowValue(row, 'highest_score')),
+      total_attempts: toNumber(getRowValue(row, 'total_attempts')),
+    })),
+    recent_scores: scores.rows.map((row) => ({
+      subject: toText(getRowValue(row, 'subject')),
+      difficulty: toText(getRowValue(row, 'difficulty')),
+      score: toNumber(getRowValue(row, 'score')),
+      max_score: toNumber(getRowValue(row, 'max_score')),
+      passed: toNumber(getRowValue(row, 'passed')),
+      played_at: normalizeTimestamp(getRowValue(row, 'played_at')),
+    })),
   });
 });
 
@@ -197,12 +424,18 @@ const getStudentDetail = asyncHandler(async (req, res) => {
 // @route   GET /api/admin/devices
 // @access  Public
 const listDevices = asyncHandler(async (req, res) => {
+  const registeredTimestampColumn = db.isOracle()
+    ? `TO_CHAR(d.registered_at, 'YYYY-MM-DD HH24:MI:SS')`
+    : `strftime('%Y-%m-%d %H:%M:%S', d.registered_at)`;
+  const syncedTimestampColumn = db.isOracle()
+    ? `TO_CHAR(d.last_synced_at, 'YYYY-MM-DD HH24:MI:SS')`
+    : `strftime('%Y-%m-%d %H:%M:%S', d.last_synced_at)`;
   const result = await db.execute(
     `SELECT d.device_id,
             d.device_uuid,
             d.device_name,
-            d.registered_at,
-            d.last_synced_at,
+            ${registeredTimestampColumn} AS registered_at,
+            ${syncedTimestampColumn} AS last_synced_at,
             COUNT(DISTINCT sl.stud_id) AS students_on_device
      FROM deviceTb d
      LEFT JOIN syncLogTb sl ON d.device_uuid = sl.device_uuid
@@ -210,10 +443,19 @@ const listDevices = asyncHandler(async (req, res) => {
      ORDER BY d.registered_at DESC`
   );
 
+  const devices = result.rows.map((row) => ({
+    device_id: toNumber(getRowValue(row, 'device_id')),
+    device_uuid: toText(getRowValue(row, 'device_uuid')),
+    device_name: toText(getRowValue(row, 'device_name'), 'Unknown Device'),
+    registered_at: normalizeTimestamp(getRowValue(row, 'registered_at')),
+    last_synced_at: normalizeTimestamp(getRowValue(row, 'last_synced_at')),
+    students_on_device: toNumber(getRowValue(row, 'students_on_device')),
+  }));
+
   res.status(200).json({
     success: true,
-    count: result.rows.length,
-    devices: result.rows,
+    count: devices.length,
+    devices,
   });
 });
 

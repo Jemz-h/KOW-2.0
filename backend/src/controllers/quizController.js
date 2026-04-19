@@ -1,6 +1,8 @@
 const db = require('../config/db');
 const asyncHandler = require('express-async-handler');
 const { serializeQuestionImage } = require('../utils/questionImage');
+const { broadcastToAdmins } = require('../services/wsHub');
+const { normalizeTimestamp } = require('../utils/dateTime');
 
 function normalizeDifficulty(input) {
   if (!input) {
@@ -21,7 +23,7 @@ function normalizeDifficulty(input) {
   }
 
   if (value === 'HARD' || value === 'ADVANCED' || value === 'DIFFICULT') {
-    return null;
+    return 'Hard';
   }
 
   return null;
@@ -131,7 +133,7 @@ const submitScore = asyncHandler(async (req, res) => {
     device_uuid
   } = req.body;
 
-  const playedAtValue = playedAt || played_at || null;
+  const playedAtValue = normalizeTimestamp(playedAt || played_at || null, new Date());
   const deviceUuidValue = deviceUuid || device_uuid || null;
 
   if (!studentId || !grade || !subject || !difficulty || score === undefined) {
@@ -185,7 +187,7 @@ const submitScore = asyncHandler(async (req, res) => {
            AND subject_id = :subjectId
            AND gradelvl_id = :gradeLevelId
            AND diff_id = :diffId
-           AND played_at = TO_DATE(SUBSTR(REPLACE(:playedAt, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
+           AND played_at = TO_DATE(:playedAt, 'YYYY-MM-DD HH24:MI:SS')
            AND (:deviceUuid IS NULL OR NVL(device_uuid, '__NONE__') = NVL(:deviceUuid, '__NONE__'))`
       : `SELECT COUNT(*) AS CNT
          FROM scoreTb
@@ -242,7 +244,7 @@ const submitScore = asyncHandler(async (req, res) => {
          :passed,
          CASE
            WHEN :playedAt IS NULL THEN SYSDATE
-           ELSE TO_DATE(SUBSTR(REPLACE(:playedAt, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
+           ELSE TO_DATE(:playedAt, 'YYYY-MM-DD HH24:MI:SS')
          END,
          :deviceUuid,
          SYSDATE
@@ -283,7 +285,7 @@ const submitScore = asyncHandler(async (req, res) => {
            END,
            p.last_played_at = CASE
              WHEN :playedAt IS NULL THEN SYSDATE
-             ELSE TO_DATE(SUBSTR(REPLACE(:playedAt, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
+             ELSE TO_DATE(:playedAt, 'YYYY-MM-DD HH24:MI:SS')
            END
        WHEN NOT MATCHED THEN
          INSERT (
@@ -304,7 +306,7 @@ const submitScore = asyncHandler(async (req, res) => {
            0,
            CASE
              WHEN :playedAt IS NULL THEN SYSDATE
-             ELSE TO_DATE(SUBSTR(REPLACE(:playedAt, 'T', ' '), 1, 19), 'YYYY-MM-DD HH24:MI:SS')
+             ELSE TO_DATE(:playedAt, 'YYYY-MM-DD HH24:MI:SS')
            END
          )`,
       {
@@ -318,7 +320,7 @@ const submitScore = asyncHandler(async (req, res) => {
       { autoCommit: true }
     );
   } else {
-    const sqlitePlayedAtValue = playedAtValue || new Date().toISOString();
+    const sqlitePlayedAtValue = playedAtValue;
 
     await db.execute(
       `INSERT INTO scoreTb (
@@ -396,6 +398,17 @@ const submitScore = asyncHandler(async (req, res) => {
     );
   }
 
+  broadcastToAdmins({
+    type: 'score_recorded',
+    student_id: Number(studentId),
+    grade: String(grade),
+    subject: String(subject),
+    difficulty: normalizedDifficulty,
+    score: scoreValue,
+    passed,
+    played_at: playedAtValue,
+  });
+
   res.status(201).json({ 
     success: true, 
     message: 'Score submitted successfully'
@@ -413,13 +426,19 @@ const getScores = asyncHandler(async (req, res) => {
     throw new Error('Student ID is required');
   }
 
+  const playedAtColumn = db.isOracle()
+    ? `TO_CHAR(sc.played_at, 'YYYY-MM-DD HH24:MI:SS')`
+    : `strftime('%Y-%m-%d %H:%M:%S', sc.played_at)`;
+  const syncedAtColumn = db.isOracle()
+    ? `TO_CHAR(sc.synced_at, 'YYYY-MM-DD HH24:MI:SS')`
+    : `strftime('%Y-%m-%d %H:%M:%S', sc.synced_at)`;
   const result = await db.execute(`
       SELECT sc.score_id,
         sc.score,
         sc.max_score,
         sc.passed,
-        sc.played_at,
-        sc.synced_at,
+        ${playedAtColumn} AS played_at,
+        ${syncedAtColumn} AS synced_at,
         sc.device_uuid,
         sub.subject,
         gl.gradelvl,
@@ -432,10 +451,23 @@ const getScores = asyncHandler(async (req, res) => {
       ORDER BY sc.played_at DESC
     `, { studentId });
   
+  const scores = result.rows.map((row) => ({
+    score_id: Number(row.SCORE_ID ?? row.score_id ?? 0),
+    score: Number(row.SCORE ?? row.score ?? 0),
+    max_score: Number(row.MAX_SCORE ?? row.max_score ?? 0),
+    passed: Number(row.PASSED ?? row.passed ?? 0),
+    played_at: normalizeTimestamp(row.PLAYED_AT ?? row.played_at),
+    synced_at: normalizeTimestamp(row.SYNCED_AT ?? row.synced_at),
+    device_uuid: row.DEVICE_UUID ?? row.device_uuid ?? null,
+    subject: row.SUBJECT ?? row.subject ?? '',
+    gradelvl: row.GRADELVL ?? row.gradelvl ?? '',
+    difficulty: row.DIFFICULTY ?? row.difficulty ?? '',
+  }));
+
   res.status(200).json({ 
     success: true, 
-    count: result.rows.length,
-    scores: result.rows 
+    count: scores.length,
+    scores
   });
 });
 
