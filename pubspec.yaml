@@ -19,6 +19,7 @@ dependencies:
   sqflite: ^2.4.2
   path: ^1.9.1
   uuid: ^4.5.1
+  auto_size_text: ^3.0.0
 
 dev_dependencies:
   flutter_test:
@@ -53,5 +54,5 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: assets/sisa_oyo/kow_app_icon.png
+  image_path: assets/icons/game.png
   remove_alpha_ios: true

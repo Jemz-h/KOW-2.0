@@ -1,15 +1,65 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-
 import '../widgets/mock_background.dart';
 
-/// About screen – displays project information, institutional logos,
-/// and a description inside a dark rounded card (matching tutorial design).
-class AboutScreen extends StatelessWidget {
+class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
 
-  // Maximum content width for tablet / Chrome desktop constraint
+  @override
+  State<AboutScreen> createState() => _AboutScreenState();
+}
+
+class _AboutScreenState extends State<AboutScreen> {
   static const double _maxContentWidth = 560;
+
+  late final ScrollController _scrollController;
+  bool _userScrolling = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startAutoScroll();
+    });
+  }
+
+  void _startAutoScroll() async {
+    await Future.delayed(const Duration(milliseconds: 800));
+    if (!mounted) return;
+    _autoScroll();
+  }
+
+  void _autoScroll() async {
+    while (mounted) {
+      await Future.delayed(const Duration(milliseconds: 16));
+      if (!mounted) return;
+      if (_userScrolling) continue;
+
+      final max = _scrollController.position.maxScrollExtent;
+      final current = _scrollController.offset;
+
+      if (current >= max) {
+        await Future.delayed(const Duration(seconds: 2));
+        if (!mounted || _userScrolling) continue;
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 800),
+          curve: Curves.easeInOut,
+        );
+        await Future.delayed(const Duration(milliseconds: 800));
+        continue;
+      }
+
+      _scrollController.jumpTo(current + 0.6);
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +68,6 @@ class AboutScreen extends StatelessWidget {
       body: MockBackground(
         child: SafeArea(
           child: Center(
-            // Constrain width for tablet / desktop Chrome
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: _maxContentWidth),
               child: LayoutBuilder(
@@ -29,16 +78,10 @@ class AboutScreen extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                     child: Column(
                       children: [
-                        // ── Main dark card containing the about content ──
                         Expanded(
                           child: Container(
                             width: double.infinity,
-                            padding: EdgeInsets.symmetric(
-                              horizontal: screenW * 0.06,
-                              vertical: 28,
-                            ),
                             decoration: BoxDecoration(
-                              // Dark gradient background matching the design
                               gradient: const LinearGradient(
                                 begin: Alignment.topCenter,
                                 end: Alignment.bottomCenter,
@@ -57,40 +100,36 @@ class AboutScreen extends StatelessWidget {
                                 ),
                               ],
                             ),
-                            child: SingleChildScrollView(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const SizedBox(height: 8),
-
-                                  // ── "ABOUT" title ──
-                                  const Text(
-                                    'ABOUT',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontFamily: 'SuperCartoon',
-                                      fontSize: 40,
-                                      fontWeight: FontWeight.w900,
-                                      color: Colors.white,
-                                      shadows: [
-                                        Shadow(
-                                          blurRadius: 6,
-                                          color: Colors.black54,
-                                          offset: Offset(2, 2),
-                                        ),
-                                      ],
-                                    ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(28),
+                              child: Listener(
+                                onPointerDown: (_) =>
+                                    setState(() => _userScrolling = true),
+                                onPointerUp: (_) =>
+                                    setState(() => _userScrolling = false),
+                                onPointerCancel: (_) =>
+                                    setState(() => _userScrolling = false),
+                                child: SingleChildScrollView(
+                                  controller: _scrollController,
+                                  physics: const BouncingScrollPhysics(),
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: screenW * 0.06,
+                                    vertical: 28,
                                   ),
-                                  const SizedBox(height: 16),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const SizedBox(height: 8),
 
-                                  // ── Institutional logos row ──
-                                  Image.asset(
-                                    'assets/images/Group_Logos.png',
-                                    height: 60,
-                                    fit: BoxFit.contain,
-                                    errorBuilder: (context, error, stackTrace) {
-                                      // Fallback: show individual logos in a row
-                                      return Row(
+                                      // KOW logo at the top
+                                      Image.asset(
+                                        'assets/misc/kow.png',
+                                        fit: BoxFit.contain,
+                                      ),
+                                      const SizedBox(height: 16),
+
+                                      // Institutional logos row
+                                      Row(
                                         mainAxisAlignment: MainAxisAlignment.center,
                                         children: [
                                           _buildLogo('assets/misc/sauyo.png'),
@@ -99,43 +138,42 @@ class AboutScreen extends StatelessWidget {
                                           const SizedBox(width: 8),
                                           _buildLogo('assets/misc/qcu.png'),
                                         ],
-                                      );
-                                    },
-                                  ),
-                                  const SizedBox(height: 24),
+                                      ),
+                                      const SizedBox(height: 24),
 
-                                  // ── About description text ──
-                                  const Text(
-                                    'LOREM IPSUM DOLOR SIT AMET, CONSECTETUR ADIPISCING ELIT, '
-                                    'SED DO EIUSMOD TEMPOR INCIDIDUNT UT LABORE ET DOLORE MAGNA ALIQUA. '
-                                    'UT ENIM AD MINIM VENIAM, QUIS NOSTRUD EXERCITATION ULLAMCO LABORIS '
-                                    'NISI UT ALIQUIP EX EA COMMODO CONSEQUAT. NULLA PROIDENT, SUNT IN CULPA '
-                                    'QUI OFFICIA DESERUNT MOLLIT ANIM ID EST LABORUM.',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontFamily: 'SuperCartoon',
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w800,
-                                      height: 1.35,
-                                      color: Color(0xFFFFE34D), // gold/yellow
-                                      shadows: [
-                                        Shadow(
-                                          blurRadius: 3,
-                                          color: Colors.black38,
-                                          offset: Offset(1, 1),
+                                      // About description text
+                                      const Text(
+                                        "Karunungan on Wheels is an educational game designed to make learning fun and interactive through engaging challenges.\n\nThe game was developed by selected students of SBIT 2E from Quezon City University.\n\nThis project is not possible with the help of our Mentors, Ms. Mary Anne Manandeg and in partnership and guidance of the Barangay Sauyo Barangay Council for the Protection of Children (BCPC).",
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontFamily: 'SuperCartoon',
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w800,
+                                          height: 1.35,
+                                          color: Color(0xFFFFE34D),
+                                          shadows: [
+                                            Shadow(
+                                              blurRadius: 3,
+                                              color: Colors.black38,
+                                              offset: Offset(1, 1),
+                                            ),
+                                          ],
                                         ),
-                                      ],
-                                    ),
+                                      ),
+                                      const SizedBox(height: 16),
+
+                                      // Extra space so last content scrolls fully into view
+                                      const SizedBox(height: 80),
+                                    ],
                                   ),
-                                  const SizedBox(height: 16),
-                                ],
+                                ),
                               ),
                             ),
                           ),
                         ),
                         const SizedBox(height: 14),
 
-                        // ── Back arrow button at the bottom-left ──
+                        // Back button
                         Align(
                           alignment: Alignment.centerLeft,
                           child: GestureDetector(
@@ -159,7 +197,6 @@ class AboutScreen extends StatelessWidget {
     );
   }
 
-  /// Builds a circular logo image widget (fallback for individual logos).
   static Widget _buildLogo(String assetPath) {
     return ClipOval(
       child: Image.asset(

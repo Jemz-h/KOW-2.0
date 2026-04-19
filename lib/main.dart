@@ -15,12 +15,10 @@ void main() async {
     () async {
       WidgetsFlutterBinding.ensureInitialized();
 
-      final savedTheme = await LocalSyncStore.instance.getSelectedTheme();
-      if (savedTheme != null && themeBackgrounds.containsKey(savedTheme)) {
-        selectedThemeNotifier.value = savedTheme;
-      }
-      await AudioService().init();
       unawaited(ApiService.syncPending());
+
+      // Start background music
+      unawaited(AudioService().playBackgroundMusic());
 
       // Fullscreen setup
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
@@ -70,23 +68,19 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Pause music when app goes to background, resume when it comes back
+    if (state == AppLifecycleState.paused) {
+      AudioService().stop();
+    } else if (state == AppLifecycleState.resumed) {
+      AudioService().playBackgroundMusic();
+    }
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      unawaited(AudioService().onAppResumed());
-      return;
-    }
-
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached) {
-      unawaited(AudioService().onAppPaused());
-    }
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   @override
