@@ -2,11 +2,42 @@ const db = require('../config/db');
 const asyncHandler = require('express-async-handler');
 const { serializeQuestionImage } = require('../utils/questionImage');
 
+function normalizeDifficulty(input) {
+  if (!input) {
+    return null;
+  }
+
+  const value = String(input).trim().toUpperCase();
+  if (!value) {
+    return null;
+  }
+
+  if (value === 'EASY') {
+    return 'Easy';
+  }
+
+  if (value === 'AVERAGE' || value === 'MEDIUM') {
+    return 'Average';
+  }
+
+  if (value === 'HARD' || value === 'ADVANCED' || value === 'DIFFICULT') {
+    return null;
+  }
+
+  return null;
+}
+
+function normalizeDifficultyForScore(input) {
+  const normalized = normalizeDifficulty(input);
+  return normalized || 'Average';
+}
+
 // @desc    Get quiz questions by grade, subject, and difficulty
 // @route   GET /api/quiz/questions
 // @access  Public
 const getQuestions = asyncHandler(async (req, res) => {
   const { grade, subject, difficulty } = req.query;
+  const normalizedDifficulty = normalizeDifficulty(difficulty);
 
   if (!grade || !subject) {
     res.status(400);
@@ -14,7 +45,7 @@ const getQuestions = asyncHandler(async (req, res) => {
   }
 
   const activeFilter = db.isOracle() ? 'NVL(q.is_active, 1) = 1' : 'COALESCE(q.is_active, 1) = 1';
-  const difficultyFilter = difficulty
+  const difficultyFilter = normalizedDifficulty
     ? 'AND UPPER(d.difficulty) = UPPER(:difficulty)'
     : '';
   const result = await db.execute(`
@@ -41,7 +72,7 @@ const getQuestions = asyncHandler(async (req, res) => {
       ${difficultyFilter}
       AND ${activeFilter}
     ORDER BY q.question_id
-  `, difficulty ? { grade, subject, difficulty } : { grade, subject });
+  `, normalizedDifficulty ? { grade, subject, difficulty: normalizedDifficulty } : { grade, subject });
 
   if (result.rows.length === 0) {
     return res.status(404).json({ success: false, message: 'No questions found for the provided filters' });
@@ -108,6 +139,8 @@ const submitScore = asyncHandler(async (req, res) => {
     throw new Error('Please provide studentId, grade, subject, difficulty, and score');
   }
 
+  const normalizedDifficulty = normalizeDifficultyForScore(difficulty);
+
   const userCheck = await db.execute(
     `SELECT stud_id FROM studentTb WHERE stud_id = :studentId`,
     { studentId }
@@ -126,7 +159,7 @@ const submitScore = asyncHandler(async (req, res) => {
      WHERE UPPER(g.gradelvl) = UPPER(:grade)
        AND UPPER(s.subject) = UPPER(:subject)
        AND UPPER(d.difficulty) = UPPER(:difficulty)`,
-    { grade, subject, difficulty }
+     { grade, subject, difficulty: normalizedDifficulty }
   );
 
   if (mapping.rows.length === 0) {
@@ -135,6 +168,10 @@ const submitScore = asyncHandler(async (req, res) => {
   }
 
   const row = mapping.rows[0];
+  const normalizedRow = Object.entries(row).reduce((accumulator, [key, value]) => {
+    accumulator[key.toUpperCase()] = value;
+    return accumulator;
+  }, {});
   const maxScore = Number(total) > 0 ? Number(total) : 10;
   const scoreValue = Number(score);
   const passed = scoreValue / maxScore >= 0.7 ? 1 : 0;
@@ -163,9 +200,9 @@ const submitScore = asyncHandler(async (req, res) => {
       duplicateCheckSql,
       {
         studentId,
-        subjectId: row.SUBJECT_ID,
-        gradeLevelId: row.GRADELVL_ID,
-        diffId: row.DIFF_ID,
+        subjectId: normalizedRow.SUBJECT_ID,
+        gradeLevelId: normalizedRow.GRADELVL_ID,
+        diffId: normalizedRow.DIFF_ID,
         playedAt: playedAtValue,
         deviceUuid: deviceUuidValue
       }
@@ -212,9 +249,9 @@ const submitScore = asyncHandler(async (req, res) => {
        )`,
       {
         studentId,
-        subjectId: row.SUBJECT_ID,
-        gradeLevelId: row.GRADELVL_ID,
-        diffId: row.DIFF_ID,
+          subjectId: normalizedRow.SUBJECT_ID,
+          gradeLevelId: normalizedRow.GRADELVL_ID,
+          diffId: normalizedRow.DIFF_ID,
         score: scoreValue,
         maxScore,
         passed,
@@ -272,9 +309,9 @@ const submitScore = asyncHandler(async (req, res) => {
          )`,
       {
         studentId,
-        subjectId: row.SUBJECT_ID,
-        gradeLevelId: row.GRADELVL_ID,
-        diffId: row.DIFF_ID,
+        subjectId: normalizedRow.SUBJECT_ID,
+        gradeLevelId: normalizedRow.GRADELVL_ID,
+        diffId: normalizedRow.DIFF_ID,
         passed,
         playedAt: playedAtValue
       },
@@ -310,9 +347,9 @@ const submitScore = asyncHandler(async (req, res) => {
        )`,
       {
         studentId,
-        subjectId: row.SUBJECT_ID,
-        gradeLevelId: row.GRADELVL_ID,
-        diffId: row.DIFF_ID,
+        subjectId: normalizedRow.SUBJECT_ID,
+        gradeLevelId: normalizedRow.GRADELVL_ID,
+        diffId: normalizedRow.DIFF_ID,
         score: scoreValue,
         maxScore,
         passed,
@@ -349,9 +386,9 @@ const submitScore = asyncHandler(async (req, res) => {
          last_played_at = excluded.last_played_at`,
       {
         studentId,
-        subjectId: row.SUBJECT_ID,
-        gradeLevelId: row.GRADELVL_ID,
-        diffId: row.DIFF_ID,
+        subjectId: normalizedRow.SUBJECT_ID,
+        gradeLevelId: normalizedRow.GRADELVL_ID,
+        diffId: normalizedRow.DIFF_ID,
         passed,
         playedAt: sqlitePlayedAtValue
       },

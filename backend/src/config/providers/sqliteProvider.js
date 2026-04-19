@@ -271,16 +271,33 @@ async function bootstrapSchema() {
     INSERT OR IGNORE INTO contentVersionTb (version_id, version_tag, updated_by)
     VALUES (1, 'v1', 'system');
 
-    -- Sample questions (Mathematics, Punla, Easy)
+    -- Sample questions (Punla: 5, Binhi: 3; no hard/advanced seeds)
     INSERT OR IGNORE INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
     VALUES (1, 1, 1, 'What is 1 + 1?', NULL, '1', '2', '3', '4', 'B');
 
     INSERT OR IGNORE INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
-    VALUES (1, 1, 1, 'How many fingers on one hand?', NULL, '3', '4', '5', '6', 'C');
+    VALUES (3, 1, 1, 'Which word rhymes with cat?', NULL, 'Dog', 'Hat', 'Tree', 'Sun', 'B');
 
-    -- Sample questions (English, Punla, Easy)
     INSERT OR IGNORE INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
     VALUES (4, 1, 1, 'What color is the sky?', NULL, 'Red', 'Green', 'Blue', 'Yellow', 'C');
+
+    INSERT OR IGNORE INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (2, 1, 2, 'How many sides does a triangle have?', NULL, '2', '3', '4', '5', 'B');
+
+    INSERT OR IGNORE INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (4, 1, 2, 'Which letter comes after B?', NULL, 'A', 'D', 'C', 'E', 'C');
+
+    INSERT OR IGNORE INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (3, 1, 2, 'Which word means the same as small?', NULL, 'Tiny', 'Big', 'Hot', 'Fast', 'A');
+
+    INSERT OR IGNORE INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (1, 2, 1, 'What is 2 + 2?', NULL, '3', '4', '5', '6', 'B');
+
+    INSERT OR IGNORE INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (2, 2, 2, 'What shape has 4 equal sides?', NULL, 'Circle', 'Square', 'Triangle', 'Star', 'B');
+
+    INSERT OR IGNORE INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (4, 2, 2, 'Which word is written correctly?', NULL, 'Frend', 'Friend', 'Freand', 'Frined', 'B');
   `);
 
   const studentColumns = await sqliteDb.all(`PRAGMA table_info(studentTb)`);

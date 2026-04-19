@@ -29,7 +29,7 @@ const _subjectColors = {
   'WRITING': Color(0xFFFFCA28),
 };
 
-const _difficultyOrder = ['EASY', 'AVERAGE', 'HARD'];
+const _difficultyOrder = ['EASY', 'AVERAGE', 'EASY'];
 
 // ════════════════════════════════════════════════════
 // COORDINATES — tweak these to reposition anything
@@ -245,6 +245,26 @@ class _LevelMapScreenState extends State<LevelMapScreen>
     );
   }
 
+  Future<void> _showMissingLevelDialog(int levelNumber) async {
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Level $levelNumber Unavailable'),
+        content: Text(
+          "There ain't no Level $levelNumber yet.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _checkCategoryHasAnyContent() async {
     if (widget.grade.toUpperCase() == 'COMING') {
       return;
@@ -309,16 +329,17 @@ class _LevelMapScreenState extends State<LevelMapScreen>
     return int.tryParse('$value') ?? 0;
   }
 
-  bool _isPassedScore(dynamic value) {
-    if (value is bool) return value;
-    if (value is num) return value > 0;
-    final normalized = value?.toString().trim().toLowerCase();
-    return normalized == '1' || normalized == 'true' || normalized == 'yes';
-  }
-
   Future<void> _loadProgressUnlocks() async {
-    final studentId = ApiService.currentStudentId;
-    if (studentId == null || studentId <= 0) {
+    int? studentId = ApiService.currentStudentId;
+    if (studentId == null) {
+      final profile = await ApiService.getCurrentProfile();
+      final profileId = profile?['student_id'];
+      if (profileId is num) {
+        studentId = profileId.toInt();
+      }
+    }
+
+    if (studentId == null) {
       return;
     }
 
@@ -344,7 +365,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
         }
       }
 
-      int passedAttempts = 0;
+      int completedAttempts = 0;
       bool scoreRowsLoaded = false;
       try {
         final scoreRows = await ApiService.getScores(studentId);
@@ -359,19 +380,17 @@ class _LevelMapScreenState extends State<LevelMapScreen>
             (row['subject'] ?? row['SUBJECT'] ?? '').toString(),
           );
 
-          if (gradeName == targetGrade &&
-              subjectName == targetSubject &&
-              _isPassedScore(row['passed'] ?? row['PASSED'])) {
-            passedAttempts++;
+          if (gradeName == targetGrade && subjectName == targetSubject) {
+            completedAttempts++;
           }
         }
       } catch (_) {
         // Fallback to highest difficulty when score history is unavailable.
       }
 
-      int maxUnlockedNode = passedAttempts.clamp(0, _nodeTravelOrder.length - 1);
-      if (!scoreRowsLoaded || (passedAttempts == 0 && highestDiffPassed > 0)) {
-        final fromDiff = ((highestDiffPassed * 3) - 1)
+      int maxUnlockedNode = completedAttempts.clamp(0, _nodeTravelOrder.length - 1);
+      if (!scoreRowsLoaded || (completedAttempts == 0 && highestDiffPassed > 0)) {
+        final fromDiff = highestDiffPassed
             .clamp(0, _nodeTravelOrder.length - 1);
         if (fromDiff > maxUnlockedNode) {
           maxUnlockedNode = fromDiff;
@@ -425,7 +444,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
     if (_loadingProgress) return;
     if (velocity.abs() < _swipeVelocityThreshold) return;
 
-    if (velocity < 0) {
+    if (velocity > 0) {
       await _updateSelectedNode(_selectedNodeIndex + 1);
     } else {
       await _updateSelectedNode(_selectedNodeIndex - 1);
@@ -443,6 +462,18 @@ class _LevelMapScreenState extends State<LevelMapScreen>
 
     final selectedDifficulty = _difficultyOrder[_selectedDifficultyIndex];
 
+    final rows = await ApiService.getQuestions(
+      grade: widget.grade,
+      subject: widget.subject,
+    );
+    if (!mounted) return;
+
+    final levelNumber = _selectedNodeIndex + 1;
+    if (rows.isEmpty) {
+      await _showMissingLevelDialog(levelNumber);
+      return;
+    }
+
     if (!mounted) return;
 
     await Navigator.of(context).push(PageRouteBuilder(
@@ -451,6 +482,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
         grade: widget.grade,
         subject: widget.subject,
         gradeImg: widget.gradeImg,
+        nodeIndex: _selectedNodeIndex,
       ),
       transitionsBuilder: (_, animation, _, child) =>
           FadeTransition(opacity: animation, child: child),
@@ -634,31 +666,6 @@ class _LevelMapScreenState extends State<LevelMapScreen>
               width: sw * kIslandSize,
               fit: BoxFit.contain,
               errorBuilder: (_, _, _) => const SizedBox.shrink(),
-            ),
-          ),
-
-          // 8. Level chip at top
-          Positioned(
-            top: sh * 0.02,
-            left: sw * 0.35,
-            right: sw * 0.35,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.55),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white24),
-              ),
-              child: Text(
-                'LEVEL ${_selectedNodeIndex + 1}',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: 'SuperCartoon',
-                  color: isComingSoonWorld ? Colors.white54 : Colors.white,
-                  fontSize: 20,
-                  letterSpacing: 2,
-                ),
-              ),
             ),
           ),
 
