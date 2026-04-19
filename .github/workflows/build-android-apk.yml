@@ -1,0 +1,53 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - lib/**
+      - android/**
+      - pubspec.yaml
+      - pubspec.lock
+      - .github/workflows/build-android-apk.yml
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate API_BASE_URL secret
+        run: |
+          if [ -z "${{ secrets.API_BASE_URL }}" ]; then
+            echo "Missing required repository secret: API_BASE_URL"
+            echo "Set it in GitHub -> Settings -> Secrets and variables -> Actions"
+            exit 1
+          fi
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build release APK with embedded API URL
+        run: flutter build apk --release --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kow-android-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
