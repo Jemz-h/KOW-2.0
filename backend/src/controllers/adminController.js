@@ -1,6 +1,8 @@
 const asyncHandler = require('express-async-handler');
 const db = require('../config/db');
+const UserModel = require('../models/userModel');
 const { broadcastToAdmins } = require('../services/wsHub');
+const { normalizeQuestionImage, serializeQuestionImage } = require('../utils/questionImage');
 
 async function getSingleValue(sql, binds = {}) {
   const result = await db.execute(sql, binds);
@@ -93,6 +95,7 @@ const getDashboard = asyncHandler(async (req, res) => {
 // @route   GET /api/admin/students
 // @access  Public
 const listStudents = asyncHandler(async (req, res) => {
+  const areaParts = await UserModel.getStudentAreaQueryParts('s');
   const result = await db.execute(
     `SELECT s.stud_id,
             s.first_name,
@@ -100,15 +103,14 @@ const listStudents = asyncHandler(async (req, res) => {
             s.nickname,
             ${db.isOracle() ? "TO_CHAR(s.birthday, 'YYYY-MM-DD')" : 'date(s.birthday)'} AS birthday,
             x.sex,
-           COALESCE(a.area_nm, b.barangay_nm) AS area,
+           ${areaParts.areaSelect} AS area,
             s.device_origin,
             s.tmp_local_id,
             s.created_at,
             s.updated_at
      FROM studentTb s
      LEFT JOIN sexTb x ON s.sex_id = x.sex_id
-         LEFT JOIN areaTb a ON s.area_id = a.area_id
-     LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
+         ${areaParts.joins}
      ORDER BY s.stud_id DESC`
   );
 
@@ -124,6 +126,7 @@ const listStudents = asyncHandler(async (req, res) => {
 // @access  Public
 const getStudentDetail = asyncHandler(async (req, res) => {
   const { studId } = req.params;
+  const areaParts = await UserModel.getStudentAreaQueryParts('s');
 
   const student = await db.execute(
     `SELECT s.stud_id,
@@ -132,15 +135,14 @@ const getStudentDetail = asyncHandler(async (req, res) => {
             s.nickname,
             ${db.isOracle() ? "TO_CHAR(s.birthday, 'YYYY-MM-DD')" : 'date(s.birthday)'} AS birthday,
             x.sex,
-           COALESCE(a.area_nm, b.barangay_nm) AS area,
+           ${areaParts.areaSelect} AS area,
             s.device_origin,
             s.tmp_local_id,
             s.created_at,
             s.updated_at
      FROM studentTb s
      LEFT JOIN sexTb x ON s.sex_id = x.sex_id
-         LEFT JOIN areaTb a ON s.area_id = a.area_id
-     LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
+         ${areaParts.joins}
      WHERE s.stud_id = :studId`,
     { studId }
   );
@@ -249,10 +251,15 @@ const listQuestions = asyncHandler(async (req, res) => {
             q.gradelvl_id,
             q.diff_id,
             q.question_txt,
+            q.question_image,
             q.option_a,
             q.option_b,
             q.option_c,
             q.option_d,
+          q.option_a_image,
+          q.option_b_image,
+          q.option_c_image,
+          q.option_d_image,
             q.correct_opt,
             q.is_active,
             q.created_at,
@@ -263,10 +270,47 @@ const listQuestions = asyncHandler(async (req, res) => {
     binds
   );
 
+  const questions = result.rows.map((row) => {
+    const normalizedRow = Object.entries(row).reduce((accumulator, [key, value]) => {
+      accumulator[key.toUpperCase()] = value;
+      return accumulator;
+    }, {});
+    const imageBlob = serializeQuestionImage(normalizedRow.QUESTION_IMAGE);
+    const choiceImageBlobs = [
+      serializeQuestionImage(normalizedRow.OPTION_A_IMAGE),
+      serializeQuestionImage(normalizedRow.OPTION_B_IMAGE),
+      serializeQuestionImage(normalizedRow.OPTION_C_IMAGE),
+      serializeQuestionImage(normalizedRow.OPTION_D_IMAGE),
+    ];
+    return {
+      question_id: normalizedRow.QUESTION_ID,
+      subject_id: normalizedRow.SUBJECT_ID,
+      gradelvl_id: normalizedRow.GRADELVL_ID,
+      diff_id: normalizedRow.DIFF_ID,
+      question_txt: normalizedRow.QUESTION_TXT,
+      imageBlob,
+      imagePath: imageBlob,
+      option_a: normalizedRow.OPTION_A,
+      option_b: normalizedRow.OPTION_B,
+      option_c: normalizedRow.OPTION_C,
+      option_d: normalizedRow.OPTION_D,
+      option_a_image: choiceImageBlobs[0],
+      option_b_image: choiceImageBlobs[1],
+      option_c_image: choiceImageBlobs[2],
+      option_d_image: choiceImageBlobs[3],
+      choiceImageBlobs,
+      choiceImages: choiceImageBlobs,
+      correct_opt: normalizedRow.CORRECT_OPT,
+      is_active: normalizedRow.IS_ACTIVE,
+      created_at: normalizedRow.CREATED_AT,
+      updated_at: normalizedRow.UPDATED_AT,
+    };
+  });
+
   res.status(200).json({
     success: true,
-    count: result.rows.length,
-    questions: result.rows,
+    count: questions.length,
+    questions,
   });
 });
 
@@ -291,19 +335,46 @@ const createQuestion = asyncHandler(async (req, res) => {
     option_b,
     option_c,
     option_d,
+    optionAImage,
+    optionBImage,
+    optionCImage,
+    optionDImage,
+    option_a_image,
+    option_b_image,
+    option_c_image,
+    option_d_image,
+    image_path,
+    imageBlob,
+    image_blob,
+    imageBase64,
+    image_base64,
+    imagePath,
+    question_image,
     correctOpt,
     correct_opt,
   } = req.body;
 
   const questionText = prompt || question_txt;
+  const resolvedImageBlob = normalizeQuestionImage(
+    imageBlob || image_blob || imageBase64 || image_base64 || imagePath || image_path || question_image
+  );
   const resolvedOptionA = optionA || option_a;
   const resolvedOptionB = optionB || option_b;
   const resolvedOptionC = optionC || option_c;
   const resolvedOptionD = optionD || option_d;
+  const resolvedOptionAImage = normalizeQuestionImage(optionAImage || option_a_image);
+  const resolvedOptionBImage = normalizeQuestionImage(optionBImage || option_b_image);
+  const resolvedOptionCImage = normalizeQuestionImage(optionCImage || option_c_image);
+  const resolvedOptionDImage = normalizeQuestionImage(optionDImage || option_d_image);
   const resolvedCorrectOpt = correctOpt || correct_opt;
 
   if ((!subject && !subject_id) || (!grade && !gradelvl_id) || (!difficulty && !diff_id)
-    || !questionText || !resolvedOptionA || !resolvedOptionB || !resolvedOptionC || !resolvedOptionD || !resolvedCorrectOpt) {
+    || !questionText
+    || (!resolvedOptionA && !resolvedOptionAImage)
+    || (!resolvedOptionB && !resolvedOptionBImage)
+    || (!resolvedOptionC && !resolvedOptionCImage)
+    || (!resolvedOptionD && !resolvedOptionDImage)
+    || !resolvedCorrectOpt) {
     return res.status(400).json({ success: false, error: 'Missing required fields for question creation' });
   }
 
@@ -371,10 +442,15 @@ const createQuestion = asyncHandler(async (req, res) => {
          gradelvl_id,
          diff_id,
          question_txt,
+         question_image,
          option_a,
          option_b,
          option_c,
          option_d,
+         option_a_image,
+         option_b_image,
+         option_c_image,
+         option_d_image,
          correct_opt,
          is_active,
          created_at,
@@ -385,10 +461,15 @@ const createQuestion = asyncHandler(async (req, res) => {
          :gradeLevelId,
          :diffId,
          :prompt,
+         :questionImage,
          :optionA,
          :optionB,
          :optionC,
          :optionD,
+         :optionAImage,
+         :optionBImage,
+         :optionCImage,
+         :optionDImage,
          :correctOpt,
          1,
          SYSDATE,
@@ -399,10 +480,15 @@ const createQuestion = asyncHandler(async (req, res) => {
         gradeLevelId: ids.GRADELVL_ID,
         diffId: ids.DIFF_ID,
         prompt: questionText,
-        optionA: resolvedOptionA,
-        optionB: resolvedOptionB,
-        optionC: resolvedOptionC,
-        optionD: resolvedOptionD,
+        questionImage: resolvedImageBlob,
+        optionA: resolvedOptionA || ' ',
+        optionB: resolvedOptionB || ' ',
+        optionC: resolvedOptionC || ' ',
+        optionD: resolvedOptionD || ' ',
+        optionAImage: resolvedOptionAImage,
+        optionBImage: resolvedOptionBImage,
+        optionCImage: resolvedOptionCImage,
+        optionDImage: resolvedOptionDImage,
         correctOpt: String(resolvedCorrectOpt).toUpperCase(),
       },
       { autoCommit: true }
@@ -443,16 +529,26 @@ const createQuestion = asyncHandler(async (req, res) => {
          gradelvl_id,
          diff_id,
          question_txt,
+         question_image,
          option_a,
          option_b,
          option_c,
          option_d,
+         option_a_image,
+         option_b_image,
+         option_c_image,
+         option_d_image,
          correct_opt,
          is_active,
          created_at,
          updated_at
        )
        VALUES (
+         ?,
+         ?,
+         ?,
+         ?,
+         ?,
          ?,
          ?,
          ?,
@@ -471,10 +567,15 @@ const createQuestion = asyncHandler(async (req, res) => {
         ids.GRADELVL_ID,
         ids.DIFF_ID,
         questionText,
-        resolvedOptionA,
-        resolvedOptionB,
-        resolvedOptionC,
-        resolvedOptionD,
+        resolvedImageBlob,
+        resolvedOptionA || '',
+        resolvedOptionB || '',
+        resolvedOptionC || '',
+        resolvedOptionD || '',
+        resolvedOptionAImage,
+        resolvedOptionBImage,
+        resolvedOptionCImage,
+        resolvedOptionDImage,
         String(resolvedCorrectOpt).toUpperCase(),
       ],
       { autoCommit: true }
@@ -494,6 +595,13 @@ const updateQuestion = asyncHandler(async (req, res) => {
   const {
     prompt,
     question_txt,
+    imagePath,
+    image_path,
+    imageBlob,
+    image_blob,
+    imageBase64,
+    image_base64,
+    question_image,
     optionA,
     optionB,
     optionC,
@@ -502,20 +610,37 @@ const updateQuestion = asyncHandler(async (req, res) => {
     option_b,
     option_c,
     option_d,
+    optionAImage,
+    optionBImage,
+    optionCImage,
+    optionDImage,
+    option_a_image,
+    option_b_image,
+    option_c_image,
+    option_d_image,
     correctOpt,
     correct_opt,
     isActive,
     is_active,
   } = req.body;
 
+  const resolvedImageBlob = normalizeQuestionImage(
+    imageBlob || image_blob || imageBase64 || image_base64 || imagePath || image_path || question_image
+  );
+
   if (db.isOracle()) {
     await db.execute(
       `UPDATE questionTb
        SET question_txt = COALESCE(:prompt, question_txt),
+           question_image = COALESCE(:questionImage, question_image),
            option_a = COALESCE(:optionA, option_a),
            option_b = COALESCE(:optionB, option_b),
            option_c = COALESCE(:optionC, option_c),
            option_d = COALESCE(:optionD, option_d),
+           option_a_image = COALESCE(:optionAImage, option_a_image),
+           option_b_image = COALESCE(:optionBImage, option_b_image),
+           option_c_image = COALESCE(:optionCImage, option_c_image),
+           option_d_image = COALESCE(:optionDImage, option_d_image),
            correct_opt = COALESCE(:correctOpt, correct_opt),
            is_active = COALESCE(:isActive, is_active),
            updated_at = SYSDATE
@@ -523,10 +648,15 @@ const updateQuestion = asyncHandler(async (req, res) => {
       {
         questionId,
         prompt: prompt || question_txt || null,
+        questionImage: resolvedImageBlob,
         optionA: optionA || option_a || null,
         optionB: optionB || option_b || null,
         optionC: optionC || option_c || null,
         optionD: optionD || option_d || null,
+        optionAImage: normalizeQuestionImage(optionAImage || option_a_image),
+        optionBImage: normalizeQuestionImage(optionBImage || option_b_image),
+        optionCImage: normalizeQuestionImage(optionCImage || option_c_image),
+        optionDImage: normalizeQuestionImage(optionDImage || option_d_image),
         correctOpt: (correctOpt || correct_opt) ? String(correctOpt || correct_opt).toUpperCase() : null,
         isActive: (isActive === undefined && is_active === undefined)
           ? null
@@ -538,10 +668,15 @@ const updateQuestion = asyncHandler(async (req, res) => {
     await db.execute(
       `UPDATE questionTb
        SET question_txt = COALESCE(:prompt, question_txt),
+           question_image = COALESCE(:questionImage, question_image),
            option_a = COALESCE(:optionA, option_a),
            option_b = COALESCE(:optionB, option_b),
            option_c = COALESCE(:optionC, option_c),
            option_d = COALESCE(:optionD, option_d),
+           option_a_image = COALESCE(:optionAImage, option_a_image),
+           option_b_image = COALESCE(:optionBImage, option_b_image),
+           option_c_image = COALESCE(:optionCImage, option_c_image),
+           option_d_image = COALESCE(:optionDImage, option_d_image),
            correct_opt = COALESCE(:correctOpt, correct_opt),
            is_active = COALESCE(:isActive, is_active),
            updated_at = CURRENT_TIMESTAMP
@@ -549,10 +684,15 @@ const updateQuestion = asyncHandler(async (req, res) => {
       {
         questionId,
         prompt: prompt || question_txt || null,
+        questionImage: resolvedImageBlob,
         optionA: optionA || option_a || null,
         optionB: optionB || option_b || null,
         optionC: optionC || option_c || null,
         optionD: optionD || option_d || null,
+        optionAImage: normalizeQuestionImage(optionAImage || option_a_image),
+        optionBImage: normalizeQuestionImage(optionBImage || option_b_image),
+        optionCImage: normalizeQuestionImage(optionCImage || option_c_image),
+        optionDImage: normalizeQuestionImage(optionDImage || option_d_image),
         correctOpt: (correctOpt || correct_opt) ? String(correctOpt || correct_opt).toUpperCase() : null,
         isActive: (isActive === undefined && is_active === undefined)
           ? null

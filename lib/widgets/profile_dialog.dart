@@ -62,6 +62,15 @@ const List<String> _areaOptions = [
 ];
 
 Future<void> showProfileDialog(BuildContext context) async {
+  const dialogAssets = <String>[
+    'assets/misc/boy.png',
+    'assets/misc/girl.png',
+    'assets/icons/check.png',
+  ];
+  for (final asset in dialogAssets) {
+    precacheImage(AssetImage(asset), context);
+  }
+
   final parentContext = context;
   final profile = await ApiService.getCurrentProfile();
   if (!context.mounted) {

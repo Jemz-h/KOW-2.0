@@ -6,6 +6,7 @@ const UserModel = require('../models/userModel');
 // @route   GET /api/users
 // @access  Public
 const getUsers = asyncHandler(async (req, res) => {
+  const areaParts = await UserModel.getStudentAreaQueryParts('s');
   const query = db.isOracle()
     ? `SELECT s.stud_id,
               s.first_name,
@@ -13,13 +14,12 @@ const getUsers = asyncHandler(async (req, res) => {
               s.nickname,
               TO_CHAR(s.birthday, 'YYYY-MM-DD') AS birthday,
               x.sex,
-      COALESCE(a.area_nm, b.barangay_nm) AS area,
+              ${areaParts.areaSelect} AS area,
               TO_CHAR(s.created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at,
               TO_CHAR(s.updated_at, 'YYYY-MM-DD HH24:MI:SS') AS updated_at
        FROM studentTb s
        LEFT JOIN sexTb x ON s.sex_id = x.sex_id
-    LEFT JOIN areaTb a ON s.area_id = a.area_id
-       LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
+  ${areaParts.joins}
        ORDER BY s.stud_id`
     : `SELECT s.stud_id,
               s.first_name,
@@ -27,13 +27,12 @@ const getUsers = asyncHandler(async (req, res) => {
               s.nickname,
               date(s.birthday) AS birthday,
               x.sex,
-      COALESCE(a.area_nm, b.barangay_nm) AS area,
+              ${areaParts.areaSelect} AS area,
               s.created_at,
               s.updated_at
        FROM studentTb s
        LEFT JOIN sexTb x ON s.sex_id = x.sex_id
-    LEFT JOIN areaTb a ON s.area_id = a.area_id
-       LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
+  ${areaParts.joins}
        ORDER BY s.stud_id`;
 
   const result = await db.execute(query);
@@ -49,6 +48,7 @@ const getUsers = asyncHandler(async (req, res) => {
 // @access  Public
 const getUserById = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const areaParts = await UserModel.getStudentAreaQueryParts('s');
   const query = db.isOracle()
     ? `SELECT s.stud_id,
               s.first_name,
@@ -56,15 +56,14 @@ const getUserById = asyncHandler(async (req, res) => {
               s.nickname,
               TO_CHAR(s.birthday, 'YYYY-MM-DD') AS birthday,
               x.sex,
-      COALESCE(a.area_nm, b.barangay_nm) AS area,
+              ${areaParts.areaSelect} AS area,
               TO_CHAR(s.created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at,
               TO_CHAR(s.updated_at, 'YYYY-MM-DD HH24:MI:SS') AS updated_at,
               s.device_origin,
               s.tmp_local_id
        FROM studentTb s
        LEFT JOIN sexTb x ON s.sex_id = x.sex_id
-    LEFT JOIN areaTb a ON s.area_id = a.area_id
-       LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
+  ${areaParts.joins}
        WHERE s.stud_id = :id`
     : `SELECT s.stud_id,
               s.first_name,
@@ -72,15 +71,14 @@ const getUserById = asyncHandler(async (req, res) => {
               s.nickname,
               date(s.birthday) AS birthday,
               x.sex,
-      COALESCE(a.area_nm, b.barangay_nm) AS area,
+              ${areaParts.areaSelect} AS area,
               s.created_at,
               s.updated_at,
               s.device_origin,
               s.tmp_local_id
        FROM studentTb s
        LEFT JOIN sexTb x ON s.sex_id = x.sex_id
-    LEFT JOIN areaTb a ON s.area_id = a.area_id
-       LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
+  ${areaParts.joins}
        WHERE s.stud_id = :id`;
 
   const result = await db.execute(query, { id });

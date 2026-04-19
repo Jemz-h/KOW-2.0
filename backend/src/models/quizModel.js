@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { serializeQuestionImage } = require('../utils/questionImage');
 
 class QuizModel {
   static async getQuestions(gradeName, subjectName, difficultyName) {
@@ -6,10 +7,15 @@ class QuizModel {
     const query = `
       SELECT q.question_id,
              q.question_txt,
+             q.question_image,
              q.option_a,
              q.option_b,
              q.option_c,
              q.option_d,
+              q.option_a_image,
+              q.option_b_image,
+              q.option_c_image,
+              q.option_d_image,
              q.correct_opt
       FROM questionTb q
       JOIN gradelvlTb g ON q.gradelvl_id = g.gradelvl_id
@@ -30,15 +36,32 @@ class QuizModel {
 
     const letterToIndex = { A: 0, B: 1, C: 2, D: 3 };
 
-    return result.rows.map((row) => ({
-      id: row.QUESTION_ID,
-      prompt: row.QUESTION_TXT,
-      imagePath: null,
-      funFact: null,
-      points: 1,
-      choices: [row.OPTION_A, row.OPTION_B, row.OPTION_C, row.OPTION_D],
-      correctIndex: letterToIndex[String(row.CORRECT_OPT || '').toUpperCase()] ?? 0
-    }));
+    return result.rows.map((row) => {
+      const normalizedRow = Object.entries(row).reduce((accumulator, [key, value]) => {
+        accumulator[key.toUpperCase()] = value;
+        return accumulator;
+      }, {});
+
+      const imageBlob = serializeQuestionImage(normalizedRow.QUESTION_IMAGE);
+      const choiceImageBlobs = [
+        serializeQuestionImage(normalizedRow.OPTION_A_IMAGE),
+        serializeQuestionImage(normalizedRow.OPTION_B_IMAGE),
+        serializeQuestionImage(normalizedRow.OPTION_C_IMAGE),
+        serializeQuestionImage(normalizedRow.OPTION_D_IMAGE),
+      ];
+      return {
+        id: normalizedRow.QUESTION_ID,
+        prompt: normalizedRow.QUESTION_TXT,
+        imageBlob,
+        imagePath: imageBlob,
+        funFact: null,
+        points: 1,
+        choices: [normalizedRow.OPTION_A, normalizedRow.OPTION_B, normalizedRow.OPTION_C, normalizedRow.OPTION_D],
+        choiceImageBlobs,
+        choiceImages: choiceImageBlobs,
+        correctIndex: letterToIndex[String(normalizedRow.CORRECT_OPT || '').toUpperCase()] ?? 0
+      };
+    });
   }
 
   static async submitScore(studentId, grade, subject, difficulty, score, total) {

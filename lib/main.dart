@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'api_service.dart';
 import 'local_sync_store.dart';
 import 'services/audio.dart';
-import 'screens/menu.dart';
 import 'screens/start.dart';
 import 'widgets/mock_background.dart';
 
@@ -128,11 +127,7 @@ class _SessionGateState extends State<_SessionGate> {
           );
         }
 
-        final hasSession = snapshot.data == true;
-        if (hasSession) {
-          return const MenuScreen();
-        }
-
+        // Always land on title first; StartScreen decides where to go on tap.
         return const StartScreen();
       },
     );

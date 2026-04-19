@@ -126,10 +126,15 @@ async function bootstrapSchema() {
       gradelvl_id INTEGER NOT NULL,
       diff_id INTEGER NOT NULL,
       question_txt TEXT NOT NULL,
+      question_image BLOB,
       option_a TEXT NOT NULL,
       option_b TEXT NOT NULL,
       option_c TEXT NOT NULL,
       option_d TEXT NOT NULL,
+      option_a_image BLOB,
+      option_b_image BLOB,
+      option_c_image BLOB,
+      option_d_image BLOB,
       correct_opt TEXT NOT NULL,
       is_active INTEGER DEFAULT 1,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -267,21 +272,111 @@ async function bootstrapSchema() {
     VALUES (1, 'v1', 'system');
 
     -- Sample questions (Mathematics, Punla, Easy)
-    INSERT OR IGNORE INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt)
-    VALUES (1, 1, 1, 'What is 1 + 1?', '1', '2', '3', '4', 'B');
+    INSERT OR IGNORE INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (1, 1, 1, 'What is 1 + 1?', NULL, '1', '2', '3', '4', 'B');
 
-    INSERT OR IGNORE INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt)
-    VALUES (1, 1, 1, 'How many fingers on one hand?', '3', '4', '5', '6', 'C');
+    INSERT OR IGNORE INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (1, 1, 1, 'How many fingers on one hand?', NULL, '3', '4', '5', '6', 'C');
 
     -- Sample questions (English, Punla, Easy)
-    INSERT OR IGNORE INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt)
-    VALUES (4, 1, 1, 'What color is the sky?', 'Red', 'Green', 'Blue', 'Yellow', 'C');
+    INSERT OR IGNORE INTO questionTb (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (4, 1, 1, 'What color is the sky?', NULL, 'Red', 'Green', 'Blue', 'Yellow', 'C');
   `);
 
   const studentColumns = await sqliteDb.all(`PRAGMA table_info(studentTb)`);
   const hasAreaId = studentColumns.some((column) => column.name === 'area_id');
   if (!hasAreaId) {
     await sqliteDb.exec(`ALTER TABLE studentTb ADD COLUMN area_id INTEGER DEFAULT 1`);
+  }
+
+  const questionColumns = await sqliteDb.all(`PRAGMA table_info(questionTb)`);
+  const questionImageColumn = questionColumns.find((column) => column.name === 'question_image');
+  if (!questionImageColumn) {
+    await sqliteDb.exec(`ALTER TABLE questionTb ADD COLUMN question_image BLOB`);
+  } else if (String(questionImageColumn.type || '').toUpperCase() !== 'BLOB') {
+    await sqliteDb.exec(`
+      BEGIN TRANSACTION;
+      ALTER TABLE questionTb RENAME TO questionTb_old;
+      CREATE TABLE questionTb (
+        question_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        subject_id INTEGER NOT NULL,
+        gradelvl_id INTEGER NOT NULL,
+        diff_id INTEGER NOT NULL,
+        question_txt TEXT NOT NULL,
+        question_image BLOB,
+        option_a TEXT NOT NULL,
+        option_b TEXT NOT NULL,
+        option_c TEXT NOT NULL,
+        option_d TEXT NOT NULL,
+        option_a_image BLOB,
+        option_b_image BLOB,
+        option_c_image BLOB,
+        option_d_image BLOB,
+        correct_opt TEXT NOT NULL,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT INTO questionTb (
+        question_id,
+        subject_id,
+        gradelvl_id,
+        diff_id,
+        question_txt,
+        question_image,
+        option_a,
+        option_b,
+        option_c,
+        option_d,
+        option_a_image,
+        option_b_image,
+        option_c_image,
+        option_d_image,
+        correct_opt,
+        is_active,
+        created_at,
+        updated_at
+      )
+      SELECT
+        question_id,
+        subject_id,
+        gradelvl_id,
+        diff_id,
+        question_txt,
+        CAST(question_image AS BLOB),
+        option_a,
+        option_b,
+        option_c,
+        option_d,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        correct_opt,
+        is_active,
+        created_at,
+        updated_at
+      FROM questionTb_old;
+      DROP TABLE questionTb_old;
+      COMMIT;
+    `);
+  }
+
+  const optionAImageColumn = questionColumns.find((column) => column.name === 'option_a_image');
+  if (!optionAImageColumn) {
+    await sqliteDb.exec(`ALTER TABLE questionTb ADD COLUMN option_a_image BLOB`);
+  }
+  const optionBImageColumn = questionColumns.find((column) => column.name === 'option_b_image');
+  if (!optionBImageColumn) {
+    await sqliteDb.exec(`ALTER TABLE questionTb ADD COLUMN option_b_image BLOB`);
+  }
+  const optionCImageColumn = questionColumns.find((column) => column.name === 'option_c_image');
+  if (!optionCImageColumn) {
+    await sqliteDb.exec(`ALTER TABLE questionTb ADD COLUMN option_c_image BLOB`);
+  }
+  const optionDImageColumn = questionColumns.find((column) => column.name === 'option_d_image');
+  if (!optionDImageColumn) {
+    await sqliteDb.exec(`ALTER TABLE questionTb ADD COLUMN option_d_image BLOB`);
   }
 
   await sqliteDb.run(

@@ -1,5 +1,6 @@
 const asyncHandler = require('express-async-handler');
 const db = require('../config/db');
+const { serializeQuestionImage } = require('../utils/questionImage');
 
 // @desc    Pull active content with version metadata
 // @route   GET /api/content
@@ -39,6 +40,7 @@ const getContent = asyncHandler(async (req, res) => {
   const questionsResult = await db.execute(
     `SELECT q.question_id,
             q.question_txt,
+            q.question_image,
             q.option_a,
             q.option_b,
             q.option_c,
@@ -57,17 +59,27 @@ const getContent = asyncHandler(async (req, res) => {
      ORDER BY q.question_id`
   );
 
-  const questions = questionsResult.rows.map((row) => ({
-    id: row.QUESTION_ID,
-    prompt: row.QUESTION_TXT,
-    choices: [row.OPTION_A, row.OPTION_B, row.OPTION_C, row.OPTION_D],
-    correctOption: row.CORRECT_OPT,
-    subject: row.SUBJECT,
-    grade: row.GRADELVL,
-    difficulty: row.DIFFICULTY,
-    updatedAt: row.UPDATED_AT,
-    isActive: row.IS_ACTIVE,
-  }));
+  const questions = questionsResult.rows.map((row) => {
+    const normalizedRow = Object.entries(row).reduce((accumulator, [key, value]) => {
+      accumulator[key.toUpperCase()] = value;
+      return accumulator;
+    }, {});
+
+    const imageBlob = serializeQuestionImage(normalizedRow.QUESTION_IMAGE);
+    return {
+      id: normalizedRow.QUESTION_ID,
+      prompt: normalizedRow.QUESTION_TXT,
+      imageBlob,
+      imagePath: imageBlob,
+      choices: [normalizedRow.OPTION_A, normalizedRow.OPTION_B, normalizedRow.OPTION_C, normalizedRow.OPTION_D],
+      correctOption: normalizedRow.CORRECT_OPT,
+      subject: normalizedRow.SUBJECT,
+      grade: normalizedRow.GRADELVL,
+      difficulty: normalizedRow.DIFFICULTY,
+      updatedAt: normalizedRow.UPDATED_AT,
+      isActive: normalizedRow.IS_ACTIVE,
+    };
+  });
 
   return res.status(200).json({
     success: true,

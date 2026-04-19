@@ -29,6 +29,8 @@ const _subjectColors = {
   'WRITING': Color(0xFFFFCA28),
 };
 
+const _difficultyOrder = ['EASY', 'AVERAGE', 'HARD'];
+
 // ════════════════════════════════════════════════════
 // COORDINATES — tweak these to reposition anything
 // All values are fractions of screen width (sw) or height (sh)
@@ -129,6 +131,16 @@ class LevelMapScreen extends StatefulWidget {
 
 class _LevelMapScreenState extends State<LevelMapScreen>
     with TickerProviderStateMixin {
+  static const List<int> _nodeTravelOrder = [8, 7, 6, 5, 4, 3, 2, 1, 0];
+
+  int _selectedDifficultyIndex = 0;
+  int _selectedNodeIndex = 0;
+  int _maxUnlockedTravelNodeIndex = 0;
+  bool _loadingProgress = false;
+  bool _checkingCategoryContent = false;
+  bool _categoryHasContent = true;
+  bool _didShowNoContentDialog = false;
+  static const double _swipeVelocityThreshold = 180.0;
 
   // Inline init guarantees fields are ready before build() is ever called
 
@@ -163,11 +175,13 @@ class _LevelMapScreenState extends State<LevelMapScreen>
       ApiService.getQuestions(
         grade: widget.grade,
         subject: widget.subject,
-        difficulty: 'EASY',
       ).catchError((_) {
         return <Map<String, dynamic>>[];
       }),
     );
+
+    unawaited(_loadProgressUnlocks());
+    unawaited(_checkCategoryHasAnyContent());
   }
 
   @override
@@ -187,16 +201,17 @@ class _LevelMapScreenState extends State<LevelMapScreen>
     ));
   }
 
-  Future<void> _showNoQuestionsDialog() async {
+  Future<void> _showLevelLockedDialog() async {
     if (!mounted) return;
 
+    final unlockedLevel = _maxUnlockedNodeIndex() + 1;
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('No Questions Available'),
+        title: const Text('Level Locked'),
         content: Text(
-          'There are no questions available for ${widget.grade} yet. '
-          'This grade is still coming soon.',
+          'You are currently up to Level $unlockedLevel. '
+          'Finish that level first to unlock the next one.',
         ),
         actions: [
           TextButton(
@@ -206,6 +221,244 @@ class _LevelMapScreenState extends State<LevelMapScreen>
         ],
       ),
     );
+  }
+
+  Future<void> _showNoContentInCategoryDialog() async {
+    if (!mounted || _didShowNoContentDialog) return;
+
+    _didShowNoContentDialog = true;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Nothing Here Yet'),
+        content: Text(
+          'We do not have activities for ${widget.grade} - ${widget.subject} yet. '
+          'Please choose another subject for now.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _checkCategoryHasAnyContent() async {
+    if (widget.grade.toUpperCase() == 'COMING') {
+      return;
+    }
+
+    setState(() {
+      _checkingCategoryContent = true;
+    });
+
+    bool hasAnyContent = false;
+    bool connectionOrServerIssue = false;
+
+    try {
+      final rows = await ApiService.getQuestions(
+        grade: widget.grade,
+        subject: widget.subject,
+      );
+
+      hasAnyContent = rows.isNotEmpty;
+    } on ApiException catch (e) {
+      if (e.statusCode == 404 || e.statusCode == 400) {
+        hasAnyContent = false;
+      } else {
+        connectionOrServerIssue = true;
+      }
+    } catch (_) {
+      connectionOrServerIssue = true;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _checkingCategoryContent = false;
+          _categoryHasContent = hasAnyContent || connectionOrServerIssue;
+        });
+      }
+    }
+
+    if (!hasAnyContent && !connectionOrServerIssue) {
+      await _showNoContentInCategoryDialog();
+    }
+  }
+
+  String _normalizeSubjectName(String value) {
+    switch (value.trim().toUpperCase()) {
+      case 'MATH':
+      case 'MATHEMATICS':
+        return 'MATHEMATICS';
+      case 'SCIENCE':
+        return 'SCIENCE';
+      case 'READING':
+      case 'WRITING':
+      case 'ENGLISH':
+        return 'ENGLISH';
+      case 'FILIPINO':
+        return 'FILIPINO';
+      default:
+        return value.trim().toUpperCase();
+    }
+  }
+
+  int _toInt(dynamic value) {
+    if (value is num) return value.toInt();
+    return int.tryParse('$value') ?? 0;
+  }
+
+  bool _isPassedScore(dynamic value) {
+    if (value is bool) return value;
+    if (value is num) return value > 0;
+    final normalized = value?.toString().trim().toLowerCase();
+    return normalized == '1' || normalized == 'true' || normalized == 'yes';
+  }
+
+  Future<void> _loadProgressUnlocks() async {
+    final studentId = ApiService.currentStudentId;
+    if (studentId == null || studentId <= 0) {
+      return;
+    }
+
+    setState(() {
+      _loadingProgress = true;
+    });
+
+    try {
+      final progressRows = await ApiService.getProgress(studentId);
+      if (!mounted) return;
+
+      final targetGrade = widget.grade.trim().toUpperCase();
+      final targetSubject = _normalizeSubjectName(widget.subject);
+      int highestDiffPassed = 0;
+
+      for (final row in progressRows) {
+        final gradeName = (row['gradelvl'] ?? row['GRADELVL'] ?? '').toString().trim().toUpperCase();
+        final subjectName = _normalizeSubjectName((row['subject'] ?? row['SUBJECT'] ?? '').toString());
+
+        if (gradeName == targetGrade && subjectName == targetSubject) {
+          highestDiffPassed = _toInt(row['highest_diff_passed'] ?? row['HIGHEST_DIFF_PASSED']);
+          break;
+        }
+      }
+
+      int passedAttempts = 0;
+      bool scoreRowsLoaded = false;
+      try {
+        final scoreRows = await ApiService.getScores(studentId);
+        scoreRowsLoaded = true;
+
+        for (final row in scoreRows) {
+          final gradeName = (row['gradelvl'] ?? row['GRADELVL'] ?? '')
+              .toString()
+              .trim()
+              .toUpperCase();
+          final subjectName = _normalizeSubjectName(
+            (row['subject'] ?? row['SUBJECT'] ?? '').toString(),
+          );
+
+          if (gradeName == targetGrade &&
+              subjectName == targetSubject &&
+              _isPassedScore(row['passed'] ?? row['PASSED'])) {
+            passedAttempts++;
+          }
+        }
+      } catch (_) {
+        // Fallback to highest difficulty when score history is unavailable.
+      }
+
+      int maxUnlockedNode = passedAttempts.clamp(0, _nodeTravelOrder.length - 1);
+      if (!scoreRowsLoaded || (passedAttempts == 0 && highestDiffPassed > 0)) {
+        final fromDiff = ((highestDiffPassed * 3) - 1)
+            .clamp(0, _nodeTravelOrder.length - 1);
+        if (fromDiff > maxUnlockedNode) {
+          maxUnlockedNode = fromDiff;
+        }
+      }
+
+      setState(() {
+        _maxUnlockedTravelNodeIndex = maxUnlockedNode;
+        final maxNode = _maxUnlockedNodeIndex();
+        if (_selectedNodeIndex > maxNode) {
+          _selectedNodeIndex = maxNode;
+        }
+        _selectedDifficultyIndex = _difficultyIndexFromNode(_selectedNodeIndex);
+      });
+    } catch (_) {
+      // Keep default unlocks when progress lookup fails.
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingProgress = false;
+        });
+      }
+    }
+  }
+
+  int _difficultyIndexFromNode(int nodeIndex) {
+    return nodeIndex % _difficultyOrder.length;
+  }
+
+  int _maxUnlockedNodeIndex() {
+    return _maxUnlockedTravelNodeIndex.clamp(0, _nodeTravelOrder.length - 1);
+  }
+
+  Future<void> _updateSelectedNode(int nextNodeIndex) async {
+    if (nextNodeIndex < 0 || nextNodeIndex >= _nodeTravelOrder.length) {
+      return;
+    }
+
+    if (nextNodeIndex > _maxUnlockedNodeIndex()) {
+      await _showLevelLockedDialog();
+      return;
+    }
+
+    setState(() {
+      _selectedNodeIndex = nextNodeIndex;
+      _selectedDifficultyIndex = _difficultyIndexFromNode(nextNodeIndex);
+    });
+  }
+
+  Future<void> _handleDifficultySwipe(double velocity) async {
+    if (_loadingProgress) return;
+    if (velocity.abs() < _swipeVelocityThreshold) return;
+
+    if (velocity < 0) {
+      await _updateSelectedNode(_selectedNodeIndex + 1);
+    } else {
+      await _updateSelectedNode(_selectedNodeIndex - 1);
+    }
+  }
+
+  Future<void> _launchQuizForSelectedLevel() async {
+    if (widget.grade.toUpperCase() == 'COMING') {
+      return;
+    }
+
+    if (!_categoryHasContent || _checkingCategoryContent) {
+      return;
+    }
+
+    final selectedDifficulty = _difficultyOrder[_selectedDifficultyIndex];
+
+    if (!mounted) return;
+
+    await Navigator.of(context).push(PageRouteBuilder(
+      pageBuilder: (_, animation, _) => QuizScreen(
+        difficulty: selectedDifficulty,
+        grade: widget.grade,
+        subject: widget.subject,
+        gradeImg: widget.gradeImg,
+      ),
+      transitionsBuilder: (_, animation, _, child) =>
+          FadeTransition(opacity: animation, child: child),
+      transitionDuration: const Duration(milliseconds: 300),
+    ));
+
+    if (!mounted) return;
+    await _loadProgressUnlocks();
   }
 
   @override
@@ -264,8 +517,23 @@ class _LevelMapScreenState extends State<LevelMapScreen>
       _Node(sw * kN9X, sh * kN9Y, g),
     ];
 
+    final travelNodes = _nodeTravelOrder
+        .map((index) => nodes[index])
+        .toList(growable: false);
+    final selectedTravelNode = travelNodes[_selectedNodeIndex];
+    final characterSize = sw * kGojoSize;
+    final isComingSoonWorld = widget.grade.toUpperCase() == 'COMING';
+    final isPlayDisabled = isComingSoonWorld || !_categoryHasContent || _checkingCategoryContent;
+
     return Scaffold(
-      body: Stack(
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onVerticalDragEnd: (details) {
+          final velocity = details.primaryVelocity;
+          if (velocity == null) return;
+          unawaited(_handleDifficultySwipe(velocity));
+        },
+        child: Stack(
         fit: StackFit.expand,
         children: [
 
@@ -304,14 +572,14 @@ class _LevelMapScreenState extends State<LevelMapScreen>
           AnimatedBuilder(
             animation: _gojoAnim,
             builder: (_, child) => Positioned(
-              left: sw * kGojoX,
-              top:  sh * kGojoY + _gojoAnim.value,
+              left: selectedTravelNode.x - (characterSize / 2),
+              top: selectedTravelNode.y - (characterSize / 2) + _gojoAnim.value,
               child: child!,
             ),
             child: Image.asset(
               'assets/sisa_oyo/sisa_node.gif',
-              width:  sw * kGojoSize,
-              height: sw * kGojoSize,
+              width: characterSize,
+              height: characterSize,
               fit: BoxFit.contain,
               errorBuilder: (_, _, _) =>
                   const Icon(Icons.person, color: Colors.white, size: 32),
@@ -369,7 +637,31 @@ class _LevelMapScreenState extends State<LevelMapScreen>
             ),
           ),
 
-          // 8. Bottom bar — always on top
+          // 8. Level chip at top
+          Positioned(
+            top: sh * 0.02,
+            left: sw * 0.35,
+            right: sw * 0.35,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white24),
+              ),
+              child: Text(
+                'LEVEL ${_selectedNodeIndex + 1}',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'SuperCartoon',
+                  color: isComingSoonWorld ? Colors.white54 : Colors.white,
+                  fontSize: 20,
+                  letterSpacing: 2,
+                ),
+              ),
+            ),
+          ),
+
           Positioned(
             bottom: 0, left: 0, right: 0,
             child: Container(
@@ -390,28 +682,17 @@ class _LevelMapScreenState extends State<LevelMapScreen>
                   ),
 
                   // ▶ Play
-                  _TapIcon(
-                    onTap: () {
-                      if (widget.grade.toUpperCase() == 'COMING') {
-                        _showNoQuestionsDialog();
-                        return;
-                      }
-
-                      Navigator.of(context).push(PageRouteBuilder(
-                        pageBuilder: (_, animation, _) => QuizScreen(
-                          difficulty: 'EASY',
-                          grade: widget.grade,
-                          subject: widget.subject,
-                          gradeImg: widget.gradeImg,
+                  IgnorePointer(
+                    ignoring: isPlayDisabled,
+                    child: Opacity(
+                      opacity: isPlayDisabled ? 0.35 : 1,
+                      child: _TapIcon(
+                        onTap: _launchQuizForSelectedLevel,
+                        child: SvgPicture.asset(
+                          'assets/icons/play.svg',
+                          width: kPlaySize, height: kPlaySize,
                         ),
-                        transitionsBuilder: (_, animation, _, child) =>
-                            FadeTransition(opacity: animation, child: child),
-                        transitionDuration: const Duration(milliseconds: 300),
-                      ));
-                    },
-                    child: SvgPicture.asset(
-                      'assets/icons/play.svg',
-                      width: kPlaySize, height: kPlaySize,
+                      ),
                     ),
                   ),
 
@@ -430,6 +711,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
           ),
 
         ],
+      ),
       ),
     );
   }

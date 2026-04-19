@@ -1,6 +1,8 @@
 const db = require('../config/db');
 
 class UserModel {
+  static _studentAreaColumnInfoPromise = null;
+
   static normalizeLowerText(value) {
     if (value === undefined || value === null) {
       return null;
@@ -76,6 +78,80 @@ class UserModel {
     return result.rows.length > 0 ? result.rows[0].AREA_ID : 1;
   }
 
+  static async getStudentAreaColumnInfo() {
+    if (!db.isOracle()) {
+      return { areaId: true, barangayId: false };
+    }
+
+    if (!this._studentAreaColumnInfoPromise) {
+      this._studentAreaColumnInfoPromise = (async () => {
+        try {
+          const result = await db.execute(
+            `SELECT column_name
+             FROM user_tab_columns
+             WHERE table_name = 'STUDENTTB'
+               AND column_name IN ('AREA_ID', 'BARANGAY_ID')`
+          );
+
+          const columns = new Set(
+            (result.rows || []).map((row) => String(row.COLUMN_NAME || row.column_name || '').toUpperCase())
+          );
+
+          return {
+            areaId: columns.has('AREA_ID'),
+            barangayId: columns.has('BARANGAY_ID'),
+          };
+        } catch (_) {
+          return { areaId: false, barangayId: false };
+        }
+      })();
+    }
+
+    return this._studentAreaColumnInfoPromise;
+  }
+
+  static async getStudentAreaColumnName() {
+    const info = await this.getStudentAreaColumnInfo();
+
+    if (info.areaId) {
+      return 'area_id';
+    }
+
+    if (info.barangayId) {
+      return 'barangay_id';
+    }
+
+    return null;
+  }
+
+  static async getStudentAreaQueryParts(alias = 's') {
+    const info = await this.getStudentAreaColumnInfo();
+    const joins = [];
+    let areaSelect = 'NULL';
+
+    if (info.areaId) {
+      joins.push(`LEFT JOIN areaTb a ON ${alias}.area_id = a.area_id`);
+    }
+
+    if (info.barangayId) {
+      joins.push(`LEFT JOIN barangayTb b ON ${alias}.barangay_id = b.barangay_id`);
+    }
+
+    if (info.areaId && info.barangayId) {
+      areaSelect = 'COALESCE(a.area_nm, b.barangay_nm)';
+    } else if (info.areaId) {
+      areaSelect = 'a.area_nm';
+    } else if (info.barangayId) {
+      areaSelect = 'b.barangay_nm';
+    }
+
+    return {
+      areaSelect,
+      joins: joins.join('\n      '),
+      storageColumn: await this.getStudentAreaColumnName(),
+    };
+  }
+
   static async createUser(userData) {
     const { firstName, lastName, nickname, birthday, sex, area, teacherId, deviceUuid, tmpLocalId } = userData;
     const normalizedFirstName = this.normalizeLowerText(firstName);
@@ -84,9 +160,14 @@ class UserModel {
     const sexId = await this.resolveSexId(sex);
     const areaId = await this.resolveAreaId(area);
     const normalizedBirthday = this.normalizeBirthday(birthday);
+    const areaColumnName = await this.getStudentAreaColumnName();
 
     if (db.isOracle()) {
       const driver = db.getDriver();
+      const areaColumnLine = areaColumnName ? `,
+          ${areaColumnName}` : '';
+      const areaValueLine = areaColumnName ? `,
+          :areaId` : '';
       const query = `
         INSERT INTO studentTb (
           first_name,
@@ -95,9 +176,8 @@ class UserModel {
           birthday,
           sex_id,
           teacher_id,
-          area_id,
           device_origin,
-          tmp_local_id
+          tmp_local_id${areaColumnLine}
         )
         VALUES (
           :firstName,
@@ -106,9 +186,8 @@ class UserModel {
           TO_DATE(:birthday, 'YYYY-MM-DD'),
           :sexId,
           :teacherId,
-          :areaId,
           :deviceUuid,
-          :tmpLocalId
+          :tmpLocalId${areaValueLine}
         )
         RETURNING stud_id INTO :outId
       `;
@@ -179,6 +258,7 @@ class UserModel {
     const birthdaySelect = db.isOracle()
       ? `TO_CHAR(s.birthday, 'YYYY-MM-DD')`
       : `date(s.birthday)`;
+    const areaParts = await this.getStudentAreaQueryParts('s');
 
     const query = `
       SELECT s.stud_id AS "STUDENT_ID",
@@ -187,11 +267,10 @@ class UserModel {
              s.nickname AS "NICKNAME",
              ${birthdaySelect} AS "BIRTHDAY",
              x.sex AS "SEX",
-             COALESCE(a.area_nm, b.barangay_nm) AS "AREA"
+              ${areaParts.areaSelect} AS "AREA"
       FROM studentTb s
       LEFT JOIN sexTb x ON s.sex_id = x.sex_id
-      LEFT JOIN areaTb a ON s.area_id = a.area_id
-      LEFT JOIN barangayTb b ON s.barangay_id = b.barangay_id
+      ${areaParts.joins}
       WHERE LOWER(s.nickname) = LOWER(:nickname)
         AND ${dateFilter}
     `;
@@ -238,6 +317,7 @@ class UserModel {
     const sexId = await this.resolveSexId(sex);
     const areaId = await this.resolveAreaId(area);
     const normalizedBirthday = this.normalizeBirthday(birthday);
+    const areaColumnName = await this.getStudentAreaColumnName();
 
     const query = db.isOracle()
       ? `UPDATE studentTb
@@ -246,7 +326,7 @@ class UserModel {
              nickname = :nickname,
              birthday = TO_DATE(:birthday, 'YYYY-MM-DD'),
              sex_id = :sexId,
-         area_id = :areaId,
+         ${areaColumnName ? `${areaColumnName} = :areaId,` : ''}
              updated_at = SYSTIMESTAMP
          WHERE stud_id = :userId`
       : `UPDATE studentTb
@@ -255,7 +335,7 @@ class UserModel {
              nickname = :nickname,
              birthday = :birthday,
              sex_id = :sexId,
-         area_id = :areaId,
+         ${areaColumnName ? `${areaColumnName} = :areaId,` : ''}
              updated_at = CURRENT_TIMESTAMP
          WHERE stud_id = :userId`;
 

@@ -44,6 +44,7 @@ flutter:
     - assets/sisa_oyo/
     - assets/themes/
     - assets/sounds/
+    - assets/seed/kow_offline.db
 
   fonts:
     - family: SuperCartoon
