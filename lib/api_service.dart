@@ -473,6 +473,13 @@ class ApiService {
         ),
         shouldRetry: _isRetryableSyncError,
       );
+
+      await _runWithRetry(
+        () => LocalSyncStore.instance.syncPendingProfileUpdates(
+          updateProfileRemote: _updateProfileRemote,
+        ),
+        shouldRetry: _isRetryableSyncError,
+      );
     } catch (_) {
       // Best-effort sync only; queue remains for next cycle.
     }
@@ -501,43 +508,53 @@ class ApiService {
       throw const ApiException(401, 'No active student profile found');
     }
 
-    await _tryEnsureDeviceAuth();
+    final normalizedBirthday = _normalizeBirthday(birthday);
+
+    await LocalSyncStore.instance.updateLocalStudentProfile(
+      studentId: studentId,
+      firstName: firstName,
+      lastName: lastName,
+      nickname: nickname,
+      birthday: normalizedBirthday,
+      sex: sex,
+      area: area,
+    );
+
+    _currentNickname = nickname;
+    _currentBirthday = normalizedBirthday;
+    await LocalSyncStore.instance.saveActiveSession(
+      studentId: studentId,
+      nickname: nickname,
+      birthday: normalizedBirthday,
+    );
 
     try {
-      final res = await _sendWithTimeout(
-        _client.put(
-          Uri.parse('$_base/api/users/$studentId/profile'),
-          headers: _headers,
-          body: jsonEncode({
-            'firstName': firstName,
-            'lastName': lastName,
-            'nickname': nickname,
-            'birthday': birthday,
-            'sex': sex,
-            'area': area,
-          }),
-        ),
-      );
-      _checkStatus(res);
+      await _tryEnsureDeviceAuth();
 
-      await LocalSyncStore.instance.updateLocalStudentProfile(
+      await _updateProfileRemote(
         studentId: studentId,
         firstName: firstName,
         lastName: lastName,
         nickname: nickname,
-        birthday: birthday,
+        birthday: normalizedBirthday,
         sex: sex,
         area: area,
       );
 
-      _currentNickname = nickname;
-      _currentBirthday = birthday;
-      await LocalSyncStore.instance.saveActiveSession(
-        studentId: studentId,
-        nickname: nickname,
-        birthday: birthday,
-      );
-    } on ApiException {
+      await syncPending();
+    } on ApiException catch (e) {
+      if (_isConnectivityException(e)) {
+        await LocalSyncStore.instance.queueOfflineProfileUpdate(
+          studentId: studentId,
+          firstName: firstName,
+          lastName: lastName,
+          nickname: nickname,
+          birthday: normalizedBirthday,
+          sex: sex,
+          area: area,
+        );
+        return;
+      }
       rethrow;
     }
   }
@@ -550,7 +567,7 @@ class ApiService {
     required String subject,
     String? difficulty,
   }) async {
-    final normalizedDifficulty = difficulty?.trim();
+    final normalizedDifficulty = _normalizeQuestionDifficulty(difficulty);
     final normalizedSubject = _normalizeSubject(subject);
     final cacheKey = _questionCacheKey(
       grade: grade,
@@ -585,34 +602,13 @@ class ApiService {
     required String subject,
     String? difficulty,
   }) async {
-
     final localRows = await SeededQuestionStore.instance.getQuestions(
       grade: grade,
       subject: subject,
       difficulty: difficulty,
     );
-    if (localRows.isNotEmpty) {
-      _questionCache[cacheKey] = localRows;
-      return localRows;
-    }
-
-    final queryParameters = <String, String>{
-      'grade': grade,
-      'subject': subject,
-    };
-    if (difficulty != null && difficulty.isNotEmpty) {
-      queryParameters['difficulty'] = difficulty;
-    }
-
-    final uri = Uri.parse('$_base/api/quiz/questions').replace(
-      queryParameters: queryParameters,
-    );
-    final res = await _sendWithTimeout(_client.get(uri, headers: _headers));
-    _checkStatus(res);
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
-    final parsed = List<Map<String, dynamic>>.from(body['questions'] as List);
-    _questionCache[cacheKey] = parsed;
-    return parsed;
+    _questionCache[cacheKey] = localRows;
+    return localRows;
   }
 
   static String _questionCacheKey({
@@ -637,6 +633,7 @@ class ApiService {
     String? playedAt,
   }) async {
     final normalizedSubject = _normalizeSubject(subject);
+    final normalizedDifficulty = _normalizeDifficultyForServer(difficulty);
     final playedAtValue = playedAt ?? DateTime.now().toIso8601String();
 
     try {
@@ -644,7 +641,7 @@ class ApiService {
         studentId: studentId,
         grade: grade,
         subject: normalizedSubject,
-        difficulty: difficulty,
+        difficulty: normalizedDifficulty,
         score: score,
         total: total,
         playedAt: playedAtValue,
@@ -661,7 +658,7 @@ class ApiService {
         studentId: studentId,
         grade: grade,
         subject: normalizedSubject,
-        difficulty: difficulty,
+        difficulty: normalizedDifficulty,
         score: score,
         total: total,
         playedAt: playedAtValue,
@@ -671,22 +668,50 @@ class ApiService {
 
   /// Fetch all scores for a student.
   static Future<List<Map<String, dynamic>>> getScores(int studentId) async {
-    final res = await _sendWithTimeout(
-      _client.get(
-        Uri.parse('$_base/api/quiz/scores/$studentId'),
-        headers: _headers,
-      ),
-    );
-    _checkStatus(res);
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
-    final rows = body['scores'] ?? body['data'] ?? const <dynamic>[];
-    if (rows is! List) {
-      return const <Map<String, dynamic>>[];
+    List<Map<String, dynamic>> remoteRows = const <Map<String, dynamic>>[];
+
+    try {
+      final res = await _sendWithTimeout(
+        _client.get(
+          Uri.parse('$_base/api/quiz/scores/$studentId'),
+          headers: _headers,
+        ),
+      );
+      _checkStatus(res);
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final rows = body['scores'] ?? body['data'] ?? const <dynamic>[];
+      if (rows is List) {
+        remoteRows = rows
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(growable: false);
+      }
+    } on ApiException catch (e) {
+      if (e.statusCode != 404 && e.statusCode != 400 && !_isConnectivityException(e)) {
+        rethrow;
+      }
     }
-    return rows
-        .whereType<Map>()
-        .map((row) => Map<String, dynamic>.from(row))
-        .toList(growable: false);
+
+    final pending = await LocalSyncStore.instance.getPendingScoresForStudent(studentId);
+    final pendingRows = pending.map((row) {
+      final score = (row['score'] as num?)?.toInt() ?? 0;
+      final total = (row['total'] as num?)?.toInt() ?? 0;
+      final passed = total > 0 && (score / total) >= 0.7;
+      return <String, dynamic>{
+        'gradelvl': row['grade'],
+        'subject': row['subject'],
+        'difficulty': row['difficulty'],
+        'score': score,
+        'max_score': total,
+        'passed': passed ? 1 : 0,
+        'played_at': row['played_at'],
+      };
+    }).toList(growable: false);
+
+    return <Map<String, dynamic>>[
+      ...remoteRows,
+      ...pendingRows,
+    ];
   }
 
   /// Fetch all progress rows for a student.
@@ -710,14 +735,37 @@ class ApiService {
           .toList(growable: false);
     }
 
+    List<Map<String, dynamic>> remoteRows = const <Map<String, dynamic>>[];
+
     try {
-      return await fetchPath('/api/progress/user/$studentId');
+      remoteRows = await fetchPath('/api/progress/user/$studentId');
     } on ApiException catch (e) {
-      if (e.statusCode != 404) {
+      if (e.statusCode == 404) {
+        try {
+          remoteRows = await fetchPath('/api/progress/$studentId');
+        } on ApiException catch (fallbackError) {
+          if (fallbackError.statusCode != 404 && fallbackError.statusCode != 400 && !_isConnectivityException(fallbackError)) {
+            rethrow;
+          }
+        }
+      } else if (e.statusCode != 404 && e.statusCode != 400 && !_isConnectivityException(e)) {
         rethrow;
       }
-      return fetchPath('/api/progress/$studentId');
     }
+
+    final pending = await LocalSyncStore.instance.getPendingProgressForStudent(studentId);
+    final pendingRows = pending.map((row) => <String, dynamic>{
+      'gradelvl': row['grade'],
+      'subject': row['subject'],
+      'highest_diff_passed': row['highest_diff_passed'],
+      'total_time_played': row['total_time_played'],
+      'last_played_at': row['last_played_at'],
+    }).toList(growable: false);
+
+    return <Map<String, dynamic>>[
+      ...remoteRows,
+      ...pendingRows,
+    ];
   }
 
   /// Save or update learner progress.
@@ -771,6 +819,7 @@ class ApiService {
     required String playedAt,
   }) async {
     final normalizedSubject = _normalizeSubject(subject);
+    final normalizedDifficulty = _normalizeDifficultyForServer(difficulty);
 
     final res = await _runWithRetry(
       () => _sendWithTimeout(
@@ -781,7 +830,7 @@ class ApiService {
             'studentId':  studentId,
             'grade':      grade,
             'subject':    normalizedSubject,
-            'difficulty': difficulty,
+            'difficulty': normalizedDifficulty,
             'score':      score,
             'total':      total,
             'played_at':  playedAt,
@@ -789,6 +838,32 @@ class ApiService {
         ),
       ),
       shouldRetry: _isRetryableSyncError,
+    );
+    _checkStatus(res);
+  }
+
+  static Future<void> _updateProfileRemote({
+    required int studentId,
+    required String firstName,
+    required String lastName,
+    required String nickname,
+    required String birthday,
+    required String sex,
+    String? area,
+  }) async {
+    final res = await _sendWithTimeout(
+      _client.put(
+        Uri.parse('$_base/api/users/$studentId/profile'),
+        headers: _headers,
+        body: jsonEncode({
+          'firstName': firstName,
+          'lastName': lastName,
+          'nickname': nickname,
+          'birthday': birthday,
+          'sex': sex,
+          'area': area,
+        }),
+      ),
     );
     _checkStatus(res);
   }
@@ -889,6 +964,41 @@ class ApiService {
 
   static bool _isRetryableSyncError(Object error) {
     return error is ApiException && _isConnectivityException(error);
+  }
+
+  static String _normalizeDifficultyForServer(String difficulty) {
+    final normalized = difficulty.trim().toUpperCase();
+    if (normalized == 'EASY') {
+      return 'Easy';
+    }
+    if (normalized == 'AVERAGE' || normalized == 'MEDIUM') {
+      return 'Average';
+    }
+    if (normalized == 'HARD' || normalized == 'ADVANCED' || normalized == 'DIFFICULT') {
+      return 'Average';
+    }
+    return 'Average';
+  }
+
+  static String? _normalizeQuestionDifficulty(String? difficulty) {
+    if (difficulty == null || difficulty.trim().isEmpty) {
+      return null;
+    }
+
+    final normalized = difficulty.trim().toUpperCase();
+    if (normalized == 'HARD' || normalized == 'ADVANCED' || normalized == 'DIFFICULT') {
+      return null;
+    }
+
+    if (normalized == 'EASY') {
+      return 'Easy';
+    }
+
+    if (normalized == 'AVERAGE' || normalized == 'MEDIUM') {
+      return 'Average';
+    }
+
+    return null;
   }
 
   static String _normalizeBirthday(String value) {

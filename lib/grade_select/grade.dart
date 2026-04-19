@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'level_map.dart';
 import '../screens/settings.dart';
+import '../widgets/mock_background.dart';
 // ── Responsive helper ──────────────────────────────────────────
 class R {
   final double w;
@@ -24,8 +25,6 @@ const List<Map<String, String>> _kGrades = [
   {'label': 'BINHI',  'age': '6-8 YRS OLD', 'img': 'assets/grade_select/sun.png'},
   {'label': 'COMING', 'age': 'SOON',         'img': 'assets/grade_select/star.png'},
 ];
-// Large offset so negative virtual indices stay positive after modulo
-const int _kLoopOffset = 30000;
 const List<int> _kSlots = [-1, 0, 1];
 class GradeSelectScreen extends StatefulWidget {
   const GradeSelectScreen({super.key});
@@ -171,8 +170,19 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
         fit: StackFit.expand,
         children: [
           // Background
-          RepaintBoundary(
-            child: Image.asset('assets/themes/space.png', fit: BoxFit.cover),
+          ValueListenableBuilder<String>(
+            valueListenable: selectedThemeNotifier,
+            builder: (context, theme, _) {
+              final bgAsset = themeBackgrounds[theme] ?? themeBackgrounds['space']!;
+              return RepaintBoundary(
+                child: Image.asset(
+                  bgAsset,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) =>
+                      Container(color: const Color(0xFF0D1B2E)),
+                ),
+              );
+            },
           ),
           // Title
           Positioned(

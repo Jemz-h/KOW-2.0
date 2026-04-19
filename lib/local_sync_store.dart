@@ -31,6 +31,16 @@ typedef SubmitProgressRemoteFn = Future<void> Function({
   required String lastPlayedAt,
 });
 
+typedef UpdateProfileRemoteFn = Future<void> Function({
+  required int studentId,
+  required String firstName,
+  required String lastName,
+  required String nickname,
+  required String birthday,
+  required String sex,
+  String? area,
+});
+
 class LocalSyncStore {
   LocalSyncStore._();
 
@@ -80,7 +90,7 @@ class LocalSyncStore {
 
     _db = await openDatabase(
       dbPath,
-      version: 5,
+      version: 6,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE students_local (
@@ -157,6 +167,20 @@ class LocalSyncStore {
             value TEXT
           )
         ''');
+
+        await db.execute('''
+          CREATE TABLE pending_profile_updates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id INTEGER NOT NULL,
+            first_name TEXT NOT NULL,
+            last_name TEXT NOT NULL,
+            nickname TEXT NOT NULL,
+            birthday TEXT NOT NULL,
+            sex TEXT NOT NULL,
+            area TEXT,
+            created_at TEXT NOT NULL
+          )
+        ''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -209,6 +233,22 @@ class LocalSyncStore {
             CREATE TABLE IF NOT EXISTS app_settings (
               key TEXT PRIMARY KEY,
               value TEXT
+            )
+          ''');
+        }
+
+        if (oldVersion < 6) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS pending_profile_updates (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              student_id INTEGER NOT NULL,
+              first_name TEXT NOT NULL,
+              last_name TEXT NOT NULL,
+              nickname TEXT NOT NULL,
+              birthday TEXT NOT NULL,
+              sex TEXT NOT NULL,
+              area TEXT,
+              created_at TEXT NOT NULL
             )
           ''');
         }
@@ -658,6 +698,41 @@ class LocalSyncStore {
     );
   }
 
+  Future<void> queueOfflineProfileUpdate({
+    required int studentId,
+    required String firstName,
+    required String lastName,
+    required String nickname,
+    required String birthday,
+    required String sex,
+    String? area,
+  }) async {
+    final db = await _database();
+    final normalizedBirthday = _normalizeBirthday(birthday);
+    final now = DateTime.now().toIso8601String();
+
+    await db.delete(
+      'pending_profile_updates',
+      where: 'student_id = ?',
+      whereArgs: [studentId],
+    );
+
+    await db.insert(
+      'pending_profile_updates',
+      {
+        'student_id': studentId,
+        'first_name': firstName,
+        'last_name': lastName,
+        'nickname': nickname,
+        'birthday': normalizedBirthday,
+        'sex': sex,
+        'area': area,
+        'created_at': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
   Future<void> syncPendingRegistrations({
     required RegisterRemoteFn registerRemote,
   }) async {
@@ -745,6 +820,13 @@ class LocalSyncStore {
             where: 'student_id = ?',
             whereArgs: [oldStudentId],
           );
+
+          await db.update(
+            'pending_profile_updates',
+            {'student_id': resolvedStudentId},
+            where: 'student_id = ?',
+            whereArgs: [oldStudentId],
+          );
         }
 
         await db.delete(
@@ -827,6 +909,42 @@ class LocalSyncStore {
         );
       } catch (error) {
         // Stop at first failure to preserve queue order.
+        lastError = error;
+        break;
+      }
+    }
+
+    if (lastError != null) {
+      throw lastError;
+    }
+  }
+
+  Future<void> syncPendingProfileUpdates({
+    required UpdateProfileRemoteFn updateProfileRemote,
+  }) async {
+    final db = await _database();
+    final pending = await db.query('pending_profile_updates', orderBy: 'id ASC');
+    Object? lastError;
+
+    for (final row in pending) {
+      final id = row['id'] as int;
+      try {
+        await updateProfileRemote(
+          studentId: (row['student_id'] as num).toInt(),
+          firstName: row['first_name'] as String,
+          lastName: row['last_name'] as String,
+          nickname: row['nickname'] as String,
+          birthday: row['birthday'] as String,
+          sex: row['sex'] as String,
+          area: row['area'] as String?,
+        );
+
+        await db.delete(
+          'pending_profile_updates',
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      } catch (error) {
         lastError = error;
         break;
       }

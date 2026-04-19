@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { connectDatabase, closeDatabase, execute, isSqlite } = require('../config/db');
+const { sqlitePath } = require('../config/env');
 
 const SUBJECT_IDS = {
   reading: 4,
@@ -18,7 +19,7 @@ const GRADE_LEVEL_IDS = {
 const DIFFICULTY_IDS = {
   binhi: 1,
   punla: 2,
-  advanced: 3,
+  advanced: 2,
 };
 
 function decodeHtmlEntities(value) {
@@ -555,6 +556,24 @@ function runAllTargets({ sourceDirArg }) {
   }
 }
 
+function syncBundledSeedDbFromSqlite() {
+  if (!isSqlite()) {
+    return;
+  }
+
+  const bundledAssetPath = path.resolve(__dirname, '../../../assets/seed/kow_offline.db');
+  const sourcePath = path.resolve(sqlitePath);
+
+  if (!fs.existsSync(sourcePath)) {
+    console.warn(`Skipping bundled DB sync. SQLite source not found: ${sourcePath}`);
+    return;
+  }
+
+  fs.mkdirSync(path.dirname(bundledAssetPath), { recursive: true });
+  fs.copyFileSync(sourcePath, bundledAssetPath);
+  console.log(`Bundled seed DB updated: ${bundledAssetPath}`);
+}
+
 async function run() {
   const { sourceDirArg, targets, childRun } = parseCliArgs(process.argv);
 
@@ -610,6 +629,8 @@ async function run() {
   } finally {
     await closeDatabase();
   }
+
+  syncBundledSeedDbFromSqlite();
 
   console.log(`Parsed questions: ${questions.length}`);
   console.log(`Inserted questions: ${insertedCount}`);

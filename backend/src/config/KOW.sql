@@ -816,27 +816,69 @@ WHEN NOT MATCHED THEN
   VALUES (d.stud_id, d.subject_id, d.gradelvl_id, d.diff_id, d.score, d.max_score, d.passed, SYSDATE, d.device_uuid);
 
 -- Sample questions (idempotent - won't insert same question twice)
--- Mathematics, Punla, Easy
+-- Punla: 5 questions
 MERGE INTO questionTb q
 USING (SELECT 1 subject_id, 1 gradelvl_id, 1 diff_id, 'What is 1 + 1?' question_txt, NULL question_image, '1' option_a, '2' option_b, '3' option_c, '4' option_d, 'B' correct_opt FROM DUAL) s
 ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
 WHEN NOT MATCHED THEN
-    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt) 
+    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
     VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.question_image, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
 
 MERGE INTO questionTb q
-USING (SELECT 1 subject_id, 1 gradelvl_id, 1 diff_id, 'How many fingers on one hand?' question_txt, NULL question_image, '3' option_a, '4' option_b, '5' option_c, '6' option_d, 'C' correct_opt FROM DUAL) s
+USING (SELECT 3 subject_id, 1 gradelvl_id, 1 diff_id, 'Which word rhymes with cat?' question_txt, NULL question_image, 'Dog' option_a, 'Hat' option_b, 'Tree' option_c, 'Sun' option_d, 'B' correct_opt FROM DUAL) s
 ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
 WHEN NOT MATCHED THEN
-    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt) 
+    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
     VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.question_image, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
 
--- English, Punla, Easy
 MERGE INTO questionTb q
 USING (SELECT 4 subject_id, 1 gradelvl_id, 1 diff_id, 'What color is the sky?' question_txt, NULL question_image, 'Red' option_a, 'Green' option_b, 'Blue' option_c, 'Yellow' option_d, 'C' correct_opt FROM DUAL) s
 ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
 WHEN NOT MATCHED THEN
-    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt) 
+    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.question_image, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
+
+MERGE INTO questionTb q
+USING (SELECT 2 subject_id, 1 gradelvl_id, 2 diff_id, 'How many sides does a triangle have?' question_txt, NULL question_image, '2' option_a, '3' option_b, '4' option_c, '5' option_d, 'B' correct_opt FROM DUAL) s
+ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
+WHEN NOT MATCHED THEN
+    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.question_image, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
+
+MERGE INTO questionTb q
+USING (SELECT 4 subject_id, 1 gradelvl_id, 2 diff_id, 'Which letter comes after B?' question_txt, NULL question_image, 'A' option_a, 'D' option_b, 'C' option_c, 'E' option_d, 'C' correct_opt FROM DUAL) s
+ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
+WHEN NOT MATCHED THEN
+    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.question_image, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
+
+MERGE INTO questionTb q
+USING (SELECT 3 subject_id, 1 gradelvl_id, 2 diff_id, 'Which word means the same as small?' question_txt, NULL question_image, 'Tiny' option_a, 'Big' option_b, 'Hot' option_c, 'Fast' option_d, 'A' correct_opt FROM DUAL) s
+ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
+WHEN NOT MATCHED THEN
+    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.question_image, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
+
+-- Binhi: 3 questions
+MERGE INTO questionTb q
+USING (SELECT 1 subject_id, 2 gradelvl_id, 1 diff_id, 'What is 2 + 2?' question_txt, NULL question_image, '3' option_a, '4' option_b, '5' option_c, '6' option_d, 'B' correct_opt FROM DUAL) s
+ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
+WHEN NOT MATCHED THEN
+    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.question_image, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
+
+MERGE INTO questionTb q
+USING (SELECT 2 subject_id, 2 gradelvl_id, 2 diff_id, 'What shape has 4 equal sides?' question_txt, NULL question_image, 'Circle' option_a, 'Square' option_b, 'Triangle' option_c, 'Star' option_d, 'B' correct_opt FROM DUAL) s
+ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
+WHEN NOT MATCHED THEN
+    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.question_image, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
+
+MERGE INTO questionTb q
+USING (SELECT 4 subject_id, 2 gradelvl_id, 2 diff_id, 'Which word is written correctly?' question_txt, NULL question_image, 'Frend' option_a, 'Friend' option_b, 'Freand' option_c, 'Frined' option_d, 'B' correct_opt FROM DUAL) s
+ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
+WHEN NOT MATCHED THEN
+    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
     VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.question_image, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
 
 -- Initial content version (idempotent)

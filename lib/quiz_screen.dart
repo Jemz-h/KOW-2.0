@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'dart:math';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'api_service.dart';
 import 'grade_select/level_map.dart';
+import 'screens/start.dart';
 import 'widgets/mock_background.dart';
 
 // ╔══════════════════════════════════════════════════════════════════════════╗
@@ -46,10 +48,6 @@ const double kCardPadT   = 0.000;
 const double kCardPadB   = 0.000;
 const double kCardRadius = 0.050;
 
-// ┌─────────────────────────────────────────────────────────────────────────┐
-// │ QUESTION BOX — AVERAGE / HARD                                           │
-// │  kCardAvgMinH → INCREASE to make card taller                           │
-// └─────────────────────────────────────────────────────────────────────────┘
 const double kCardAvgW      = 0.9;
 const double kCardAvgMinH   = 0.280;
 const double kCardAvgPadH   = 0.000;
@@ -59,9 +57,6 @@ const double kCardAvgRadius = 0.050;
 
 const double kGapHeaderCard = 0.036;
 
-// ┌─────────────────────────────────────────────────────────────────────────┐
-// │ GREY PILL BAR ("QUESTION 1" row)                                        │
-// └─────────────────────────────────────────────────────────────────────────┘
 const double kPillMarL      = 0.010;
 const double kPillMarR      = 0.010;
 const double kPillMarT      = 0.002;
@@ -71,16 +66,10 @@ const double kPillRadius    = 0.050;
 const double kPillLabelFs   = 0.042;
 const double kMegaphoneSize = 0.099;
 
-// ┌─────────────────────────────────────────────────────────────────────────┐
-// │ IMAGE (Easy only)                                                       │
-// └─────────────────────────────────────────────────────────────────────────┘
 const double kImageSize = 0.550;
 const double kImagePadT = 0.000;
 const double kImagePadB = 0.000;
 
-// ┌─────────────────────────────────────────────────────────────────────────┐
-// │ DEFINITION TEXT (Average / Hard)                                        │
-// └─────────────────────────────────────────────────────────────────────────┘
 const double kDefPadH      = 0.060;
 const double kDefPadT      = 0.036;
 const double kDefFs        = 0.056;
@@ -88,27 +77,18 @@ const double kWordTypeFs   = 0.038;
 const double kWordTypePadT = 0.006;
 const double kWordTypePadB = 0.012;
 
-// ┌─────────────────────────────────────────────────────────────────────────┐
-// │ OUTSIDE PROMPT                                                          │
-// └─────────────────────────────────────────────────────────────────────────┘
 const double kGapCardPrompt = 0.016;
 const double kPromptOutFs   = 0.044;
 const double kPromptOutPadH = 0.020;
 const double kGapPromptBtns = 0.012;
 const double kGapCardBtns   = 0.016;
 
-// ┌─────────────────────────────────────────────────────────────────────────┐
-// │ ANSWER BUTTONS                                                          │
-// └─────────────────────────────────────────────────────────────────────────┘
 const double kBtnH       = 0.078;
 const double kBtnRadius  = 0.030;
 const double kBtnFs      = 0.058;
 const double kBtnGapB    = 0.010;
 const double kBtnBorderW = 1.5;
 
-// ┌─────────────────────────────────────────────────────────────────────────┐
-// │ SKIP BUTTON                                                             │
-// └─────────────────────────────────────────────────────────────────────────┘
 const double kSkipGapT       = 0.010;
 const double kSkipPadH       = 0.050;
 const double kSkipPadV       = 0.008;
@@ -118,8 +98,8 @@ const double kSkipsLabelGapT = 0.007;
 const double kSkipsLabelFs   = 0.026;
 
 // ┌─────────────────────────────────────────────────────────────────────────┐
-// │ IN-QUIZ RESULT CARD (Correct / Nice Try)                                │
-// └─────────────────────────────────────────────────────────────────────────┘
+// │ QUESTION BOX — AVERAGE / HARD                                           │
+// │  kCardAvgMinH → INCREASE to make card taller                           │
 const double kResultW         = 0.900;
 const double kResultMinH      = 0.350;
 const double kResultPadH      = 0.060;
@@ -482,6 +462,8 @@ class QuizScreen extends StatefulWidget {
   final String grade;
   final String subject;
   final String gradeImg;
+  final int nodeIndex;
+  static const int totalNodes = 9;
 
   const QuizScreen({
     super.key,
@@ -489,6 +471,7 @@ class QuizScreen extends StatefulWidget {
     this.grade    = 'PUNLA',
     this.subject  = 'READING',
     this.gradeImg = 'assets/grade_select/moon.png',
+    this.nodeIndex = 0,
   });
 
   @override
@@ -505,27 +488,19 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
   bool _showDonePopup = false;
   bool _isSubmittingScore = false;
   bool _hasQuestionInteraction = false;
+  bool _isLoadingQuestions = true;
+  Future<void>? _completionPersistFuture;
   List<QuizQuestion>? _remoteQuestions;
   String? _quizErrorMessage;
   late final DateTime _sessionStartedAt;
+
+  static const List<String> _nodeDifficultyOrder = ['EASY', 'AVERAGE', 'EASY'];
 
   late final AnimationController _fadeCtrl;
 
   // ── _qs returns API questions when available, otherwise local fallback ────
   List<QuizQuestion> get _qs {
-    if (_remoteQuestions != null && _remoteQuestions!.isNotEmpty) {
-      return _remoteQuestions!;
-    }
-
-    return _fallbackQuestions;
-  }
-
-  List<QuizQuestion> get _fallbackQuestions {
-    switch (widget.difficulty) {
-      case 'AVERAGE': return kAverageQuestions;
-      case 'HARD':    return kHardQuestions;   // ← HARD now has its own 5 questions
-      default:        return kEasyQuestions;
-    }
+    return _remoteQuestions ?? const <QuizQuestion>[];
   }
 
   QuizQuestion get _q   => _qs[_qi];
@@ -569,6 +544,12 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
 
   Future<void> _loadQuestions() async {
     try {
+      if (mounted) {
+        setState(() {
+          _isLoadingQuestions = true;
+        });
+      }
+
       final rows = await ApiService.getQuestions(
         grade: widget.grade,
         subject: widget.subject,
@@ -583,20 +564,33 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
 
       if (rows.isEmpty) {
         setState(() {
-          _quizErrorMessage = 'We have not created questions for this category yet. Please choose another one for now.';
+          _quizErrorMessage = 'There is no content in the local question database for this category yet.';
           _remoteQuestions = const [];
+          _isLoadingQuestions = false;
         });
         return;
       }
 
       // Shuffle questions to prevent repetition
       final shuffledRows = List.from(rows);
-      shuffledRows.shuffle();
+      final seed = Object.hash(
+        widget.grade.trim().toUpperCase(),
+        widget.subject.trim().toUpperCase(),
+        widget.nodeIndex,
+      );
+      shuffledRows.shuffle(Random(seed));
+
+      final (minQuestions, maxQuestions) = _questionRangeForGrade(widget.grade);
+      final targetCount = min(
+        rows.length,
+        minQuestions + Random(seed).nextInt((maxQuestions - minQuestions) + 1),
+      );
+      final selectedRows = shuffledRows.take(targetCount).toList(growable: false);
 
       setState(() {
         _quizErrorMessage = null;
-        _remoteQuestions = List.generate(shuffledRows.length, (index) {
-          final row = shuffledRows[index];
+        _remoteQuestions = List.generate(selectedRows.length, (index) {
+          final row = selectedRows[index];
           final choices = List<String>.from(row['choices'] as List<dynamic>);
 
           return QuizQuestion(
@@ -616,28 +610,23 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
             funFact: (row['funFact'] as String?) ?? '',
           );
         });
+        _isLoadingQuestions = false;
       });
-    } on ApiException catch (e) {
+    } on ApiException {
       if (!mounted) return;
 
-      if (e.statusCode == 404) {
-        setState(() {
-          _quizErrorMessage = 'We have not created questions for this category yet. Please choose another one for now.';
-          _remoteQuestions = const [];
-        });
-        return;
-      }
-
       setState(() {
-        _quizErrorMessage = 'Unable to load questions right now. Please try again in a moment.';
+        _quizErrorMessage = 'There is no content in the local question database for this category yet.';
         _remoteQuestions = const [];
+        _isLoadingQuestions = false;
       });
       return;
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _quizErrorMessage = 'Unable to load questions right now. Please try again in a moment.';
+        _quizErrorMessage = 'There is no content in the local question database for this category yet.';
         _remoteQuestions = const [];
+        _isLoadingQuestions = false;
       });
     }
   }
@@ -647,8 +636,16 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
       return;
     }
 
-    final studentId = ApiService.currentStudentId;
-    if (studentId == null || studentId <= 0) {
+    int? studentId = ApiService.currentStudentId;
+    if (studentId == null) {
+      final profile = await ApiService.getCurrentProfile();
+      final profileId = profile?['student_id'];
+      if (profileId is num) {
+        studentId = profileId.toInt();
+      }
+    }
+
+    if (studentId == null) {
       return;
     }
 
@@ -670,7 +667,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
       final diffId = switch (widget.difficulty) {
         'EASY' => 1,
         'AVERAGE' => 2,
-        'HARD' => 3,
+        'HARD' => 2,
         _ => null,
       };
 
@@ -689,6 +686,28 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
     } finally {
       _isSubmittingScore = false;
     }
+  }
+
+  Future<void> _ensureCompletionPersisted() async {
+    final pending = _completionPersistFuture;
+    if (pending != null) {
+      await pending;
+      return;
+    }
+
+    await _submitFinalScore();
+  }
+
+  (int, int) _questionRangeForGrade(String grade) {
+    final normalized = grade.trim().toUpperCase();
+    if (normalized == 'BINHI') {
+      return (3, 5);
+    }
+    return (5, 8);
+  }
+
+  String _difficultyForNode(int nodeIndex) {
+    return _nodeDifficultyOrder[nodeIndex % _nodeDifficultyOrder.length];
   }
 
   // ── Game logic ────────────────────────────────────────────────────────────
@@ -729,7 +748,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
       });
       _fadeCtrl.reset();
     } else {
-      _submitFinalScore();
+      _completionPersistFuture ??= _submitFinalScore();
       setState(() => _showDonePopup = true);  // ← popup fires for all difficulties
     }
   }
@@ -914,6 +933,31 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                   ),
                 ),
               ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_isLoadingQuestions) {
+      return Scaffold(
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            ValueListenableBuilder<String>(
+              valueListenable: selectedThemeNotifier,
+              builder: (context, theme, _) {
+                final bgAsset = themeBackgrounds[theme] ?? themeBackgrounds['space']!;
+                return Image.asset(
+                  bgAsset,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) =>
+                      Container(color: const Color(0xFF0D1B2E)),
+                );
+              },
+            ),
+            const Center(
+              child: CircularProgressIndicator(),
             ),
           ],
         ),
@@ -1177,25 +1221,35 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
               score:      _score,
               total:      _qs.length,
               difficulty: widget.difficulty,
-              onNext: () {
-                // EASY → AVERAGE → HARD → (stays on HARD, no further levels)
-                final String nextDifficulty;
-                if (widget.difficulty == 'EASY') {
-                  nextDifficulty = 'AVERAGE';
-                } else if (widget.difficulty == 'AVERAGE') {
-                  nextDifficulty = 'HARD';
-                }else{
-                  nextDifficulty = 'HARD';
-                }                                     
+              onNext: () async {
+                final navigator = Navigator.of(context);
+                await _ensureCompletionPersisted();
+                if (!mounted) return;
 
-                Navigator.pushReplacement(
-                  context,
+                final nextNodeIndex = widget.nodeIndex + 1;
+                if (nextNodeIndex >= QuizScreen.totalNodes) {
+                  navigator.pushReplacement(
+                    MaterialPageRoute(
+                      builder: (_) => LevelMapScreen(
+                        grade: widget.grade,
+                        subject: widget.subject,
+                        gradeImg: widget.gradeImg,
+                      ),
+                    ),
+                  );
+                  return;
+                }
+
+                final nextDifficulty = _difficultyForNode(nextNodeIndex);
+
+                navigator.pushReplacement(
                   MaterialPageRoute(
                     builder: (_) => QuizScreen(
                       difficulty: nextDifficulty,
                       grade: widget.grade,
                       subject: widget.subject,
                       gradeImg: widget.gradeImg,
+                      nodeIndex: nextNodeIndex,
                     ),
                   ),
                 );
@@ -1208,15 +1262,19 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                   _selectedIdx   = null;
                   _showResult    = false;
                   _showDonePopup = false;
+                  _completionPersistFuture = null;
                 });
                 _fadeCtrl.reset();
               },
               // ── RETURN TO MAP ──────────────────────────────────────────
               // Navigates back to LevelMapScreen passing the same grade,
               // subject and gradeImg that launched this quiz.
-              onReturnMap: () {
-                Navigator.pushReplacement(
-                  context,
+              onReturnMap: () async {
+                final navigator = Navigator.of(context);
+                await _ensureCompletionPersisted();
+                if (!mounted) return;
+
+                navigator.pushReplacement(
                   MaterialPageRoute(
                     builder: (_) => LevelMapScreen(
                       grade:    widget.grade,
@@ -1226,8 +1284,15 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                   ),
                 );
               },
-              onHome: () {
-                // Add your own home navigation here
+              onHome: () async {
+                final navigator = Navigator.of(context);
+                await _ensureCompletionPersisted();
+                if (!mounted) return;
+
+                navigator.pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const StartScreen()),
+                  (route) => false,
+                );
               },
             ),
 

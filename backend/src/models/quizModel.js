@@ -1,9 +1,43 @@
 const db = require('../config/db');
 const { serializeQuestionImage } = require('../utils/questionImage');
 
+function normalizeDifficulty(input) {
+  if (!input) {
+    return null;
+  }
+
+  const value = String(input).trim().toUpperCase();
+  if (!value) {
+    return null;
+  }
+
+  if (value === 'EASY') {
+    return 'Easy';
+  }
+
+  if (value === 'AVERAGE' || value === 'MEDIUM') {
+    return 'Average';
+  }
+
+  if (value === 'HARD' || value === 'ADVANCED' || value === 'DIFFICULT') {
+    return null;
+  }
+
+  return null;
+}
+
+function normalizeDifficultyForScore(input) {
+  const normalized = normalizeDifficulty(input);
+  return normalized || 'Average';
+}
+
 class QuizModel {
   static async getQuestions(gradeName, subjectName, difficultyName) {
+    const normalizedDifficulty = normalizeDifficulty(difficultyName);
     const activeFilter = db.isOracle() ? 'NVL(q.is_active, 1) = 1' : 'COALESCE(q.is_active, 1) = 1';
+    const difficultyFilter = normalizedDifficulty
+      ? 'AND UPPER(d.difficulty) = UPPER(:difficultyName)'
+      : '';
     const query = `
       SELECT q.question_id,
              q.question_txt,
@@ -23,16 +57,24 @@ class QuizModel {
       JOIN diffTb d ON q.diff_id = d.diff_id
       WHERE UPPER(g.gradelvl) = UPPER(:gradeName)
         AND UPPER(s.subject) = UPPER(:subjectName)
-        AND UPPER(d.difficulty) = UPPER(:difficultyName)
+        ${difficultyFilter}
         AND ${activeFilter}
       ORDER BY q.question_id
     `;
 
-    const result = await db.execute(query, {
-      gradeName,
-      subjectName,
-      difficultyName
-    });
+    const result = await db.execute(
+      query,
+      normalizedDifficulty
+        ? {
+            gradeName,
+            subjectName,
+            difficultyName: normalizedDifficulty,
+          }
+        : {
+            gradeName,
+            subjectName,
+          }
+    );
 
     const letterToIndex = { A: 0, B: 1, C: 2, D: 3 };
 
@@ -65,6 +107,7 @@ class QuizModel {
   }
 
   static async submitScore(studentId, grade, subject, difficulty, score, total) {
+    const normalizedDifficulty = normalizeDifficultyForScore(difficulty);
     const idQuery = `
       SELECT g.gradelvl_id,
              s.subject_id,
@@ -76,12 +119,19 @@ class QuizModel {
         AND UPPER(s.subject) = UPPER(:subject)
         AND UPPER(d.difficulty) = UPPER(:difficulty)
     `;
-    const idRes = await db.execute(idQuery, { grade, subject, difficulty });
+    const idRes = await db.execute(idQuery, {
+      grade,
+      subject,
+      difficulty: normalizedDifficulty,
+    });
     if (!idRes.rows || idRes.rows.length === 0) {
       throw new Error('Grade/subject/difficulty mapping not found');
     }
 
-    const ids = idRes.rows[0];
+    const ids = Object.entries(idRes.rows[0]).reduce((accumulator, [key, value]) => {
+      accumulator[key.toUpperCase()] = value;
+      return accumulator;
+    }, {});
     const maxScore = Number(total) > 0 ? Number(total) : 10;
     const passed = Number(score) / maxScore >= 0.7 ? 1 : 0;
 

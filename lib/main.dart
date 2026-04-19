@@ -65,6 +65,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    unawaited(_restoreSavedTheme());
+  }
+
+  Future<void> _restoreSavedTheme() async {
+    final savedTheme = await LocalSyncStore.instance.getSelectedTheme();
+    if (savedTheme == null || savedTheme.trim().isEmpty) {
+      return;
+    }
+
+    if (!themeBackgrounds.containsKey(savedTheme)) {
+      return;
+    }
+
+    selectedThemeNotifier.value = savedTheme;
   }
 
   @override
@@ -74,6 +88,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       AudioService().stop();
     } else if (state == AppLifecycleState.resumed) {
       AudioService().playBackgroundMusic();
+      unawaited(ApiService.syncPending());
     }
   }
 

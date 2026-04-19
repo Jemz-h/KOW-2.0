@@ -105,6 +105,28 @@ class SeededQuestionStore {
     return text;
   }
 
+  Future<String?> _loadBlobColumnAsBase64(
+    Database db,
+    int questionId,
+    String columnName,
+  ) async {
+    try {
+      final rows = await db.rawQuery(
+        'SELECT $columnName FROM questionTb WHERE question_id = ? LIMIT 1',
+        <Object>[questionId],
+      );
+
+      if (rows.isEmpty) {
+        return null;
+      }
+
+      return _blobToBase64(rows.first[columnName]);
+    } catch (_) {
+      // If an image cell is too large or unreadable, keep quiz playable.
+      return null;
+    }
+  }
+
   Future<List<Map<String, dynamic>>> getQuestions({
     required String grade,
     required String subject,
@@ -116,18 +138,11 @@ class SeededQuestionStore {
     }
 
     final columns = await _loadQuestionColumns(db);
-    final selectOptionAImage = columns.contains('option_a_image')
-        ? 'q.option_a_image AS option_a_image'
-        : 'NULL AS option_a_image';
-    final selectOptionBImage = columns.contains('option_b_image')
-        ? 'q.option_b_image AS option_b_image'
-        : 'NULL AS option_b_image';
-    final selectOptionCImage = columns.contains('option_c_image')
-        ? 'q.option_c_image AS option_c_image'
-        : 'NULL AS option_c_image';
-    final selectOptionDImage = columns.contains('option_d_image')
-        ? 'q.option_d_image AS option_d_image'
-        : 'NULL AS option_d_image';
+    final hasQuestionImage = columns.contains('question_image');
+    final hasOptionAImage = columns.contains('option_a_image');
+    final hasOptionBImage = columns.contains('option_b_image');
+    final hasOptionCImage = columns.contains('option_c_image');
+    final hasOptionDImage = columns.contains('option_d_image');
 
     final normalizedGrade = grade.trim().toUpperCase();
     final normalizedSubject = subject.trim().toUpperCase();
@@ -166,15 +181,10 @@ class SeededQuestionStore {
       '''
       SELECT q.question_id,
              q.question_txt,
-             q.question_image,
              q.option_a,
              q.option_b,
              q.option_c,
              q.option_d,
-             $selectOptionAImage,
-             $selectOptionBImage,
-             $selectOptionCImage,
-             $selectOptionDImage,
              q.correct_opt
       FROM questionTb q
       JOIN subjectTb s ON q.subject_id = s.subject_id
@@ -192,20 +202,38 @@ class SeededQuestionStore {
 
     const letterToIndex = <String, int>{'A': 0, 'B': 1, 'C': 2, 'D': 3};
 
-    return rows.map((row) {
+    final result = <Map<String, dynamic>>[];
+
+    for (final row in rows) {
+      final questionId = (row['question_id'] as num?)?.toInt();
+      if (questionId == null) {
+        continue;
+      }
+
+      final imageBlob = hasQuestionImage
+          ? await _loadBlobColumnAsBase64(db, questionId, 'question_image')
+          : null;
+
       final choiceImageBlobs = <String?>[
-        _blobToBase64(row['option_a_image']),
-        _blobToBase64(row['option_b_image']),
-        _blobToBase64(row['option_c_image']),
-        _blobToBase64(row['option_d_image']),
+        hasOptionAImage
+            ? await _loadBlobColumnAsBase64(db, questionId, 'option_a_image')
+            : null,
+        hasOptionBImage
+            ? await _loadBlobColumnAsBase64(db, questionId, 'option_b_image')
+            : null,
+        hasOptionCImage
+            ? await _loadBlobColumnAsBase64(db, questionId, 'option_c_image')
+            : null,
+        hasOptionDImage
+            ? await _loadBlobColumnAsBase64(db, questionId, 'option_d_image')
+            : null,
       ];
       final hasAnyChoiceImage = choiceImageBlobs.any((entry) => entry != null);
 
       final correctOpt = (row['correct_opt'] ?? '').toString().trim().toUpperCase();
-      final imageBlob = _blobToBase64(row['question_image']);
 
-      return <String, dynamic>{
-        'id': row['question_id'],
+      result.add(<String, dynamic>{
+        'id': questionId,
         'prompt': (row['question_txt'] ?? '').toString(),
         'imageBlob': imageBlob,
         'imagePath': imageBlob,
@@ -220,7 +248,9 @@ class SeededQuestionStore {
         'choiceImageBlobs': hasAnyChoiceImage ? choiceImageBlobs : null,
         'choiceImages': hasAnyChoiceImage ? choiceImageBlobs : null,
         'correctIndex': letterToIndex[correctOpt] ?? 0,
-      };
-    }).toList(growable: false);
+      });
+    }
+
+    return result;
   }
 }
