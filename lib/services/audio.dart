@@ -1,138 +1,65 @@
 import 'package:audioplayers/audioplayers.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
-import '../local_sync_store.dart';
 
 class AudioService {
   static final AudioService _instance = AudioService._internal();
   factory AudioService() => _instance;
 
-  AudioService._internal();
+  late AudioPlayer _musicPlayer;
+  late AudioPlayer _sfxPlayer;
 
-  final AudioPlayer _musicPlayer = AudioPlayer();
+  bool _musicOn = true;
+  double _musicVolume = 1.0;
+  bool _sfxOn = true;
+  double _sfxVolume = 1.0;
 
-  bool _initialized = false;
-  bool _pluginAvailable = true;
-  bool _musicEnabled = true;
-  bool _sfxEnabled = true;
-  double _musicVolume = 0.8;
-  double _sfxVolume = 0.8;
-
-  bool get musicEnabled => _musicEnabled;
-  bool get sfxEnabled => _sfxEnabled;
+  bool get musicOn => _musicOn;
   double get musicVolume => _musicVolume;
+  bool get sfxOn => _sfxOn;
   double get sfxVolume => _sfxVolume;
 
-  Future<void> init() async {
-    if (_initialized) return;
-
-    final savedMusicEnabled = await LocalSyncStore.instance.getMusicEnabled();
-    final savedSfxEnabled = await LocalSyncStore.instance.getSfxEnabled();
-    final savedMusicVolume = await LocalSyncStore.instance.getMusicVolume();
-    final savedSfxVolume = await LocalSyncStore.instance.getSfxVolume();
-
-    _musicEnabled = savedMusicEnabled ?? true;
-    _sfxEnabled = savedSfxEnabled ?? true;
-    _musicVolume = (savedMusicVolume ?? 0.8).clamp(0.0, 1.0);
-    _sfxVolume = (savedSfxVolume ?? 0.8).clamp(0.0, 1.0);
-
-    try {
-      await _musicPlayer.setReleaseMode(ReleaseMode.loop);
-      await _musicPlayer.setSource(AssetSource('sounds/bittown.mp3'));
-      await _musicPlayer.setVolume(_musicVolume);
-    } on MissingPluginException {
-      _pluginAvailable = false;
-      debugPrint('Audio plugin is unavailable. Run a full app restart to enable music.');
-      return;
-    } on PlatformException catch (e) {
-      _pluginAvailable = false;
-      debugPrint('Audio platform initialization failed: ${e.message ?? e.code}');
-      return;
-    }
-
-    _initialized = true;
-    if (_musicEnabled) {
-      await _musicPlayer.resume();
-    }
+  AudioService._internal() {
+    _musicPlayer = AudioPlayer();
+    _musicPlayer.setReleaseMode(ReleaseMode.loop);
+    _sfxPlayer = AudioPlayer();
+    _sfxPlayer.setReleaseMode(ReleaseMode.release);
   }
+
+  // ── Music ──
 
   Future<void> playBackgroundMusic() async {
-    if (!_initialized) {
-      await init();
-      return;
-    }
-    if (!_pluginAvailable) return;
-    if (_musicEnabled) {
-      try {
-        await _musicPlayer.resume();
-      } on MissingPluginException {
-        _pluginAvailable = false;
-      }
-    }
+    await _musicPlayer.setVolume(_musicOn ? _musicVolume : 0.0);
+    await _musicPlayer.play(AssetSource('sounds/bittown.mp3'));
   }
 
-  Future<void> setMusicEnabled(bool enabled) async {
-    _musicEnabled = enabled;
-    await LocalSyncStore.instance.saveMusicEnabled(enabled);
-    if (!_pluginAvailable) return;
-    if (enabled) {
-      await playBackgroundMusic();
-    } else {
-      try {
-        await _musicPlayer.pause();
-      } on MissingPluginException {
-        _pluginAvailable = false;
-      }
-    }
+  Future<void> setMusicOn(bool value) async {
+    _musicOn = value;
+    // Directly set volume — no need to stop/start, just silence or restore
+    await _musicPlayer.setVolume(_musicOn ? _musicVolume : 0.0);
   }
 
-  Future<void> setMusicVolume(double volume) async {
-    _musicVolume = volume.clamp(0.0, 1.0);
-    await LocalSyncStore.instance.saveMusicVolume(_musicVolume);
-    if (!_pluginAvailable) return;
-    try {
-      await _musicPlayer.setVolume(_musicVolume);
-    } on MissingPluginException {
-      _pluginAvailable = false;
-    }
-  }
-
-  Future<void> setSfxEnabled(bool enabled) async {
-    _sfxEnabled = enabled;
-    await LocalSyncStore.instance.saveSfxEnabled(enabled);
-  }
-
-  Future<void> setSfxVolume(double volume) async {
-    _sfxVolume = volume.clamp(0.0, 1.0);
-    await LocalSyncStore.instance.saveSfxVolume(_sfxVolume);
-  }
-
-  Future<void> onAppResumed() async {
-    if (!_pluginAvailable) return;
-    if (_musicEnabled) {
-      try {
-        await _musicPlayer.resume();
-      } on MissingPluginException {
-        _pluginAvailable = false;
-      }
-    }
-  }
-
-  Future<void> onAppPaused() async {
-    if (!_pluginAvailable) return;
-    try {
-      await _musicPlayer.pause();
-    } on MissingPluginException {
-      _pluginAvailable = false;
-    }
+  Future<void> setMusicVolume(double value) async {
+    _musicVolume = value;
+    // Always apply volume regardless of _musicOn state so slider works live
+    await _musicPlayer.setVolume(_musicOn ? _musicVolume : 0.0);
   }
 
   Future<void> stop() async {
-    if (!_pluginAvailable) return;
-    try {
-      await _musicPlayer.stop();
-    } on MissingPluginException {
-      _pluginAvailable = false;
-    }
+    await _musicPlayer.stop();
+  }
+
+  // ── SFX ──
+
+  Future<void> playSfx(String assetPath) async {
+    if (!_sfxOn) return;
+    await _sfxPlayer.setVolume(_sfxVolume);
+    await _sfxPlayer.play(AssetSource(assetPath));
+  }
+
+  Future<void> setSfxOn(bool value) async {
+    _sfxOn = value;
+  }
+
+  Future<void> setSfxVolume(double value) async {
+    _sfxVolume = value;
   }
 }

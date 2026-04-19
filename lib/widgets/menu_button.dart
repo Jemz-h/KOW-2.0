@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Menu button that animates its background color on hover.
+/// Menu button with radial gradient background and hover animation.
 class MenuButton extends StatefulWidget {
   const MenuButton({
     super.key,
@@ -9,22 +9,25 @@ class MenuButton extends StatefulWidget {
     this.textColor,
     this.hoverColor,
     this.onTap,
+    this.gradientColors,
+    this.gradientCenter = Alignment.center,
+    this.gradientRadius = 1.0,
   });
 
-  /// Button text label.
   final String label;
-
-  /// Base background color (defaults to light gray).
   final Color? color;
-
-  /// Text color for the label.
   final Color? textColor;
-
-  /// Optional hover color for desktop/web hover state.
   final Color? hoverColor;
-
-  /// Tap handler for the menu action.
   final VoidCallback? onTap;
+
+  /// Colors for the radial gradient (center → edge).
+  final List<Color>? gradientColors;
+
+  /// Center point of the radial gradient.
+  final Alignment gradientCenter;
+
+  /// Radius of the radial gradient.
+  final double gradientRadius;
 
   @override
   State<MenuButton> createState() => _MenuButtonState();
@@ -35,22 +38,31 @@ class _MenuButtonState extends State<MenuButton> {
 
   @override
   Widget build(BuildContext context) {
-  final baseColor = widget.color ?? const Color(0xFFE5E5E5);
-  final displayColor = _isHovered && widget.hoverColor != null ? widget.hoverColor! : baseColor;
+    final baseColor = widget.color ?? const Color(0xFFE5E5E5);
+    final displayColor =
+        _isHovered && widget.hoverColor != null ? widget.hoverColor! : baseColor;
+
+    // Build gradient if colors provided, otherwise fall back to flat color
+    final gradient = widget.gradientColors != null
+        ? RadialGradient(
+            colors: _isHovered
+                ? widget.gradientColors!.map((c) => c.withOpacity(0.85)).toList()
+                : widget.gradientColors!,
+            center: widget.gradientCenter,
+            radius: widget.gradientRadius,
+          )
+        : null;
 
     return InkWell(
       onTap: widget.onTap,
-      onHover: (value) {
-        setState(() {
-          _isHovered = value;
-        });
-      },
+      onHover: (value) => setState(() => _isHovered = value),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
-          color: displayColor,
+          color: gradient == null ? displayColor : null,
+          gradient: gradient,
           borderRadius: BorderRadius.circular(12),
           boxShadow: const [
             BoxShadow(
@@ -65,7 +77,7 @@ class _MenuButtonState extends State<MenuButton> {
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 18,
-            color: widget.textColor ?? Colors.black,
+            color: widget.textColor ?? const Color.fromARGB(255, 0, 0, 0),
             letterSpacing: 1,
           ),
         ),

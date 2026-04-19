@@ -145,6 +145,7 @@ class _StartScreenState extends State<StartScreen> with TickerProviderStateMixin
                                       fontSize: isTablet ? 70 : contentW * 0.13,
                                       fontWeight: FontWeight.w900,
                                       height: 1.2,
+                                      letterSpacing: 4,
                                       color: Colors.white,
                                       shadows: const [
                                         Shadow(
@@ -169,23 +170,11 @@ class _StartScreenState extends State<StartScreen> with TickerProviderStateMixin
                             position: _subtitleSlide,
                             child: ScaleTransition(
                               scale: _idleSubtitleScale,
-                              child: Text(
-                                '"ENHANCING FUNCTIONAL LITERACY THROUGH LOCALLY DEVELOPED INSTRUCTIONAL MATERIALS"',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontFamily: 'SuperCartoon',
-                                  fontSize: isTablet ? 28 : contentW * 0.058,
-                                  fontWeight: FontWeight.w800,
-                                  height: 1.1,
-                                  color: const Color(0xFFFFE34D),
-                                  shadows: const [
-                                    Shadow(
-                                      blurRadius: 2,
-                                      color: Colors.black,
-                                      offset: Offset(1.5, 1.5),
-                                    ),
-                                  ],
-                                ),
+                              child: AutoSizeSubtitle(
+                                text: '"ENHANCING FUNCTIONAL LITERACY THROUGH LOCALLY DEVELOPED INSTRUCTIONAL MATERIALS"',
+                                maxWidth: contentW - 16,
+                                isTablet: isTablet,
+                                baseSize: isTablet ? 28.0 : contentW * 0.058,
                               ),
                             ),
                           ),
@@ -210,7 +199,7 @@ class _StartScreenState extends State<StartScreen> with TickerProviderStateMixin
                               child: FractionallySizedBox(
                                 widthFactor: 0.6,
                                 child: Transform.translate(
-                                  offset: Offset(contentW * 0.01, h * 0.05),
+                                  offset: Offset(contentW * 0.01, h * 0.02),
                                   child: Image.asset('assets/sisa_oyo/sisa.png', fit: BoxFit.contain),
                                 ),
                               ),
@@ -251,4 +240,79 @@ class _StartScreenState extends State<StartScreen> with TickerProviderStateMixin
       ),
     );
   }
+}
+
+/// A widget that auto-sizes its text to always fit within exactly 2 lines,
+/// adapting to the available width without wrapping beyond that.
+class AutoSizeSubtitle extends StatelessWidget {
+  const AutoSizeSubtitle({
+    super.key,
+    required this.text,
+    required this.maxWidth,
+    required this.isTablet,
+    required this.baseSize,
+  });
+
+  final String text;
+  final double maxWidth;
+  final bool isTablet;
+  final double baseSize;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth > 0 ? constraints.maxWidth : maxWidth;
+
+        // Binary-search for the largest font size that fits in exactly 2 lines.
+        double lo = 8.0;
+        double hi = baseSize;
+        double fitted = lo;
+
+        for (int i = 0; i < 12; i++) {
+          final mid = (lo + hi) / 2;
+          final tp = TextPainter(
+            text: TextSpan(
+              text: text,
+              style: _style(mid),
+            ),
+            textAlign: TextAlign.center,
+            textDirection: TextDirection.ltr,
+            maxLines: 2,
+          )..layout(maxWidth: availableWidth);
+
+          if (!tp.didExceedMaxLines) {
+            fitted = mid;
+            lo = mid;
+          } else {
+            hi = mid;
+          }
+        }
+
+        return Text(
+          text,
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: _style(fitted),
+        );
+      },
+    );
+  }
+
+  TextStyle _style(double size) => TextStyle(
+        fontFamily: 'SuperCartoon',
+        fontSize: size,
+        fontWeight: FontWeight.w800,
+        height: 1.1,
+        letterSpacing: 1.2,
+        color: const Color(0xFFFFE34D),
+        shadows: const [
+          Shadow(
+            blurRadius: 2,
+            color: Colors.black,
+            offset: Offset(1.5, 1.5),
+          ),
+        ],
+      );
 }

@@ -2,14 +2,19 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:kow/grade_select/grade.dart';
+import 'package:auto_size_text/auto_size_text.dart';
+import 'package:flutter/services.dart'; 
 
-import '../navigation/route_transitions.dart';
 import '../widgets/menu_button.dart';
 import '../widgets/mock_background.dart';
-import 'about.dart';
-import 'settings.dart';
+import '../navigation/route_transitions.dart';
 import 'tutorial.dart';
+import 'settings.dart';
+import 'about.dart';
 
+/// Main menu screen showing the title and primary navigation buttons.
+/// The main menu screen for the app, showing the app title, subtitle,
+/// and navigation buttons for all major sections.
 class MenuScreen extends StatefulWidget {
   const MenuScreen({super.key});
 
@@ -17,41 +22,53 @@ class MenuScreen extends StatefulWidget {
   State<MenuScreen> createState() => _MenuScreenState();
 }
 
-class _MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin {
+/// State for the main menu screen. Handles entrance and idle animations.
+class _MenuScreenState extends State<MenuScreen>
+    with TickerProviderStateMixin {
+  // Animation controller for the entrance (fade/slide in)
   late final AnimationController _introController;
-  late final AnimationController _idleController;
-
+  // Opacity and slide for title and subtitle
   late final Animation<double> _titleOpacity;
   late final Animation<double> _subtitleOpacity;
   late final Animation<Offset> _titleSlide;
   late final Animation<Offset> _subtitleSlide;
+
+  // Animation controller for continuous idle floating effect
+  late final AnimationController _idleController;
+  // Scale animations for subtle floating of title/subtitle
   late final Animation<double> _idleTitleScale;
   late final Animation<double> _idleSubtitleScale;
 
+  // Plays the entrance animation for the title and subtitle
   Future<void> _playIntro() async {
     _introController
       ..stop()
       ..value = 0;
+
+    // Small delay for a more natural entrance
     await Future.delayed(const Duration(milliseconds: 180));
-    if (mounted) {
-      _introController.forward();
-    }
+    if (!mounted) return;
+    _introController.forward();
   }
 
   @override
   void initState() {
     super.initState();
+    // Set up entrance animation controller
     _introController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
       animationBehavior: AnimationBehavior.preserve,
     );
+
+    // Set up idle floating animation controller
     _idleController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 3200),
       animationBehavior: AnimationBehavior.preserve,
     );
 
+    // Subtle scale up/down for floating effect
     _idleTitleScale = Tween<double>(begin: 1.0, end: 1.014).animate(
       CurvedAnimation(parent: _idleController, curve: Curves.easeInOut),
     );
@@ -59,6 +76,7 @@ class _MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin {
       CurvedAnimation(parent: _idleController, curve: Curves.easeInOut),
     );
 
+    // Fade and slide in for title
     _titleOpacity = CurvedAnimation(
       parent: _introController,
       curve: const Interval(0.0, 0.65, curve: Curves.easeOut),
@@ -68,20 +86,32 @@ class _MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin {
       curve: const Interval(0.3, 1.0, curve: Curves.easeOut),
     );
 
-    _titleSlide = Tween<Offset>(begin: const Offset(0, 0.35), end: Offset.zero).animate(
+    // Slide up for title and subtitle
+    _titleSlide = Tween<Offset>(
+      begin: const Offset(0, 0.35),
+      end: Offset.zero,
+    ).animate(
       CurvedAnimation(
         parent: _introController,
         curve: const Interval(0.0, 0.65, curve: Curves.easeOutCubic),
       ),
     );
-    _subtitleSlide = Tween<Offset>(begin: const Offset(0, 0.45), end: Offset.zero).animate(
+    _subtitleSlide = Tween<Offset>(
+      begin: const Offset(0, 0.45),
+      end: Offset.zero,
+    ).animate(
       CurvedAnimation(
         parent: _introController,
         curve: const Interval(0.3, 1.0, curve: Curves.easeOutCubic),
       ),
     );
 
-    WidgetsBinding.instance.addPostFrameCallback((_) => _playIntro());
+    // Play entrance animation after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _playIntro();
+    });
+
+    // When entrance animation completes, start idle floating
     _introController.addStatusListener((status) {
       if (status == AnimationStatus.completed && mounted) {
         _idleController.repeat(reverse: true);
@@ -98,22 +128,49 @@ class _MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    // The menu screen uses a background, responsive scaling, and animated title/subtitle.
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: MockBackground(
         child: LayoutBuilder(
           builder: (context, constraints) {
+            // Responsive layout calculations
             final screenW = constraints.maxWidth;
             final screenH = constraints.maxHeight;
+
             final isTablet = screenW >= 700;
             final contentMaxW = isTablet ? 560.0 : screenW;
             final contentW = math.min(screenW, contentMaxW);
+
+            // Scale content to fit phone/tablet
             final scale = math.min(contentW / 412, screenH / 917);
             final designW = 412 * scale;
             final designH = 917 * scale;
 
+            // Helper functions for scaled coordinates
             double sx(double px) => px * scale;
             double sy(double px) => px * scale;
+
+            Widget _buildLogoRow(double h, double contentW, double Function(double) sx) {
+              return Positioned(
+                top: sx(h),
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Transform.scale(
+                    scale: 2.2,
+                    alignment: Alignment.topCenter,
+                    child: SizedBox(
+                      width: contentW,
+                      child: LogoRow(
+                        top: 0,
+                        width: contentW,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
 
             return SafeArea(
               child: Center(
@@ -123,13 +180,9 @@ class _MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin {
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      Positioned(
-                        left: sx(20),
-                        top: sy(20),
-                        width: sx(372),
-                        height: sy(110),
-                        child: LogoRow(top: 0, width: sx(372)),
-                      ),
+                      // App logo row at the top
+                      _buildLogoRow(20, sx(372), sx),
+                      // Main title — animated fade-in, slide-up, and idle floating
                       Positioned(
                         top: designH * 0.14,
                         left: 20,
@@ -140,56 +193,21 @@ class _MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin {
                             position: _titleSlide,
                             child: ScaleTransition(
                               scale: _idleTitleScale,
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  'KARUNUNGAN\nON WHEELS',
-                                  textAlign: TextAlign.center,
-                                  softWrap: false,
-                                  maxLines: 2,
-                                  style: TextStyle(
-                                    fontFamily: 'SuperCartoon',
-                                    fontSize: contentW * 0.15,
-                                    fontWeight: FontWeight.w900,
-                                    height: 1.0,
-                                    color: Colors.white,
-                                    shadows: const [
-                                      Shadow(
-                                        blurRadius: 4,
-                                        color: Colors.black54,
-                                        offset: Offset(2, 2),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        top: designH * 0.28,
-                        left: 10,
-                        right: 10,
-                        child: FadeTransition(
-                          opacity: _subtitleOpacity,
-                          child: SlideTransition(
-                            position: _subtitleSlide,
-                            child: ScaleTransition(
-                              scale: _idleSubtitleScale,
                               child: Text(
-                                '"ENHANCING FUNCTIONAL LITERACY THROUGH LOCALLY DEVELOPED INSTRUCTIONAL MATERIALS"',
+                                'KARUNUNGAN\nON WHEELS',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  fontSize: isTablet ? 20 : contentW * 0.046,
-                                  fontWeight: FontWeight.w700,
+                                  fontFamily: 'SuperCartoon',
+                                  fontSize: isTablet ? 70 : contentW * 0.13,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: (isTablet ? 28 : contentW * 0.065) * 0.1,
                                   height: 1.2,
-                                  color: const Color(0xFFFFE34D),
+                                  color: Colors.white,
                                   shadows: const [
                                     Shadow(
-                                      blurRadius: 2,
-                                      color: Colors.black,
-                                      offset: Offset(1.5, 1.5),
+                                      blurRadius: 4,
+                                      color: Colors.black54,
+                                      offset: Offset(2, 2),
                                     ),
                                   ],
                                 ),
@@ -198,48 +216,113 @@ class _MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin {
                           ),
                         ),
                       ),
+
+                      // Subtitle — animated fade-in, slide-up, and idle floating (slight delay)
                       Positioned(
-                        left: sx(80),
-                        right: sx(80),
-                        top: sy(320),
-                        height: sy(280),
+                            top: designH * 0.28,
+                            left: 10,
+                            right: 10,
+                            child: FadeTransition(
+                              opacity: _subtitleOpacity,
+                              child: SlideTransition(
+                                position: _subtitleSlide,
+                                child: ScaleTransition(
+                                  scale: _idleSubtitleScale,
+                                  child: AutoSizeText(
+                                    '"ENHANCING FUNCTIONAL LITERACY THROUGH LOCALLY DEVELOPED INSTRUCTIONAL MATERIALS"',
+                                    textAlign: TextAlign.center,
+                                    maxLines: 2,
+                                    minFontSize: 12,
+                                    stepGranularity: 0.1,
+                                    style: TextStyle(
+                                      fontFamily: 'SuperCartoon',
+                                      fontSize: isTablet ? 28 : contentW * 0.065,
+                                      letterSpacing: (isTablet ? 28 : contentW * 0.065) * 0.08,
+                                      fontWeight: FontWeight.w800,
+                                      height: 1.1,
+                                      color: const Color(0xFFFFE34D),
+                                      shadows: const [
+                                        Shadow(
+                                          blurRadius: 2,
+                                          color: Colors.black,
+                                          offset: Offset(1.5, 1.5),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      // Mascot/character image in the center
+                      Positioned(
+                        left: sx(80), right: sx(80), top: sy(320), height: sy(280),
                         child: Image.asset('assets/sisa_oyo/sisa.png', fit: BoxFit.contain),
                       ),
+                      // Main menu buttons (START, TUTORIAL, SETTINGS, ABOUT)
                       Positioned(
-                        left: sx(40),
-                        right: sx(40),
-                        top: sy(600),
+                        left: sx(40), right: sx(40), top: sy(600),
                         child: Column(
                           children: [
+                            // START
                             SizedBox(
                               height: sy(58),
                               child: MenuButton(
                                 label: 'START',
                                 onTap: () => pushFade(context, const GradeApp()),
+                                gradientColors: const [
+                                  Color(0xFFCCCCCC),
+                                  Color(0xFF999999),
+                                ],
+                                gradientRadius: 2,
                               ),
                             ),
+
                             SizedBox(height: sy(12)),
+
+                            // TUTORIAL
                             SizedBox(
                               height: sy(58),
                               child: MenuButton(
                                 label: 'TUTORIAL',
                                 onTap: () => pushFade(context, const TutorialScreen()),
+                                gradientColors: const [
+                                  Color(0xFFCCCCCC),
+                                  Color(0xFF999999),
+                                ],
+                                gradientRadius: 2,
                               ),
                             ),
+
                             SizedBox(height: sy(12)),
+
+                            // SETTINGS
                             SizedBox(
                               height: sy(58),
                               child: MenuButton(
                                 label: 'SETTINGS',
                                 onTap: () => pushFade(context, const SettingsScreen()),
+                                gradientColors: const [
+                                  Color(0xFFCCCCCC),
+                                  Color(0xFF999999),
+                                ],
+                                gradientRadius: 2,
                               ),
                             ),
+
                             SizedBox(height: sy(12)),
+
+                            // ABOUT
                             SizedBox(
                               height: sy(58),
                               child: MenuButton(
                                 label: 'ABOUT',
                                 onTap: () => pushFade(context, const AboutScreen()),
+                                gradientColors: const [
+                                  Color(0xFFCCCCCC),
+                                  Color(0xFF999999),
+                                ],
+                                gradientRadius: 2,
                               ),
                             ),
                           ],
