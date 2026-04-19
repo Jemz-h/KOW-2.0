@@ -135,7 +135,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
 
   int _selectedDifficultyIndex = 0;
   int _selectedNodeIndex = 0;
-  int _maxUnlockedDifficultyIndex = 0;
+  int _maxUnlockedTravelNodeIndex = 0;
   bool _loadingProgress = false;
   bool _checkingCategoryContent = false;
   bool _categoryHasContent = true;
@@ -379,7 +379,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
       }
 
       setState(() {
-        _maxUnlockedDifficultyIndex = maxUnlockedNode;
+        _maxUnlockedTravelNodeIndex = maxUnlockedNode;
         final maxNode = _maxUnlockedNodeIndex();
         if (_selectedNodeIndex > maxNode) {
           _selectedNodeIndex = maxNode;
@@ -402,7 +402,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
   }
 
   int _maxUnlockedNodeIndex() {
-    return _maxUnlockedDifficultyIndex.clamp(0, _nodeTravelOrder.length - 1);
+    return _maxUnlockedTravelNodeIndex.clamp(0, _nodeTravelOrder.length - 1);
   }
 
   Future<void> _updateSelectedNode(int nextNodeIndex) async {
