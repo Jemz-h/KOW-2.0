@@ -53,5 +53,5 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: assets/sisa_oyo/kow_app_icon.png
+  image_path: assets/icons/game.png
   remove_alpha_ios: true
