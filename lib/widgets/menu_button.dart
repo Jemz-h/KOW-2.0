@@ -69,10 +69,11 @@ class _MenuButtonState extends State<MenuButton> {
 
     return InkWell(
       onTap: widget.onTap,
-      onTapDown: (_) => setState(() => _isPressed = true),
-      onTapUp: (_) => setState(() => _isPressed = false),
-      onTapCancel: () => setState(() => _isPressed = false),
+      onTapDown: widget.onTap != null ? (_) => setState(() => _isPressed = true) : null,
+      onTapUp: widget.onTap != null ? (_) => setState(() => _isPressed = false) : null,
+      onTapCancel: widget.onTap != null ? () => setState(() => _isPressed = false) : null,
       onHover: (value) => setState(() => _isHovered = value),
+      borderRadius: BorderRadius.circular(12),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         width: double.infinity,
