@@ -72,7 +72,7 @@ class _MenuButtonState extends State<MenuButton> {
       onTapDown: widget.onTap != null ? (_) => setState(() => _isPressed = true) : null,
       onTapUp: widget.onTap != null ? (_) => setState(() => _isPressed = false) : null,
       onTapCancel: widget.onTap != null ? () => setState(() => _isPressed = false) : null,
-      onHover: (value) => setState(() => _isHovered = value),
+      onHover: widget.onTap != null ? (value) => setState(() => _isHovered = value) : null,
       borderRadius: BorderRadius.circular(12),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
