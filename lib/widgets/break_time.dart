@@ -49,7 +49,7 @@ void showBreakTimePopup(BuildContext context) {
 
               // Mascot image (sleepy Sisa)
               Image.asset(
-                'assets/sisa_oyo/sisa_sleepy.png',
+                'assets/sisa_oyo/sisaGOD.png',
                 height: 140,
                 fit: BoxFit.contain,
                 errorBuilder: (_, _, _) => Image.asset(

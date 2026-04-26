@@ -190,7 +190,11 @@ class _StartScreenState extends State<StartScreen> with TickerProviderStateMixin
                                 widthFactor: isTablet ? 0.8 : 1.2,
                                 child: Transform.translate(
                                   offset: Offset(-contentW * 0.2, h * 0.05),
-                                  child: Image.asset('assets/sisa_oyo/oyo.png', fit: BoxFit.contain),
+                                  child: Image.asset(
+                                    'assets/sisa_oyo/oyo.png',
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                                  ),
                                 ),
                               ),
                             ),
@@ -200,7 +204,11 @@ class _StartScreenState extends State<StartScreen> with TickerProviderStateMixin
                                 widthFactor: 0.6,
                                 child: Transform.translate(
                                   offset: Offset(contentW * 0.01, h * 0.02),
-                                  child: Image.asset('assets/sisa_oyo/sisa.png', fit: BoxFit.contain),
+                                  child: Image.asset(
+                                    'assets/sisa_oyo/sisa.png',
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                                  ),
                                 ),
                               ),
                             ),

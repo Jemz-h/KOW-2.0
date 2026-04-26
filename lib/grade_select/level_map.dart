@@ -26,12 +26,12 @@ const _difficultyOrder = ['EASY', 'AVERAGE', 'HARD'];
 
 // ── Theme-aware grade SVG — mirrors grade.dart's _gradeAsset() ─
 String _gradeAsset(int gradeIndex, String theme) {
-  const Map<String, List<String>> _themeAssets = {
+  const Map<String, List<String>> themeAssets = {
     'sauyo':     ['assets/grade_select/s_1.svg', 'assets/grade_select/s_2.svg', 'assets/grade_select/s_3.svg'],
     'classroom': ['assets/grade_select/c_1.svg', 'assets/grade_select/c_2.svg', 'assets/grade_select/c_3.svg'],
     'space':     ['assets/grade_select/o_1.svg', 'assets/grade_select/o_2.svg', 'assets/grade_select/o_3.svg'],
   };
-  final assets = _themeAssets[theme] ?? _themeAssets['space']!;
+  final assets = themeAssets[theme] ?? themeAssets['space']!;
   return assets[gradeIndex.clamp(0, assets.length - 1)];
 }
 
@@ -623,7 +623,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
               child: child!,
             ),
             child: Image.asset(
-              'assets/sisa_oyo/sisa_node.gif',
+              'assets/sisa_oyo/sisa.png',
               width: characterSize,
               height: characterSize,
               fit: BoxFit.contain,
@@ -677,7 +677,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
             ),
             child: ValueListenableBuilder<String>(
               valueListenable: selectedThemeNotifier,
-              builder: (_, theme, __) => SvgPicture.asset(
+              builder: (context, theme, child) => SvgPicture.asset(
                 _gradeAsset(_gradeIndexFromName(widget.grade), theme),
                 width: sw * kIslandSize,
                 fit: BoxFit.contain,
