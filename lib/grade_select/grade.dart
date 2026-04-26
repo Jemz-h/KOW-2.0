@@ -51,8 +51,8 @@ const Map<String, Map<String, String>> _themePageBackgrounds = {
     'level_map':    'assets/themes/p.space-def.png',
   },
   'sauyo': {
-    'grade_select': 'assets/themes/o.card.png',
-    'level_map':    'assets/themes/o.card.png',
+    'grade_select': 'assets/themes/s.card.png',
+    'level_map':    'assets/themes/s.card.png',
   },
 };
 
