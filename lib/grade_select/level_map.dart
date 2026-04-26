@@ -14,13 +14,6 @@ const _gradePlanets = {
   'COMING': ['assets/themes/earth.png',   'assets/themes/mars.png',    'assets/themes/neptune.png'],
 };
 
-// ── Grade → floating island image (moon / sun / star) ─────────
-const _gradeIslands = {
-  'PUNLA':  'assets/grade_select/moon.png',
-  'BINHI':  'assets/grade_select/sun.png',
-  'COMING': 'assets/grade_select/star.png',
-};
-
 // ── Subject → accent colour for label pill ────────────────────
 const _subjectColors = {
   'MATH':    Color(0xFF4FC3F7),
@@ -30,6 +23,27 @@ const _subjectColors = {
 };
 
 const _difficultyOrder = ['EASY', 'AVERAGE', 'HARD'];
+
+// ── Theme-aware grade SVG — mirrors grade.dart's _gradeAsset() ─
+String _gradeAsset(int gradeIndex, String theme) {
+  const Map<String, List<String>> _themeAssets = {
+    'sauyo':     ['assets/grade_select/s_1.svg', 'assets/grade_select/s_2.svg', 'assets/grade_select/s_3.svg'],
+    'classroom': ['assets/grade_select/c_1.svg', 'assets/grade_select/c_2.svg', 'assets/grade_select/c_3.svg'],
+    'space':     ['assets/grade_select/o_1.svg', 'assets/grade_select/o_2.svg', 'assets/grade_select/o_3.svg'],
+  };
+  final assets = _themeAssets[theme] ?? _themeAssets['space']!;
+  return assets[gradeIndex.clamp(0, assets.length - 1)];
+}
+
+// Maps grade name → carousel slot index (must stay in sync with _kGrades in grade.dart)
+int _gradeIndexFromName(String grade) {
+  switch (grade.toUpperCase()) {
+    case 'PUNLA':  return 0;
+    case 'BINHI':  return 1;
+    case 'COMING': return 2;
+    default:       return 0;
+  }
+}
 
 // ════════════════════════════════════════════════════
 // COORDINATES — tweak these to reposition anything
@@ -500,7 +514,6 @@ class _LevelMapScreenState extends State<LevelMapScreen>
     final sw      = size.width;
     final sh      = size.height;
     final planets = _gradePlanets[widget.grade] ?? _gradePlanets['PUNLA']!;
-    final island  = _gradeIslands[widget.grade]  ?? _gradeIslands['PUNLA']!;
     final accent  = _subjectColors[widget.subject] ?? const Color(0xFF4FC3F7);
     final barH    = sh * 0.09;
 
@@ -654,7 +667,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
             ),
           ),
 
-          // 7. Grade island — drawn AFTER label so it appears ON TOP of the pill
+          // 7. Grade island — uses the same theme-aware SVG the carousel showed
           AnimatedBuilder(
             animation: _islandAnim,
             builder: (_, child) => Positioned(
@@ -662,11 +675,13 @@ class _LevelMapScreenState extends State<LevelMapScreen>
               top:  sh * kIslandY + _islandAnim.value,
               child: child!,
             ),
-            child: Image.asset(
-              island,
-              width: sw * kIslandSize,
-              fit: BoxFit.contain,
-              errorBuilder: (_, _, _) => const SizedBox.shrink(),
+            child: ValueListenableBuilder<String>(
+              valueListenable: selectedThemeNotifier,
+              builder: (_, theme, __) => SvgPicture.asset(
+                _gradeAsset(_gradeIndexFromName(widget.grade), theme),
+                width: sw * kIslandSize,
+                fit: BoxFit.contain,
+              ),
             ),
           ),
 

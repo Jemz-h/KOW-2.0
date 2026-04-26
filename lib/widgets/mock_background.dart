@@ -5,9 +5,9 @@ final ValueNotifier<String> selectedThemeNotifier = ValueNotifier<String>('space
 
 /// Maps theme keys to their background asset paths.
 const Map<String, String> themeBackgrounds = {
-  'classroom': 'assets/settings/classroom_bg.png',
-  'sauyo':     'assets/settings/sauyo_bg.png',
-  'space':     'assets/settings/space_bg.png',
+  'classroom': 'assets/themes/p.class-def.png',
+  'sauyo':     'assets/themes/s.card.png',   // keep as-is (no p.sauyo background exists)
+  'space':     'assets/themes/p.space-cloud.png',
 };
 
 /// Chalkboard background wrapper used across all screens.

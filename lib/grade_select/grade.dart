@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'level_map.dart';
 import '../screens/settings.dart';
 import '../widgets/mock_background.dart';
+
 // ── Responsive helper ──────────────────────────────────────────
 class R {
   final double w;
@@ -14,26 +15,65 @@ class R {
   double sh(double val) => val * (h / 844).clamp(0.85, isTablet ? 1.20 : 1.4);
   double get popupMaxW => isTablet ? w * 0.65 : w * 0.88;
 }
+
 class GradeApp extends StatelessWidget {
   const GradeApp({super.key});
   @override
   Widget build(BuildContext context) => const GradeSelectScreen();
 }
+
 // ── Grade data ─────────────────────────────────────────────────
 const List<Map<String, String>> _kGrades = [
-  {'label': 'PUNLA',  'age': '3-5 YRS OLD', 'img': 'assets/grade_select/moon.png'},
-  {'label': 'BINHI',  'age': '6-8 YRS OLD', 'img': 'assets/grade_select/sun.png'},
-  {'label': 'COMING', 'age': 'SOON',         'img': 'assets/grade_select/star.png'},
+  {'label': 'PUNLA',  'age': '3-5 YRS OLD'},
+  {'label': 'BINHI',  'age': '6-8 YRS OLD'},
+  {'label': 'COMING', 'age': 'SOON'},
 ];
+
+/// Returns the SVG asset path for a given grade slot and theme.
+String _gradeAsset(int gradeIndex, String theme) {
+  const Map<String, List<String>> _themeAssets = {
+    'sauyo':     ['assets/grade_select/s_1.svg', 'assets/grade_select/s_2.svg', 'assets/grade_select/s_3.svg'],
+    'classroom': ['assets/grade_select/c_1.svg', 'assets/grade_select/c_2.svg', 'assets/grade_select/c_3.svg'],
+    'space':     ['assets/grade_select/o_1.svg', 'assets/grade_select/o_2.svg', 'assets/grade_select/o_3.svg'],
+  };
+  final assets = _themeAssets[theme] ?? _themeAssets['space']!;
+  return assets[gradeIndex.clamp(0, assets.length - 1)];
+}
+
+/// Per-page background assets keyed by theme then page key.
+const Map<String, Map<String, String>> _themePageBackgrounds = {
+  'classroom': {
+    'grade_select': 'assets/themes/p.class-def.png',
+    'level_map':    'assets/themes/p.class-lvl.png',
+  },
+  'space': {
+    'grade_select': 'assets/themes/p.space-sel.png',
+    'level_map':    'assets/themes/p.space-def.png',
+  },
+  'sauyo': {
+    'grade_select': 'assets/themes/o.card.png',
+    'level_map':    'assets/themes/o.card.png',
+  },
+};
+
+/// Returns the background asset for [page] under the current [theme],
+/// falling back to the generic themeBackgrounds map if not found.
+String _pageBg(String theme, String page) {
+  return _themePageBackgrounds[theme]?[page] ??
+      themeBackgrounds[theme] ??
+      themeBackgrounds['space']!;
+}
+
 const List<int> _kSlots = [-1, 0, 1];
+
 class GradeSelectScreen extends StatefulWidget {
   const GradeSelectScreen({super.key});
   @override
   State<GradeSelectScreen> createState() => _GradeSelectScreenState();
 }
+
 class _GradeSelectScreenState extends State<GradeSelectScreen>
     with TickerProviderStateMixin {
-  // Virtual position — can grow infinitely in either direction
   double _position = 0.0;
   double _toPosition = 0.0;
   final ValueNotifier<bool> _showPopup = ValueNotifier(false);
@@ -49,6 +89,7 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
   late final Animation<double>   _shipWiggle;
   late final Tween<double> _carouselTween = Tween<double>(begin: 0, end: 0);
   late Animation<double>   _carouselAnim;
+
   @override
   void initState() {
     super.initState();
@@ -76,6 +117,7 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
     _shipWiggle = Tween<double>(begin: -0.08, end: 0.08).animate(
         CurvedAnimation(parent: _shipCtrl, curve: Curves.easeInOut));
   }
+
   @override
   void dispose() {
     _carouselCtrl.dispose();
@@ -85,11 +127,12 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
     _showPopup.dispose();
     super.dispose();
   }
-  // Virtual index → real grade index (wraps infinitely)
+
   int get _currentVirtual => _toPosition.round();
   int _realIndex(int virtual) =>
       (virtual % _kGrades.length + _kGrades.length) % _kGrades.length;
   int get _currentIndex => _realIndex(_currentVirtual);
+
   void _updateSortedSlots() {
     final animOffset = _position - _currentVirtual;
     _sortedSlots = List.from(_kSlots)
@@ -99,7 +142,7 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
         return db.compareTo(da);
       });
   }
-  // No bounds check — infinite in both directions
+
   void _go(int dir) {
     if (_carouselCtrl.isAnimating) return;
     final from = _position;
@@ -118,13 +161,16 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
     });
     _carouselCtrl.forward(from: 0);
   }
+
   void _openPopup() {
     _showPopup.value = true;
     _popupCtrl.forward(from: 0);
   }
+
   void _closePopup() {
     _popupCtrl.reverse().then((_) => _showPopup.value = false);
   }
+
   void _goToLevelMap(String subject) {
     _popupCtrl.reverse().then((_) {
       _showPopup.value = false;
@@ -132,14 +178,26 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
         pageBuilder: (_, animation, __) => LevelMapScreen(
           grade:    _kGrades[_currentIndex]['label']!,
           subject:  subject,
-          gradeImg: _kGrades[_currentIndex]['img']!,
+          gradeImg: _gradeAsset(_currentIndex, selectedThemeNotifier.value),
         ),
-        transitionsBuilder: (_, animation, __, child) =>
-            FadeTransition(opacity: animation, child: child),
-        transitionDuration: const Duration(milliseconds: 350),
+        transitionsBuilder: (_, animation, __, child) {
+          // Slide up from ~30 % below + fade in — distinct from the plain
+          // FadeTransition used for Settings and the back-nav routes.
+          final slide = Tween<Offset>(
+            begin: const Offset(0.0, 0.30),
+            end:   Offset.zero,
+          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
+          final fade = CurvedAnimation(parent: animation, curve: Curves.easeIn);
+          return FadeTransition(
+            opacity: fade,
+            child: SlideTransition(position: slide, child: child),
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 480),
       ));
     });
   }
+
   void _goToSettings() {
     Navigator.of(context).push(PageRouteBuilder(
       pageBuilder: (_, animation, __) => const SettingsScreen(),
@@ -148,9 +206,11 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
       transitionDuration: const Duration(milliseconds: 300),
     ));
   }
+
   double _scaleFor(double dist) => (1.0 - dist.abs() * 0.42).clamp(0.48, 1.0);
   double _yFor(double dist)     => dist * dist * 70;
   double _xFor(double dist, double sw) => dist * sw * 0.38;
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -165,18 +225,19 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
     final labelSize    = r.s(20.0);
     final ageSize      = r.s(14.0);
     final bannerRadius = r.sw(40.0);
+
     return Scaffold(
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Background
+
+          // ── Background (grade_select variant per theme) ──────────
           ValueListenableBuilder<String>(
             valueListenable: selectedThemeNotifier,
             builder: (context, theme, _) {
-              final bgAsset = themeBackgrounds[theme] ?? themeBackgrounds['space']!;
               return RepaintBoundary(
                 child: Image.asset(
-                  bgAsset,
+                  _pageBg(theme, 'grade_select'),
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) =>
                       Container(color: const Color(0xFF0D1B2E)),
@@ -184,7 +245,8 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
               );
             },
           ),
-          // Title
+
+          // ── Title ────────────────────────────────────────────────
           Positioned(
             top: size.height * 0.05, left: 0, right: 0,
             child: Center(
@@ -208,7 +270,8 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
               ),
             ),
           ),
-          // Settings button
+
+          // ── Settings button ──────────────────────────────────────
           Positioned(
             top: r.sh(36), right: r.sw(16),
             child: _TapIcon(
@@ -219,7 +282,8 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
               ),
             ),
           ),
-          // Island carousel
+
+          // ── Island carousel ──────────────────────────────────────
           Positioned(
             top: size.height * 0.20,
             height: size.height * 0.50,
@@ -231,61 +295,65 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
                 if (details.primaryVelocity! < -200) _go(1);
                 if (details.primaryVelocity! >  200) _go(-1);
               },
-              child: AnimatedBuilder(
-                animation: _bobCtrl,
-                builder: (_, __) {
-                  final animOffset = _position - _currentVirtual;
-                  return Stack(
-                    alignment: Alignment.center,
-                    children: _sortedSlots.map((slot) {
-                      final gradeIdx = _realIndex(_currentVirtual + slot);
-                      final dist     = slot - animOffset;
-                      final scale    = _scaleFor(dist);
-                      final x        = _xFor(dist, size.width);
-                      final y        = _yFor(dist);
-                      final isCenter = slot == 0;
-                      // Show play button only when carousel is fully settled
-                      final isSettled = !_carouselCtrl.isAnimating;
-                      return RepaintBoundary(
-                        child: Transform.translate(
-                          offset: Offset(x, y + (isCenter ? _bobAnim.value : 0)),
-                          child: Transform.scale(
-                            scale: scale,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                // Island image — no tap, play button is the CTA
-                                Image.asset(
-                                  _kGrades[gradeIdx]['img']!,
-                                  width: islandSize, height: islandSize,
-                                  fit: BoxFit.contain,
-                                  cacheWidth: islandSize.toInt() * 2,
-                                ),
-                                if (isCenter)
-                                  AnimatedOpacity(
-                                    opacity: isSettled ? 1.0 : 0.0,
-                                    duration: const Duration(milliseconds: 300),
-                                    child: _TapIcon(
-                                      onTap: _openPopup,
-                                      child: SvgPicture.asset(
-                                        'assets/icons/play.svg',
-                                        width: r.sw(110),
-                                        height: r.sw(110),
-                                      ),
+              child: ValueListenableBuilder<String>(
+                valueListenable: selectedThemeNotifier,
+                builder: (_, theme, __) {
+                  return AnimatedBuilder(
+                    animation: _bobCtrl,
+                    builder: (_, __) {
+                      final animOffset = _position - _currentVirtual;
+                      return Stack(
+                        alignment: Alignment.center,
+                        children: _sortedSlots.map((slot) {
+                          final gradeIdx = _realIndex(_currentVirtual + slot);
+                          final dist     = slot - animOffset;
+                          final scale    = _scaleFor(dist);
+                          final x        = _xFor(dist, size.width);
+                          final y        = _yFor(dist);
+                          final isCenter = slot == 0;
+                          final isSettled = !_carouselCtrl.isAnimating;
+                          return RepaintBoundary(
+                            child: Transform.translate(
+                              offset: Offset(x, y + (isCenter ? _bobAnim.value : 0)),
+                              child: Transform.scale(
+                                scale: scale,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    SvgPicture.asset(
+                                      _gradeAsset(gradeIdx, theme),
+                                      width: islandSize,
+                                      height: islandSize,
+                                      fit: BoxFit.contain,
                                     ),
-                                  ),
-                              ],
+                                    if (isCenter)
+                                      AnimatedOpacity(
+                                        opacity: isSettled ? 1.0 : 0.0,
+                                        duration: const Duration(milliseconds: 300),
+                                        child: _TapIcon(
+                                          onTap: _openPopup,
+                                          child: SvgPicture.asset(
+                                            'assets/icons/play.svg',
+                                            width: r.sw(110),
+                                            height: r.sw(110),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
+                          );
+                        }).toList(),
                       );
-                    }).toList(),
+                    },
                   );
                 },
               ),
             ),
           ),
-          // Bottom banner
+
+          // ── Bottom banner ────────────────────────────────────────
           Positioned(
             bottom: size.height * 0.10,
             left: r.sw(28), right: r.sw(28),
@@ -294,7 +362,6 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  // Banner background with label text — arrows are NOT in the Row
                   Positioned(
                     bottom: 0, left: 0, right: 0,
                     child: Container(
@@ -310,7 +377,6 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          // Spacer matching left arrow hit area width — no GestureDetector here
                           SizedBox(width: r.sw(18) * 2 + arrowSize),
                           Expanded(
                             child: Transform.translate(
@@ -340,13 +406,12 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
                               ),
                             ),
                           ),
-                          // Spacer matching right arrow hit area width — no GestureDetector here
                           SizedBox(width: r.sw(18) * 2 + arrowSize),
                         ],
                       ),
                     ),
                   ),
-                  // Floating icon — IgnorePointer so it NEVER blocks arrow taps
+                  // Floating icon
                   Positioned(
                     top: 2, left: r.sw(25),
                     child: IgnorePointer(
@@ -357,17 +422,20 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
                             offset: Offset(0, _bobAnim.value * 0.5),
                             child: child,
                           ),
-                          child: Image.asset(
-                            _kGrades[_currentIndex]['img']!,
-                            width: floatIconSz, height: floatIconSz,
-                            fit: BoxFit.contain,
+                          child: ValueListenableBuilder<String>(
+                            valueListenable: selectedThemeNotifier,
+                            builder: (_, theme, __) => SvgPicture.asset(
+                              _gradeAsset(_currentIndex, theme),
+                              width: floatIconSz,
+                              height: floatIconSz,
+                              fit: BoxFit.contain,
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                  // Left arrow — Positioned AFTER floating icon so it's on top in Z-order.
-                  // Hit area is larger than the visible arrow text.
+                  // Left arrow
                   Positioned(
                     bottom: 0, left: 0,
                     width: r.sw(18) * 2 + arrowSize + r.sw(20),
@@ -385,8 +453,7 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
                       ),
                     ),
                   ),
-                  // Right arrow — Positioned AFTER floating icon so it's on top in Z-order.
-                  // Hit area is larger than the visible arrow text.
+                  // Right arrow
                   Positioned(
                     bottom: 0, right: 0,
                     width: r.sw(18) * 2 + arrowSize + r.sw(20),
@@ -408,7 +475,8 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
               ),
             ),
           ),
-          // Back button
+
+          // ── Back button ──────────────────────────────────────────
           Positioned(
             bottom: r.sh(20), left: r.sw(20),
             child: _TapIcon(
@@ -419,7 +487,8 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
               ),
             ),
           ),
-          // Subject popup
+
+          // ── Subject popup ────────────────────────────────────────
           ValueListenableBuilder<bool>(
             valueListenable: _showPopup,
             builder: (_, visible, __) {
@@ -539,6 +608,7 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
     );
   }
 }
+
 // ── Subject button ─────────────────────────────────────────────
 class _SubjectButton extends StatelessWidget {
   final String label;
@@ -609,6 +679,7 @@ class _SubjectButton extends StatelessWidget {
     );
   }
 }
+
 // ── Tap icon ───────────────────────────────────────────────────
 class _TapIcon extends StatefulWidget {
   final Widget child;
