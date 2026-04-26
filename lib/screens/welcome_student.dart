@@ -711,14 +711,14 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               _buildSexAvatar(
-                                assetPath: 'assets/misc/boy.png',
+                                assetPath: 'assets/icons/male.svg',
                                 selected: _selectedSex == 'MALE',
                                 size: avatarSize,
                                 onTap: () => setState(() => _selectedSex = 'MALE'),
                               ),
                               SizedBox(width: 20 * scale),
                               _buildSexAvatar(
-                                assetPath: 'assets/misc/girl.png',
+                                assetPath: 'assets/icons/female.svg',
                                 selected: _selectedSex == 'FEMALE',
                                 size: avatarSize,
                                 onTap: () => setState(() => _selectedSex = 'FEMALE'),

@@ -21,11 +21,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   static const List<String> _settingsImageAssets = [
     'assets/icons/check.png',
-    'assets/settings/classroom_thm.png',
-    'assets/settings/sauyo_thm.png',
-    'assets/settings/space_thm.png',
-    'assets/misc/boy.png',
-    'assets/misc/girl.png',
+    'assets/themes/c.card.png',
+    'assets/themes/o.card.png',
+    'assets/themes/s.card.png',
+    'assets/icons/male.svg',
+    'assets/icons/female.svg',
   ];
 
   static const List<String> _settingsSvgAssets = [
@@ -414,7 +414,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 children: [
                                   _ThemeCard(
                                     label: 'CLASSROOM',
-                                    assetPath: 'assets/settings/classroom_thm.png',
+                                    assetPath: 'assets/themes/c.card.png',
                                     selected: selectedTheme == 'classroom',
                                     onTap: () => setDialogState(() => selectedTheme = 'classroom'),
                                     width: cardWidth, height: cardHeight,
@@ -422,7 +422,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ),
                                   _ThemeCard(
                                     label: 'SAUYO',
-                                    assetPath: 'assets/settings/sauyo_thm.png',
+                                    assetPath: 'assets/themes/s.card.png',
                                     selected: selectedTheme == 'sauyo',
                                     onTap: () => setDialogState(() => selectedTheme = 'sauyo'),
                                     width: cardWidth, height: cardHeight,
@@ -430,7 +430,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ),
                                   _ThemeCard(
                                     label: 'SPACE',
-                                    assetPath: 'assets/settings/space_thm.png',
+                                    assetPath: 'assets/themes/o.card.png',
                                     selected: selectedTheme == 'space',
                                     onTap: () => setDialogState(() => selectedTheme = 'space'),
                                     width: cardWidth, height: cardHeight,
