@@ -42,6 +42,7 @@ class MenuButton extends StatefulWidget {
 }
 
 class _MenuButtonState extends State<MenuButton> {
+  static const double _borderRadius = 12;
   bool _isHovered = false;
   bool _isPressed = false;
 
@@ -73,7 +74,7 @@ class _MenuButtonState extends State<MenuButton> {
       onTapUp: widget.onTap != null ? (_) => setState(() => _isPressed = false) : null,
       onTapCancel: widget.onTap != null ? () => setState(() => _isPressed = false) : null,
       onHover: widget.onTap != null ? (value) => setState(() => _isHovered = value) : null,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(_borderRadius),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         width: double.infinity,
@@ -81,7 +82,7 @@ class _MenuButtonState extends State<MenuButton> {
         decoration: BoxDecoration(
           color: gradient == null ? displayColor : null,
           gradient: gradient,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(_borderRadius),
           boxShadow: const [
             BoxShadow(
               color: Colors.black26,
