@@ -3,14 +3,54 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:kow/grade_select/grade.dart';
 import 'package:auto_size_text/auto_size_text.dart';
-import 'package:flutter/services.dart'; 
 
 import '../widgets/menu_button.dart';
-import '../widgets/mock_background.dart';
+import '../widgets/mock_background.dart' show MockBackground, selectedThemeNotifier, LogoRow;
 import '../navigation/route_transitions.dart';
 import 'tutorial.dart';
 import 'settings.dart';
 import 'about.dart';
+
+class _MenuButtonThemeStyle {
+  const _MenuButtonThemeStyle({
+    required this.normalGradient,
+    required this.pressedGradient,
+    required this.textColor,
+    required this.pressedTextColor,
+  });
+
+  final List<Color> normalGradient;
+  final List<Color> pressedGradient;
+  final Color textColor;
+  final Color pressedTextColor;
+}
+
+_MenuButtonThemeStyle _menuButtonStyleForTheme(String theme) {
+  switch (theme) {
+    case 'classroom':
+      return const _MenuButtonThemeStyle(
+        normalGradient: [Color(0xFFFDFDFD), Color(0xFFCBCBCB)],
+        pressedGradient: [Color(0xFFFFF3A3), Color(0xFFE3A728)],
+        textColor: Color(0xFF222222),
+        pressedTextColor: Color(0xFF4C2D00),
+      );
+    case 'sauyo':
+      return const _MenuButtonThemeStyle(
+        normalGradient: [Color(0xFFFDFDFD), Color(0xFFCBCBCB)],
+        pressedGradient: [Color(0xFFB6F2C2), Color(0xFF3F9A56)],
+        textColor: Color(0xFF1E1E1E),
+        pressedTextColor: Colors.white,
+      );
+    case 'space':
+    default:
+      return const _MenuButtonThemeStyle(
+        normalGradient: [Color(0xFFF0F0F0), Color(0xFF9E9E9E)],
+        pressedGradient: [Color(0xFFCFE4FF), Color(0xFF4B76C6)],
+        textColor: Color(0xFF111111),
+        pressedTextColor: Colors.white,
+      );
+  }
+}
 
 /// Main menu screen showing the title and primary navigation buttons.
 /// The main menu screen for the app, showing the app title, subtitle,
@@ -151,7 +191,7 @@ class _MenuScreenState extends State<MenuScreen>
             double sx(double px) => px * scale;
             double sy(double px) => px * scale;
 
-            Widget _buildLogoRow(double h, double contentW, double Function(double) sx) {
+            Widget buildLogoRow(double h, double contentW, double Function(double) sx) {
               return Positioned(
                 top: sx(h),
                 left: 0,
@@ -181,7 +221,7 @@ class _MenuScreenState extends State<MenuScreen>
                     clipBehavior: Clip.none,
                     children: [
                       // App logo row at the top
-                      _buildLogoRow(20, sx(372), sx),
+                      buildLogoRow(20, sx(372), sx),
                       // Main title — animated fade-in, slide-up, and idle floating
                       Positioned(
                         top: designH * 0.14,
@@ -262,70 +302,77 @@ class _MenuScreenState extends State<MenuScreen>
                       // Main menu buttons (START, TUTORIAL, SETTINGS, ABOUT)
                       Positioned(
                         left: sx(40), right: sx(40), top: sy(600),
-                        child: Column(
-                          children: [
-                            // START
-                            SizedBox(
-                              height: sy(58),
-                              child: MenuButton(
-                                label: 'START',
-                                onTap: () => pushFade(context, const GradeApp()),
-                                gradientColors: const [
-                                  Color(0xFFCCCCCC),
-                                  Color(0xFF999999),
-                                ],
-                                gradientRadius: 2,
-                              ),
-                            ),
+                        child: ValueListenableBuilder<String>(
+                          valueListenable: selectedThemeNotifier,
+                          builder: (context, theme, _) {
+                            final buttonStyle = _menuButtonStyleForTheme(theme);
 
-                            SizedBox(height: sy(12)),
+                            return Column(
+                              children: [
+                                // START
+                                SizedBox(
+                                  height: sy(58),
+                                  child: MenuButton(
+                                    label: 'START',
+                                    onTap: () => pushFade(context, const GradeApp()),
+                                    gradientColors: buttonStyle.normalGradient,
+                                    pressedGradientColors: buttonStyle.pressedGradient,
+                                    textColor: buttonStyle.textColor,
+                                    pressedTextColor: buttonStyle.pressedTextColor,
+                                    gradientRadius: 2,
+                                  ),
+                                ),
 
-                            // TUTORIAL
-                            SizedBox(
-                              height: sy(58),
-                              child: MenuButton(
-                                label: 'TUTORIAL',
-                                onTap: () => pushFade(context, const TutorialScreen()),
-                                gradientColors: const [
-                                  Color(0xFFCCCCCC),
-                                  Color(0xFF999999),
-                                ],
-                                gradientRadius: 2,
-                              ),
-                            ),
+                                SizedBox(height: sy(12)),
 
-                            SizedBox(height: sy(12)),
+                                // TUTORIAL
+                                SizedBox(
+                                  height: sy(58),
+                                  child: MenuButton(
+                                    label: 'TUTORIAL',
+                                    onTap: () => pushFade(context, const TutorialScreen()),
+                                    gradientColors: buttonStyle.normalGradient,
+                                    pressedGradientColors: buttonStyle.pressedGradient,
+                                    textColor: buttonStyle.textColor,
+                                    pressedTextColor: buttonStyle.pressedTextColor,
+                                    gradientRadius: 2,
+                                  ),
+                                ),
 
-                            // SETTINGS
-                            SizedBox(
-                              height: sy(58),
-                              child: MenuButton(
-                                label: 'SETTINGS',
-                                onTap: () => pushFade(context, const SettingsScreen()),
-                                gradientColors: const [
-                                  Color(0xFFCCCCCC),
-                                  Color(0xFF999999),
-                                ],
-                                gradientRadius: 2,
-                              ),
-                            ),
+                                SizedBox(height: sy(12)),
 
-                            SizedBox(height: sy(12)),
+                                // SETTINGS
+                                SizedBox(
+                                  height: sy(58),
+                                  child: MenuButton(
+                                    label: 'SETTINGS',
+                                    onTap: () => pushFade(context, const SettingsScreen()),
+                                    gradientColors: buttonStyle.normalGradient,
+                                    pressedGradientColors: buttonStyle.pressedGradient,
+                                    textColor: buttonStyle.textColor,
+                                    pressedTextColor: buttonStyle.pressedTextColor,
+                                    gradientRadius: 2,
+                                  ),
+                                ),
 
-                            // ABOUT
-                            SizedBox(
-                              height: sy(58),
-                              child: MenuButton(
-                                label: 'ABOUT',
-                                onTap: () => pushFade(context, const AboutScreen()),
-                                gradientColors: const [
-                                  Color(0xFFCCCCCC),
-                                  Color(0xFF999999),
-                                ],
-                                gradientRadius: 2,
-                              ),
-                            ),
-                          ],
+                                SizedBox(height: sy(12)),
+
+                                // ABOUT
+                                SizedBox(
+                                  height: sy(58),
+                                  child: MenuButton(
+                                    label: 'ABOUT',
+                                    onTap: () => pushFade(context, const AboutScreen()),
+                                    gradientColors: buttonStyle.normalGradient,
+                                    pressedGradientColors: buttonStyle.pressedGradient,
+                                    textColor: buttonStyle.textColor,
+                                    pressedTextColor: buttonStyle.pressedTextColor,
+                                    gradientRadius: 2,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         ),
                       ),
                     ],

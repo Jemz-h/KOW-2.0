@@ -7,9 +7,12 @@ class MenuButton extends StatefulWidget {
     required this.label,
     this.color,
     this.textColor,
+    this.pressedTextColor,
     this.hoverColor,
+    this.pressedColor,
     this.onTap,
     this.gradientColors,
+    this.pressedGradientColors,
     this.gradientCenter = Alignment.center,
     this.gradientRadius = 1.0,
   });
@@ -17,11 +20,16 @@ class MenuButton extends StatefulWidget {
   final String label;
   final Color? color;
   final Color? textColor;
+  final Color? pressedTextColor;
   final Color? hoverColor;
+  final Color? pressedColor;
   final VoidCallback? onTap;
 
   /// Colors for the radial gradient (center → edge).
   final List<Color>? gradientColors;
+
+  /// Colors for the pressed radial gradient (center → edge).
+  final List<Color>? pressedGradientColors;
 
   /// Center point of the radial gradient.
   final Alignment gradientCenter;
@@ -35,19 +43,25 @@ class MenuButton extends StatefulWidget {
 
 class _MenuButtonState extends State<MenuButton> {
   bool _isHovered = false;
+  bool _isPressed = false;
 
   @override
   Widget build(BuildContext context) {
     final baseColor = widget.color ?? const Color(0xFFE5E5E5);
-    final displayColor =
-        _isHovered && widget.hoverColor != null ? widget.hoverColor! : baseColor;
+    final displayColor = _isPressed
+      ? (widget.pressedColor ?? widget.hoverColor ?? baseColor)
+      : (_isHovered && widget.hoverColor != null ? widget.hoverColor! : baseColor);
 
     // Build gradient if colors provided, otherwise fall back to flat color
-    final gradient = widget.gradientColors != null
+    final activeGradientColors = _isPressed
+      ? (widget.pressedGradientColors ?? widget.gradientColors)
+      : widget.gradientColors;
+
+    final gradient = activeGradientColors != null
         ? RadialGradient(
-            colors: _isHovered
-                ? widget.gradientColors!.map((c) => c.withOpacity(0.85)).toList()
-                : widget.gradientColors!,
+        colors: _isHovered && !_isPressed
+          ? activeGradientColors.map((c) => c.withOpacity(0.85)).toList()
+          : activeGradientColors,
             center: widget.gradientCenter,
             radius: widget.gradientRadius,
           )
@@ -55,6 +69,9 @@ class _MenuButtonState extends State<MenuButton> {
 
     return InkWell(
       onTap: widget.onTap,
+      onTapDown: (_) => setState(() => _isPressed = true),
+      onTapUp: (_) => setState(() => _isPressed = false),
+      onTapCancel: () => setState(() => _isPressed = false),
       onHover: (value) => setState(() => _isHovered = value),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
@@ -77,7 +94,9 @@ class _MenuButtonState extends State<MenuButton> {
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 18,
-            color: widget.textColor ?? const Color.fromARGB(255, 0, 0, 0),
+            color: _isPressed
+                ? (widget.pressedTextColor ?? widget.textColor ?? const Color.fromARGB(255, 0, 0, 0))
+                : (widget.textColor ?? const Color.fromARGB(255, 0, 0, 0)),
             letterSpacing: 1,
           ),
         ),
