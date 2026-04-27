@@ -24,7 +24,7 @@ class GradeApp extends StatelessWidget {
 
 // ── Grade data ─────────────────────────────────────────────────
 const List<Map<String, String>> _kGrades = [
-  {'label': 'PUNLA',  'age': '3-5 YRS OLD'},
+  {'label': 'PUNLA',  'age': '4-5 YRS OLD'},
   {'label': 'BINHI',  'age': '6-8 YRS OLD'},
   {'label': 'COMING', 'age': 'SOON'},
 ];
@@ -47,7 +47,7 @@ const Map<String, Map<String, String>> _themePageBackgrounds = {
     'level_map':    'assets/themes/p.class-lvl.png',
   },
   'space': {
-    'grade_select': 'assets/themes/p.space-sel.png',
+    'grade_select': 'assets/themes/p.space-m2.png',
     'level_map':    'assets/themes/p.space-def.png',
   },
   'sauyo': {
@@ -218,13 +218,13 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
     final islandSize   = r.sw(300.0);
     final settingSize  = r.s(54.0);
     final backSize     = r.s(58.0);
-    final bannerH      = r.sh(76.0);
+    final bannerH      = r.sh(90.0);
     final bannerFloat  = r.sh(120.0);
     final floatIconSz  = r.sw(130.0);
-    final arrowSize    = r.s(32.0);
-    final labelSize    = r.s(20.0);
-    final ageSize      = r.s(14.0);
-    final bannerRadius = r.sw(40.0);
+    final arrowSize    = r.s(95.0);
+    final labelSize    = r.s(24.0);
+  final ageSize      = r.s(17.0);
+    final bannerRadius = r.sw(30.0);
 
     return Scaffold(
       body: Stack(
@@ -326,19 +326,7 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
                                       height: islandSize,
                                       fit: BoxFit.contain,
                                     ),
-                                    if (isCenter)
-                                      AnimatedOpacity(
-                                        opacity: isSettled ? 1.0 : 0.0,
-                                        duration: const Duration(milliseconds: 300),
-                                        child: _TapIcon(
-                                          onTap: _openPopup,
-                                          child: SvgPicture.asset(
-                                            'assets/icons/play.svg',
-                                            width: r.sw(110),
-                                            height: r.sw(110),
-                                          ),
-                                        ),
-                                      ),
+
                                   ],
                                 ),
                               ),
@@ -353,129 +341,214 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
             ),
           ),
 
-          // ── Bottom banner ────────────────────────────────────────
-          Positioned(
-            bottom: size.height * 0.10,
-            left: r.sw(28), right: r.sw(28),
-            child: SizedBox(
-              height: bannerFloat,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Positioned(
-                    bottom: 0, left: 0, right: 0,
-                    child: Container(
-                      height: bannerH,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1C1A3A),
-                        borderRadius: BorderRadius.circular(bannerRadius),
-                        border: Border.all(color: const Color(0xFFFFD700), width: 3),
-                        boxShadow: const [BoxShadow(
-                          color: Colors.black54, blurRadius: 12, offset: Offset(0, 5),
-                        )],
-                      ),
+          // ── Bottom banner (THEME-AWARE) ─────────────────────────────
+          ValueListenableBuilder<String>(
+            valueListenable: selectedThemeNotifier,
+            builder: (_, theme, __) {
+              final isSpaceTheme = theme == 'space';
+
+              return Positioned(
+                bottom: size.height * 0.06,
+                left: 0,
+                right: 0,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: r.sw(4)),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          SizedBox(width: r.sw(18) * 2 + arrowSize),
+                          // LEFT ARROW
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => _go(-1),
+                            child: SizedBox(
+                              width: arrowSize,
+                              height: bannerH * 1.25,
+                              child: Center(
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    Text('<', style: TextStyle(
+                                      fontFamily: 'SuperCartoon',
+                                      fontSize: arrowSize,
+                                      foreground: Paint()
+                                        ..style = PaintingStyle.stroke
+                                        ..strokeWidth = 4
+                                        ..color = Colors.black,
+                                    )),
+                                    Text('<', style: TextStyle(
+                                      fontFamily: 'SuperCartoon',
+                                      fontSize: arrowSize,
+                                      color: const Color(0xFFFFD700),
+                                    )),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          // CENTER RECTANGLE
                           Expanded(
-                            child: Transform.translate(
-                              offset: Offset(r.sw(5), 0),
+                            child: Container(
+                              height: bannerH * 1.25,
+                              margin: EdgeInsets.symmetric(horizontal: r.sw(2)),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: r.sw(12),
+                                vertical: r.sh(6),
+                              ),
+                              decoration: BoxDecoration(
+                                color: isSpaceTheme
+                                    ? const Color.fromARGB(150, 255, 255, 255)
+                                    : const Color.fromARGB(150, 17, 17, 17),
+                                borderRadius: BorderRadius.circular(bannerRadius * 1.2),
+                              ),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Text(
-                                    _kGrades[_currentIndex]['label']!,
-                                    style: TextStyle(
-                                      fontFamily: 'SuperCartoon',
-                                      fontSize: labelSize,
-                                      color: const Color(0xFFFFD700),
-                                      letterSpacing: 3,
+                                  // LABEL
+                                  Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      Text(
+                                        _kGrades[_currentIndex]['label']!,
+                                        style: TextStyle(
+                                          fontFamily: 'SuperCartoon',
+                                          fontSize: labelSize * 1.15,
+                                          letterSpacing: labelSize * 0.20,
+                                          foreground: Paint()
+                                            ..style = PaintingStyle.stroke
+                                            ..strokeWidth = 4
+                                            ..color = Colors.black,
+                                        ),
+                                      ),
+                                      Text(
+                                        _kGrades[_currentIndex]['label']!,
+                                        style: TextStyle(
+                                          fontFamily: 'SuperCartoon',
+                                          fontSize: labelSize * 1.15,
+                                          color: const Color(0xFFFFD700),
+                                          letterSpacing: labelSize * 0.20,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+
+                                  // DIVIDER (THEME-AWARE)
+                                  Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      vertical: r.sh(6),
+                                      horizontal: r.sw(16),
+                                    ),
+                                    child: Container(
+                                      height: 4,
+                                      decoration: BoxDecoration(
+                                        color: isSpaceTheme
+                                            ? Colors.black
+                                            : Colors.white,
+                                        borderRadius: BorderRadius.circular(3),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: (isSpaceTheme
+                                                    ? Colors.black
+                                                    : Colors.white)
+                                                .withValues(alpha: 0.6),
+                                            blurRadius: 6,
+                                            spreadRadius: 1,
+                                          )
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                  Text(
-                                    _kGrades[_currentIndex]['age']!,
-                                    style: TextStyle(
-                                      fontFamily: 'SuperCartoon',
-                                      fontSize: ageSize,
-                                      color: const Color(0xFFFFD700),
-                                      letterSpacing: 1,
-                                    ),
+
+                                  // AGE
+                                  Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      Text(
+                                        _kGrades[_currentIndex]['age']!,
+                                        style: TextStyle(
+                                          fontFamily: 'SuperCartoon',
+                                          fontSize: ageSize * 1.1,
+                                          letterSpacing: ageSize * 0.20,
+                                          foreground: Paint()
+                                            ..style = PaintingStyle.stroke
+                                            ..strokeWidth = 3
+                                            ..color = Colors.black,
+                                        ),
+                                      ),
+                                      Text(
+                                        _kGrades[_currentIndex]['age']!,
+                                        style: TextStyle(
+                                          fontFamily: 'SuperCartoon',
+                                          fontSize: ageSize * 1.1,
+                                          color: const Color(0xFFFFD700),
+                                          letterSpacing: ageSize * 0.20,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
                             ),
                           ),
-                          SizedBox(width: r.sw(18) * 2 + arrowSize),
+
+                          // RIGHT ARROW
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => _go(1),
+                            child: SizedBox(
+                              width: arrowSize,
+                              height: bannerH * 1.25,
+                              child: Center(
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    Text('>', style: TextStyle(
+                                      fontFamily: 'SuperCartoon',
+                                      fontSize: arrowSize,
+                                      foreground: Paint()
+                                        ..style = PaintingStyle.stroke
+                                        ..strokeWidth = 4
+                                        ..color = Colors.black,
+                                    )),
+                                    Text('>', style: TextStyle(
+                                      fontFamily: 'SuperCartoon',
+                                      fontSize: arrowSize,
+                                      color: const Color(0xFFFFD700),
+                                    )),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                  ),
-                  // Floating icon
-                  Positioned(
-                    top: 2, left: r.sw(25),
-                    child: IgnorePointer(
-                      child: RepaintBoundary(
-                        child: AnimatedBuilder(
-                          animation: _bobAnim,
-                          builder: (_, child) => Transform.translate(
-                            offset: Offset(0, _bobAnim.value * 0.5),
-                            child: child,
-                          ),
-                          child: ValueListenableBuilder<String>(
-                            valueListenable: selectedThemeNotifier,
-                            builder: (_, theme, __) => SvgPicture.asset(
-                              _gradeAsset(_currentIndex, theme),
-                              width: floatIconSz,
-                              height: floatIconSz,
-                              fit: BoxFit.contain,
-                            ),
-                          ),
+
+                    SizedBox(height: r.sh(14)),
+
+                    // PLAY BUTTON
+                    AnimatedOpacity(
+                      opacity: !_carouselCtrl.isAnimating ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 300),
+                      child: _TapIcon(
+                        onTap: _openPopup,
+                        child: SvgPicture.asset(
+                          'assets/icons/play.svg',
+                          width: r.sw(90),
+                          height: r.sw(90),
                         ),
                       ),
                     ),
-                  ),
-                  // Left arrow
-                  Positioned(
-                    bottom: 0, left: 0,
-                    width: r.sw(18) * 2 + arrowSize + r.sw(20),
-                    height: bannerH,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => _go(-1),
-                      child: Align(
-                        alignment: Alignment.center,
-                        child: Text('<', style: TextStyle(
-                          fontFamily: 'SuperCartoon',
-                          fontSize: arrowSize,
-                          color: const Color(0xFFFFD700),
-                        )),
-                      ),
-                    ),
-                  ),
-                  // Right arrow
-                  Positioned(
-                    bottom: 0, right: 0,
-                    width: r.sw(18) * 2 + arrowSize + r.sw(20),
-                    height: bannerH,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => _go(1),
-                      child: Align(
-                        alignment: Alignment.center,
-                        child: Text('>', style: TextStyle(
-                          fontFamily: 'SuperCartoon',
-                          fontSize: arrowSize,
-                          color: const Color(0xFFFFD700),
-                        )),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                  ],
+                ),
+              );
+            },
           ),
 
+          
           // ── Back button ──────────────────────────────────────────
           Positioned(
             bottom: r.sh(20), left: r.sw(20),

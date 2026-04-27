@@ -75,96 +75,115 @@ class _AboutScreenState extends State<AboutScreen> {
                   final screenW = constraints.maxWidth;
 
                   return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: screenW * 0.06,
+                      vertical: 28,
+                    ).copyWith(
+                      left: (screenW * 0.01).clamp(12, 24),
+                      right: (screenW * 0.01).clamp(12, 24),
+                    ),
                     child: Column(
                       children: [
                         Expanded(
                           child: Container(
                             width: double.infinity,
+                            padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  Color(0xFF1A1A2E),
-                                  Color(0xFF16213E),
-                                  Color(0xFF0F3460),
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(28),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Colors.black38,
-                                  blurRadius: 14,
-                                  offset: Offset(0, 6),
-                                ),
-                              ],
+                              color: const Color.fromARGB(106, 0, 0, 0),
+                              borderRadius: BorderRadius.circular(36),
                             ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(28),
-                              child: Listener(
-                                onPointerDown: (_) =>
-                                    setState(() => _userScrolling = true),
-                                onPointerUp: (_) =>
-                                    setState(() => _userScrolling = false),
-                                onPointerCancel: (_) =>
-                                    setState(() => _userScrolling = false),
-                                child: SingleChildScrollView(
-                                  controller: _scrollController,
-                                  physics: const BouncingScrollPhysics(),
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: screenW * 0.06,
-                                    vertical: 28,
-                                  ),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const SizedBox(height: 8),
-
-                                      // KOW logo at the top
-                                      Image.asset(
-                                        'assets/misc/kow.png',
-                                        fit: BoxFit.contain,
-                                      ),
-                                      const SizedBox(height: 16),
-
-                                      // Institutional logos row
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          _buildLogo('assets/misc/sauyo.png'),
-                                          const SizedBox(width: 8),
-                                          _buildLogo('assets/misc/bctpoc.png'),
-                                          const SizedBox(width: 8),
-                                          _buildLogo('assets/misc/qcu.png'),
+                            child: Container(
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: const Color.fromARGB(0, 0, 0, 0),
+                                borderRadius: BorderRadius.circular(36),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(36),
+                                child: Listener(
+                                  onPointerDown: (_) =>
+                                      setState(() => _userScrolling = true),
+                                  onPointerUp: (_) =>
+                                      setState(() => _userScrolling = false),
+                                  onPointerCancel: (_) =>
+                                      setState(() => _userScrolling = false),
+                                  child: ShaderMask(
+                                    shaderCallback: (Rect rect) {
+                                      return LinearGradient(
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                        colors: const [
+                                          Colors.transparent,
+                                          Colors.black,
+                                          Colors.black,
+                                          Colors.transparent,
                                         ],
+                                        stops: const [0.0, 0.1, 0.9, 1.0],
+                                      ).createShader(rect);
+                                    },
+                                    blendMode: BlendMode.dstIn,
+                                    child: SingleChildScrollView(
+                                      controller: _scrollController,
+                                      physics:
+                                          const BouncingScrollPhysics(),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 28,
                                       ),
-                                      const SizedBox(height: 24),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 20),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const SizedBox(height: 8),
 
-                                      // About description text
-                                      const Text(
-                                        "Karunungan on Wheels is an educational game designed to make learning fun and interactive through engaging challenges.\n\nThe game was developed by selected students of SBIT 2E from Quezon City University.\n\nThis project is not possible with the help of our Mentors, Ms. Mary Anne Manandeg and in partnership and guidance of the Barangay Sauyo Barangay Council for the Protection of Children (BCPC).",
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontFamily: 'SuperCartoon',
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.w800,
-                                          height: 1.35,
-                                          color: Color(0xFFFFE34D),
-                                          shadows: [
-                                            Shadow(
-                                              blurRadius: 3,
-                                              color: Colors.black38,
-                                              offset: Offset(1, 1),
+                                            Image.asset(
+                                              'assets/misc/kow.png',
+                                              fit: BoxFit.contain,
                                             ),
+                                            const SizedBox(height: 16),
+
+                                            Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                _buildLogo(
+                                                    'assets/misc/sauyo.png'),
+                                                const SizedBox(width: 8),
+                                                _buildLogo(
+                                                    'assets/misc/bctpoc.png'),
+                                                const SizedBox(width: 8),
+                                                _buildLogo(
+                                                    'assets/misc/qcu.png'),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 24),
+
+                                            const Text(
+                                              "Karunungan on Wheels is an educational game designed to make learning fun and interactive through engaging challenges.\n\nThe game was developed by selected students of SBIT 2E from Quezon City University.\n\nThis project is not possible with the help of our Mentors, Ms. Mary Anne Manandeg and in partnership and guidance of the Barangay Sauyo Barangay Council for the Protection of Children (BCPC).",
+                                              textAlign: TextAlign.center,
+                                              style: TextStyle(
+                                                fontFamily: 'SuperCartoon',
+                                                fontSize: 20,
+                                                fontWeight: FontWeight.w800,
+                                                height: 1.35,
+                                                color: Color(0xFFFFE34D),
+                                                shadows: [
+                                                  Shadow(
+                                                    blurRadius: 3,
+                                                    color: Colors.black38,
+                                                    offset: Offset(1, 1),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+
+                                            const SizedBox(height: 16),
+                                            const SizedBox(height: 80),
                                           ],
                                         ),
                                       ),
-                                      const SizedBox(height: 16),
-
-                                      // Extra space so last content scrolls fully into view
-                                      const SizedBox(height: 80),
-                                    ],
+                                    ),
                                   ),
                                 ),
                               ),
@@ -173,7 +192,6 @@ class _AboutScreenState extends State<AboutScreen> {
                         ),
                         const SizedBox(height: 14),
 
-                        // Back button
                         Align(
                           alignment: Alignment.centerLeft,
                           child: GestureDetector(
@@ -181,7 +199,8 @@ class _AboutScreenState extends State<AboutScreen> {
                             child: SizedBox(
                               width: 56,
                               height: 56,
-                              child: SvgPicture.asset('assets/icons/back.svg'),
+                              child:
+                                  SvgPicture.asset('assets/icons/back.svg'),
                             ),
                           ),
                         ),
