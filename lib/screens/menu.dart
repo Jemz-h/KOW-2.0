@@ -29,23 +29,23 @@ _MenuButtonThemeStyle _menuButtonThemeStyle(String theme) {
   switch (theme) {
     case 'classroom':
       return const _MenuButtonThemeStyle(
-        normalGradient: [Color(0xFFF3F3F3), Color(0xFFCDCDCD)],
-        pressedGradient: [Color(0xFFFFE87A), Color(0xFFC6861A)],
+        normalGradient: const [Color(0xFFF3F3F3), Color(0xFFCDCDCD)],
+        pressedGradient: const [Color(0xFFFFE87A), Color(0xFFC6861A)],
         textColor: Colors.black,
         pressedTextColor: Colors.white,
       );
     case 'sauyo':
       return const _MenuButtonThemeStyle(
-        normalGradient: [Color(0xFFF2F2F2), Color(0xFFC7C7C7)],
-        pressedGradient: [Color(0xFFA9E4B6), Color(0xFF3F8D4E)],
+        normalGradient: const [Color(0xFFF2F2F2), Color(0xFFC7C7C7)],
+        pressedGradient: const [Color(0xFFA9E4B6), Color(0xFF3F8D4E)],
         textColor: Colors.black,
         pressedTextColor: const Color(0xFF145A21),
       );
     case 'space':
     default:
       return const _MenuButtonThemeStyle(
-        normalGradient: [Color(0xFFF2F2F2), Color(0xFFC5C5C5)],
-        pressedGradient: [Color(0xFFC9DEFF), Color(0xFF4E6FAF)],
+        normalGradient: const [Color(0xFFF2F2F2), Color(0xFFC5C5C5)],
+        pressedGradient: const [Color(0xFFC9DEFF), Color(0xFF4E6FAF)],
         textColor: Colors.black,
         pressedTextColor: const Color(0xFF123D8D),
       );
