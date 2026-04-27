@@ -59,19 +59,19 @@ class LogoRow extends StatelessWidget {
           Image.asset(
             'assets/misc/sauyo.png',
             height: width * 0.12,
-            errorBuilder: (_, __, ___) => SizedBox(height: width * 0.12),
+            errorBuilder: (_, __, ___) => SizedBox(width: width * 0.12, height: width * 0.12),
           ),
           SizedBox(width: width * 0.03),
           Image.asset(
             'assets/misc/qcu.png',
             height: width * 0.12,
-            errorBuilder: (_, __, ___) => SizedBox(height: width * 0.12),
+            errorBuilder: (_, __, ___) => SizedBox(width: width * 0.12, height: width * 0.12),
           ),
           SizedBox(width: width * 0.03),
           Image.asset(
             'assets/misc/bctpoc.png',
             height: width * 0.12,
-            errorBuilder: (_, __, ___) => SizedBox(height: width * 0.12),
+            errorBuilder: (_, __, ___) => SizedBox(width: width * 0.12, height: width * 0.12),
           ),
         ],
       ),
