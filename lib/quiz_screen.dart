@@ -4,8 +4,8 @@ import 'dart:math';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'api_service.dart';
-import 'grade_select/level_map.dart';
 import 'level_progression.dart';
+import 'local_sync_store.dart';
 import 'screens/start.dart';
 import 'widgets/mock_background.dart';
 
@@ -479,6 +479,22 @@ class QuizScreen extends StatefulWidget {
   State<QuizScreen> createState() => _QuizScreenState();
 }
 
+class QuizCompletionResult {
+  const QuizCompletionResult({
+    required this.completedNodeIndex,
+    required this.passed,
+    required this.score,
+    required this.total,
+    required this.difficulty,
+  });
+
+  final int completedNodeIndex;
+  final bool passed;
+  final int score;
+  final int total;
+  final String difficulty;
+}
+
 class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
   int _qi = 0;
   int _score = 0;
@@ -492,6 +508,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
   Future<void>? _completionPersistFuture;
   List<QuizQuestion>? _remoteQuestions;
   String? _quizErrorMessage;
+  String? _completionSyncErrorMessage;
   late final DateTime _sessionStartedAt;
 
   late final AnimationController _fadeCtrl;
@@ -674,6 +691,11 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
     _isSubmittingScore = true;
     try {
       final playedAt = DateTime.now().toIso8601String();
+      if (mounted) {
+        setState(() {
+          _completionSyncErrorMessage = null;
+        });
+      }
       await ApiService.submitScore(
         studentId: studentId,
         grade: widget.grade,
@@ -686,6 +708,15 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
 
       final maxScore = _qs.isNotEmpty ? _qs.length : 1;
       final passed = (_score / maxScore) >= 0.7;
+      if (passed) {
+        await LocalSyncStore.instance.saveLocalLevelProgress(
+          studentId: studentId,
+          grade: widget.grade,
+          subject: widget.subject,
+          highestNodeIndex: widget.nodeIndex + 1,
+        );
+      }
+
       final diffId = switch (widget.difficulty) {
         'EASY' => 1,
         'AVERAGE' => 2,
@@ -705,8 +736,23 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
         totalTimePlayed: timeSpentSeconds < 0 ? 0 : timeSpentSeconds,
         lastPlayedAt: playedAt,
       );
-    } catch (_) {
-      // Keep gameplay uninterrupted if score sync fails.
+    } on ApiException catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _completionSyncErrorMessage = e.message;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _completionSyncErrorMessage =
+            'Unable to save progress to the server: $error';
+      });
     } finally {
       _isSubmittingScore = false;
     }
@@ -722,8 +768,14 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
     await _submitFinalScore();
   }
 
-  String _difficultyForNode(int nodeIndex) {
-    return LevelProgression.difficultyForNode(nodeIndex);
+  QuizCompletionResult _completionResult() {
+    return QuizCompletionResult(
+      completedNodeIndex: widget.nodeIndex,
+      passed: _passedCurrentLevel,
+      score: _score,
+      total: _qs.length,
+      difficulty: widget.difficulty,
+    );
   }
 
   // ── Game logic ────────────────────────────────────────────────────────────
@@ -1363,6 +1415,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
               total: _qs.length,
               difficulty: widget.difficulty,
               canAdvance: _passedCurrentLevel,
+              syncErrorMessage: _completionSyncErrorMessage,
               onNext: () async {
                 if (!_passedCurrentLevel) {
                   setState(() {
@@ -1373,6 +1426,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                     _showResult = false;
                     _showDonePopup = false;
                     _completionPersistFuture = null;
+                    _completionSyncErrorMessage = null;
                   });
                   _fadeCtrl.reset();
                   return;
@@ -1382,33 +1436,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                 await _ensureCompletionPersisted();
                 if (!mounted) return;
 
-                final nextNodeIndex = widget.nodeIndex + 1;
-                if (nextNodeIndex >= QuizScreen.totalNodes) {
-                  navigator.pushReplacement(
-                    MaterialPageRoute(
-                      builder: (_) => LevelMapScreen(
-                        grade: widget.grade,
-                        subject: widget.subject,
-                        gradeImg: widget.gradeImg,
-                      ),
-                    ),
-                  );
-                  return;
-                }
-
-                final nextDifficulty = _difficultyForNode(nextNodeIndex);
-
-                navigator.pushReplacement(
-                  MaterialPageRoute(
-                    builder: (_) => QuizScreen(
-                      difficulty: nextDifficulty,
-                      grade: widget.grade,
-                      subject: widget.subject,
-                      gradeImg: widget.gradeImg,
-                      nodeIndex: nextNodeIndex,
-                    ),
-                  ),
-                );
+                navigator.pop(_completionResult());
               },
               onRestart: () {
                 setState(() {
@@ -1419,26 +1447,18 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                   _showResult = false;
                   _showDonePopup = false;
                   _completionPersistFuture = null;
+                  _completionSyncErrorMessage = null;
                 });
                 _fadeCtrl.reset();
               },
               // ── RETURN TO MAP ──────────────────────────────────────────
-              // Navigates back to LevelMapScreen passing the same grade,
-              // subject and gradeImg that launched this quiz.
+              // Returns the completion payload so the map can animate Sisa.
               onReturnMap: () async {
                 final navigator = Navigator.of(context);
                 await _ensureCompletionPersisted();
                 if (!mounted) return;
 
-                navigator.pushReplacement(
-                  MaterialPageRoute(
-                    builder: (_) => LevelMapScreen(
-                      grade: widget.grade,
-                      subject: widget.subject,
-                      gradeImg: widget.gradeImg,
-                    ),
-                  ),
-                );
+                navigator.pop(_completionResult());
               },
               onHome: () async {
                 final navigator = Navigator.of(context);
@@ -1683,6 +1703,7 @@ class _LevelCompletePopup extends StatefulWidget {
   final int score, total;
   final String difficulty;
   final bool canAdvance;
+  final String? syncErrorMessage;
   final VoidCallback onNext, onRestart, onReturnMap, onHome;
 
   const _LevelCompletePopup({
@@ -1690,6 +1711,7 @@ class _LevelCompletePopup extends StatefulWidget {
     required this.total,
     required this.difficulty,
     required this.canAdvance,
+    this.syncErrorMessage,
     required this.onNext,
     required this.onRestart,
     required this.onReturnMap,
@@ -1882,6 +1904,36 @@ class _LevelCompletePopupState extends State<_LevelCompletePopup>
                                   sw * kPopGradeFs,
                                   kPopGradeLS,
                                 ),
+
+                                if (widget.syncErrorMessage != null) ...[
+                                  SizedBox(height: sh * kPopGapGS),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: sw * 0.03,
+                                      vertical: sh * 0.016,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFFE6E6),
+                                      borderRadius: BorderRadius.circular(
+                                        sw * 0.022,
+                                      ),
+                                      border: Border.all(
+                                        color: const Color(0xFFD94A4A),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      widget.syncErrorMessage!,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontFamily: 'SuperCartoon',
+                                        fontSize: sw * 0.028,
+                                        color: const Color(0xFFB03434),
+                                        height: 1.35,
+                                      ),
+                                    ),
+                                  ),
+                                ],
 
                                 SizedBox(height: sh * kPopGapGS),
 

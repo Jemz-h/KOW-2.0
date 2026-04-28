@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 
-/// Shows the "BREAK TIME!" dialog (Image 3 right).
-///
-/// Mint-green card with sleepy Sisa mascot, message, and an EXIT button.
-void showBreakTimePopup(BuildContext context) {
-  showDialog(
+/// Shows the "BREAK TIME!" dialog.
+Future<void> showBreakTimePopup(BuildContext context) {
+  return showDialog<void>(
     context: context,
     barrierDismissible: true,
     builder: (ctx) {

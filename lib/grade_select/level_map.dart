@@ -2,11 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import '../break_time_policy.dart';
 import '../screens/settings.dart'; // ← adjust path to match where settings.dart lives
 import '../quiz_screen.dart';
 import '../api_service.dart';
 import '../level_progression.dart';
+import '../local_sync_store.dart';
+import '../widgets/backend_feedback.dart';
+import '../widgets/break_time.dart';
 import '../widgets/mock_background.dart';
+
+const bool _debugShowBreakTimeOnEveryNextLevel = true;
 
 // ── Grade → planet image paths ────────────────────────────────
 const _gradePlanets = {
@@ -202,6 +208,9 @@ class _LevelMapScreenState extends State<LevelMapScreen>
     with TickerProviderStateMixin {
   static const List<int> _nodeTravelOrder = [8, 7, 6, 5, 4, 3, 2, 1, 0];
 
+  late final AnimationController _nodeSlideCtrl;
+  late Animation<Offset> _nodeSlideAnim;
+
   int _selectedDifficultyIndex = 0;
   int _selectedNodeIndex = 0;
   int _maxUnlockedTravelNodeIndex = 0;
@@ -231,6 +240,11 @@ class _LevelMapScreenState extends State<LevelMapScreen>
   void initState() {
     super.initState();
 
+    _nodeSlideCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    );
+
     _gojoCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1800),
@@ -257,6 +271,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
 
   @override
   void dispose() {
+    _nodeSlideCtrl.dispose();
     _gojoCtrl.dispose();
     _islandCtrl.dispose();
     super.dispose();
@@ -278,21 +293,12 @@ class _LevelMapScreenState extends State<LevelMapScreen>
     if (!mounted) return;
 
     final unlockedLevel = _maxUnlockedNodeIndex() + 1;
-    await showDialog<void>(
+    await BackendFeedbackOverlay.showMessage(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Level Locked'),
-        content: Text(
-          'You are currently up to Level $unlockedLevel. '
-          'Finish that level first to unlock the next one.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
+      title: 'Level Locked',
+      tone: BackendFeedbackTone.warning,
+      message:
+          'Sisa is currently up to Level $unlockedLevel. Finish that slab first to unlock the next path.',
     );
   }
 
@@ -300,40 +306,81 @@ class _LevelMapScreenState extends State<LevelMapScreen>
     if (!mounted || _didShowNoContentDialog) return;
 
     _didShowNoContentDialog = true;
-    await showDialog<void>(
+    await BackendFeedbackOverlay.showMessage(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Nothing Here Yet'),
-        content: Text(
-          'We do not have activities for ${widget.grade} - ${widget.subject} yet. '
-          'Please choose another subject for now.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
+      title: 'Nothing Here Yet',
+      tone: BackendFeedbackTone.warning,
+      message:
+          'No activities are ready for ${widget.grade} - ${widget.subject} yet. Try another subject for now.',
     );
   }
 
   Future<void> _showMissingLevelDialog(int levelNumber) async {
     if (!mounted) return;
 
-    await showDialog<void>(
+    await BackendFeedbackOverlay.showMessage(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('Level $levelNumber Unavailable'),
-        content: Text("There ain't no Level $levelNumber yet."),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
+      title: 'Level $levelNumber Unavailable',
+      tone: BackendFeedbackTone.warning,
+      message:
+          'That slab has no questions yet. Sync updates or choose another level while new questions are prepared.',
     );
+  }
+
+  Future<void> _showMapCompleteDialog() async {
+    if (!mounted) return;
+
+    await BackendFeedbackOverlay.showMessage(
+      context: context,
+      title: 'Map Complete',
+      tone: BackendFeedbackTone.success,
+      message:
+          'Sisa reached the final ${widget.subject} slab for ${widget.grade}. Great adventure!',
+    );
+  }
+
+  Future<void> _showNextLevelDialog(int nodeIndex) async {
+    if (!mounted) return;
+
+    final difficulty = LevelProgression.difficultyForNode(nodeIndex);
+    final rows = await ApiService.getQuestions(
+      grade: widget.grade,
+      subject: widget.subject,
+      difficulty: difficulty,
+    );
+    if (!mounted) return;
+
+    final levelRows = LevelProgression.questionsForNode(
+      rows: rows,
+      nodeIndex: nodeIndex,
+      difficulty: difficulty,
+    );
+    final questionCount = levelRows.length;
+    if (questionCount == 0) {
+      await BackendFeedbackOverlay.showMessage(
+        context: context,
+        title: 'Still Preparing',
+        tone: BackendFeedbackTone.warning,
+        message:
+            'Level ${nodeIndex + 1} is unlocked, but it needs fresh questions before Sisa can play it.',
+      );
+      return;
+    }
+
+    final shouldPlay = await BackendFeedbackOverlay.showChoice(
+      context: context,
+      title: 'Level ${nodeIndex + 1} Unlocked',
+      tone: BackendFeedbackTone.success,
+      message:
+          '${widget.grade} - ${widget.subject}\n$difficulty slab\n$questionCount questions are ready for Sisa.',
+      primaryLabel: 'Play Next',
+      secondaryLabel: 'Stay on Map',
+      barrierDismissible: false,
+    );
+
+    if (shouldPlay == true && mounted) {
+      await _launchQuizForSelectedLevel();
+    }
   }
 
   Future<void> _checkCategoryHasAnyContent() async {
@@ -473,6 +520,20 @@ class _LevelMapScreenState extends State<LevelMapScreen>
         0,
         _nodeTravelOrder.length - 1,
       );
+
+      final localHighestNode = await LocalSyncStore.instance
+          .getLocalLevelProgress(
+            studentId: studentId,
+            grade: targetGrade,
+            subject: targetSubject,
+          );
+      if (localHighestNode != null && localHighestNode > maxUnlockedNode) {
+        maxUnlockedNode = localHighestNode.clamp(
+          0,
+          _nodeTravelOrder.length - 1,
+        );
+      }
+
       if (!scoreRowsLoaded ||
           (completedAttempts == 0 && highestDiffPassed > 0)) {
         final fromDiff = highestDiffPassed.clamp(
@@ -521,10 +582,35 @@ class _LevelMapScreenState extends State<LevelMapScreen>
       return;
     }
 
+    final travelNodes = _nodeTravelOrder
+        .map(
+          (index) => _Node(
+            MediaQuery.of(context).size.width *
+                [kN1X, kN2X, kN3X, kN4X, kN5X, kN6X, kN7X, kN8X, kN9X][index],
+            MediaQuery.of(context).size.height *
+                [kN1Y, kN2Y, kN3Y, kN4Y, kN5Y, kN6Y, kN7Y, kN8Y, kN9Y][index],
+            Colors.white,
+          ),
+        )
+        .toList();
+
+    final current = travelNodes[_selectedNodeIndex];
+    final next = travelNodes[nextNodeIndex];
+
+    _nodeSlideAnim =
+        Tween<Offset>(
+          begin: Offset(current.x, current.y),
+          end: Offset(next.x, next.y),
+        ).animate(
+          CurvedAnimation(parent: _nodeSlideCtrl, curve: Curves.easeOutCubic),
+        );
+
     setState(() {
       _selectedNodeIndex = nextNodeIndex;
       _selectedDifficultyIndex = _difficultyIndexFromNode(nextNodeIndex);
     });
+
+    await _nodeSlideCtrl.forward(from: 0);
   }
 
   Future<void> _handleDifficultySwipe(double velocity) async {
@@ -570,7 +656,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
 
     if (!mounted) return;
 
-    await Navigator.of(context).push(
+    final result = await Navigator.of(context).push<QuizCompletionResult>(
       PageRouteBuilder(
         pageBuilder: (_, animation, _) => QuizScreen(
           difficulty: selectedDifficulty,
@@ -587,6 +673,39 @@ class _LevelMapScreenState extends State<LevelMapScreen>
 
     if (!mounted) return;
     await _loadProgressUnlocks();
+
+    if (result == null || !result.passed) {
+      return;
+    }
+
+    final nextNodeIndex = (result.completedNodeIndex + 1).clamp(
+      0,
+      _nodeTravelOrder.length - 1,
+    );
+    if (nextNodeIndex <= result.completedNodeIndex) {
+      await _showMapCompleteDialog();
+      return;
+    }
+
+    setState(() {
+      if (nextNodeIndex > _maxUnlockedTravelNodeIndex) {
+        _maxUnlockedTravelNodeIndex = nextNodeIndex;
+      }
+    });
+
+    await _updateSelectedNode(nextNodeIndex);
+    if (!mounted) return;
+
+    await Future.delayed(const Duration(milliseconds: 420));
+    if (!mounted) return;
+
+    if (_debugShowBreakTimeOnEveryNextLevel ||
+        BreakTimePolicy.shouldShowAfterPassedLevel(result.completedNodeIndex)) {
+      await showBreakTimePopup(context);
+      if (!mounted) return;
+    }
+
+    await _showNextLevelDialog(nextNodeIndex);
   }
 
   @override
@@ -644,11 +763,6 @@ class _LevelMapScreenState extends State<LevelMapScreen>
       _Node(sw * kN9X, sh * kN9Y, g),
     ];
 
-    final travelNodes = _nodeTravelOrder
-        .map((index) => nodes[index])
-        .toList(growable: false);
-    final selectedTravelNode = travelNodes[_selectedNodeIndex];
-    final characterSize = sw * kGojoSize;
     final isComingSoonWorld = widget.grade.toUpperCase() == 'COMING';
     final isPlayDisabled =
         isComingSoonWorld || !_categoryHasContent || _checkingCategoryContent;
@@ -700,22 +814,47 @@ class _LevelMapScreenState extends State<LevelMapScreen>
             _planetWidget(planets[0], earthC, earthR), // earth   — bottom
             // 5. Gojo / sisa character — floats between mars and earth
             AnimatedBuilder(
-              animation: _gojoAnim,
-              builder: (_, child) => Positioned(
-                left: selectedTravelNode.x - (characterSize / 2),
-                top:
-                    selectedTravelNode.y -
-                    (characterSize / 2) +
-                    _gojoAnim.value,
-                child: child!,
-              ),
+              animation: Listenable.merge([_nodeSlideCtrl, _gojoAnim]),
+              builder: (_, child) {
+                final size = MediaQuery.of(context).size;
+                final sw = size.width;
+                final sh = size.height;
+
+                final nodes = [
+                  Offset(sw * kN1X, sh * kN1Y),
+                  Offset(sw * kN2X, sh * kN2Y),
+                  Offset(sw * kN3X, sh * kN3Y),
+                  Offset(sw * kN4X, sh * kN4Y),
+                  Offset(sw * kN5X, sh * kN5Y),
+                  Offset(sw * kN6X, sh * kN6Y),
+                  Offset(sw * kN7X, sh * kN7Y),
+                  Offset(sw * kN8X, sh * kN8Y),
+                  Offset(sw * kN9X, sh * kN9Y),
+                ];
+
+                final travelNodes = _nodeTravelOrder
+                    .map((i) => nodes[i])
+                    .toList();
+
+                final selected = travelNodes[_selectedNodeIndex];
+
+                final pos = _nodeSlideCtrl.isAnimating
+                    ? _nodeSlideAnim.value
+                    : selected;
+
+                final characterSize = sw * kGojoSize;
+
+                return Positioned(
+                  left: pos.dx - (characterSize / 2),
+                  top: pos.dy - (characterSize / 2) + _gojoAnim.value,
+                  child: child!,
+                );
+              },
               child: Image.asset(
-                'assets/sisa_oyo/sisa.png',
-                width: characterSize,
-                height: characterSize,
+                'assets/sisa_oyo/sisa_node.gif',
+                width: MediaQuery.of(context).size.width * kGojoSize,
+                height: MediaQuery.of(context).size.width * kGojoSize,
                 fit: BoxFit.contain,
-                errorBuilder: (_, _, _) =>
-                    const Icon(Icons.person, color: Colors.white, size: 32),
               ),
             ),
 

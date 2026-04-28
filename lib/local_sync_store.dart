@@ -66,6 +66,8 @@ class LocalSyncStore {
       <String, List<Map<String, dynamic>>>{};
   final Map<int, Map<String, dynamic>> _webQuestionImageCache =
       <int, Map<String, dynamic>>{};
+  final Map<String, Map<String, dynamic>> _webLevelProgress =
+      <String, Map<String, dynamic>>{};
   final Map<String, String> _webSettings = <String, String>{};
   Map<String, dynamic>? _webSession;
 
@@ -171,6 +173,24 @@ class LocalSyncStore {
     return value.trim().toLowerCase();
   }
 
+  String _normalizeProgressSubject(String value) {
+    switch (value.trim().toUpperCase()) {
+      case 'MATH':
+      case 'MATHEMATICS':
+        return 'MATHEMATICS';
+      case 'SCIENCE':
+        return 'SCIENCE';
+      case 'READING':
+      case 'ENGLISH':
+        return 'ENGLISH';
+      case 'WRITING':
+      case 'FILIPINO':
+        return 'FILIPINO';
+      default:
+        return value.trim().toUpperCase();
+    }
+  }
+
   Future<Database> _database() async {
     if (_db != null) return _db!;
 
@@ -179,7 +199,7 @@ class LocalSyncStore {
 
     _db = await openDatabase(
       dbPath,
-      version: 8,
+      version: 9,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE students_local (
@@ -292,6 +312,17 @@ class LocalSyncStore {
             updated_at TEXT NOT NULL
           )
         ''');
+
+        await db.execute('''
+          CREATE TABLE level_progress_local (
+            student_id INTEGER NOT NULL,
+            grade TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            highest_node_index INTEGER NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (student_id, grade, subject)
+          )
+        ''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -389,10 +420,116 @@ class LocalSyncStore {
             )
           ''');
         }
+
+        if (oldVersion < 9) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS level_progress_local (
+              student_id INTEGER NOT NULL,
+              grade TEXT NOT NULL,
+              subject TEXT NOT NULL,
+              highest_node_index INTEGER NOT NULL,
+              updated_at TEXT NOT NULL,
+              PRIMARY KEY (student_id, grade, subject)
+            )
+          ''');
+        }
       },
     );
 
     return _db!;
+  }
+
+  String _levelProgressKey({
+    required int studentId,
+    required String grade,
+    required String subject,
+  }) {
+    return '$studentId|${grade.trim().toUpperCase()}|${_normalizeProgressSubject(subject)}';
+  }
+
+  Future<void> saveLocalLevelProgress({
+    required int studentId,
+    required String grade,
+    required String subject,
+    required int highestNodeIndex,
+  }) async {
+    final normalizedGrade = grade.trim().toUpperCase();
+    final normalizedSubject = _normalizeProgressSubject(subject);
+    final now = DateTime.now().toIso8601String();
+
+    if (_useWebMemoryStore) {
+      final key = _levelProgressKey(
+        studentId: studentId,
+        grade: normalizedGrade,
+        subject: normalizedSubject,
+      );
+      final current =
+          (_webLevelProgress[key]?['highest_node_index'] as num?)?.toInt() ?? 0;
+      _webLevelProgress[key] = {
+        'student_id': studentId,
+        'grade': normalizedGrade,
+        'subject': normalizedSubject,
+        'highest_node_index': highestNodeIndex > current
+            ? highestNodeIndex
+            : current,
+        'updated_at': now,
+      };
+      return;
+    }
+
+    final db = await _database();
+    final rows = await db.query(
+      'level_progress_local',
+      columns: ['highest_node_index'],
+      where: 'student_id = ? AND grade = ? AND subject = ?',
+      whereArgs: [studentId, normalizedGrade, normalizedSubject],
+      limit: 1,
+    );
+
+    final current = rows.isEmpty
+        ? 0
+        : ((rows.first['highest_node_index'] as num?)?.toInt() ?? 0);
+    final nextHighest = highestNodeIndex > current ? highestNodeIndex : current;
+
+    await db.insert('level_progress_local', {
+      'student_id': studentId,
+      'grade': normalizedGrade,
+      'subject': normalizedSubject,
+      'highest_node_index': nextHighest,
+      'updated_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<int?> getLocalLevelProgress({
+    required int studentId,
+    required String grade,
+    required String subject,
+  }) async {
+    final normalizedGrade = grade.trim().toUpperCase();
+    final normalizedSubject = _normalizeProgressSubject(subject);
+
+    if (_useWebMemoryStore) {
+      final key = _levelProgressKey(
+        studentId: studentId,
+        grade: normalizedGrade,
+        subject: normalizedSubject,
+      );
+      return (_webLevelProgress[key]?['highest_node_index'] as num?)?.toInt();
+    }
+
+    final db = await _database();
+    final rows = await db.query(
+      'level_progress_local',
+      columns: ['highest_node_index'],
+      where: 'student_id = ? AND grade = ? AND subject = ?',
+      whereArgs: [studentId, normalizedGrade, normalizedSubject],
+      limit: 1,
+    );
+
+    if (rows.isEmpty) {
+      return null;
+    }
+    return (rows.first['highest_node_index'] as num?)?.toInt();
   }
 
   Future<void> saveSyncedStudent({
@@ -1111,6 +1248,30 @@ class LocalSyncStore {
       'area': area,
       'created_at': now,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<bool> hasPendingSyncWork() async {
+    if (_useWebMemoryStore) {
+      return _webPendingRegistrations.isNotEmpty ||
+          _webPendingScores.isNotEmpty ||
+          _webPendingProgress.isNotEmpty ||
+          _webPendingProfileUpdates.isNotEmpty;
+    }
+
+    final db = await _database();
+    for (final table in const [
+      'pending_registrations',
+      'pending_scores',
+      'pending_progress',
+      'pending_profile_updates',
+    ]) {
+      final rows = await db.rawQuery('SELECT COUNT(*) AS count FROM $table');
+      final count = (rows.first['count'] as num?)?.toInt() ?? 0;
+      if (count > 0) {
+        return true;
+      }
+    }
+    return false;
   }
 
   Future<void> syncPendingRegistrations({

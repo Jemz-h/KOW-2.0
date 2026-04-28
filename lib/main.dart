@@ -7,6 +7,7 @@ import 'api_service.dart';
 import 'local_sync_store.dart';
 import 'services/audio.dart';
 import 'screens/start.dart';
+import 'widgets/backend_feedback.dart';
 import 'widgets/mock_background.dart';
 
 // ─── MAIN ─────────────────────────────────────────────
@@ -88,8 +89,31 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       AudioService().stop();
     } else if (state == AppLifecycleState.resumed) {
       AudioService().playBackgroundMusic();
-      unawaited(ApiService.syncPending());
+      unawaited(_syncPendingWithFeedback());
     }
+  }
+
+  Future<void> _syncPendingWithFeedback() async {
+    final hasPendingWork = await LocalSyncStore.instance.hasPendingSyncWork();
+    if (!mounted) return;
+
+    if (!hasPendingWork) {
+      await ApiService.syncPending();
+      return;
+    }
+
+    await BackendFeedbackOverlay.runWithLoading<void>(
+      context: context,
+      title: 'Syncing Online',
+      message: 'Sending saved adventure progress to KOW.',
+      loadingMessages: const [
+        'Syncing learner profile',
+        'Uploading scores',
+        'Refreshing questions',
+        'Saving progress online',
+      ],
+      task: ApiService.syncPending,
+    );
   }
 
   @override

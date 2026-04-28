@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../api_service.dart';
 import '../navigation/route_transitions.dart';
+import '../widgets/backend_feedback.dart';
 import '../widgets/form.dart';
 import '../widgets/kow_animated_button.dart';
 import '../widgets/mock_background.dart';
@@ -142,73 +143,6 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
   late final Animation<Offset> _popupSlide;
   late final Animation<double> _popupScale;
 
-  void _showImportantAlert(String message) {
-    final overlay = Overlay.of(context, rootOverlay: true);
-
-    late final OverlayEntry entry;
-    entry = OverlayEntry(
-      builder: (overlayContext) {
-        return SafeArea(
-          child: IgnorePointer(
-            ignoring: true,
-            child: Material(
-              color: Colors.transparent,
-              child: Stack(
-                children: [
-                  Positioned(
-                    top: 14,
-                    left: 16,
-                    right: 16,
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 560),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1E1E1E),
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Colors.black38,
-                                blurRadius: 18,
-                                offset: Offset(0, 10),
-                              ),
-                            ],
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 14,
-                            ),
-                            child: Text(
-                              message,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontFamily: 'SuperCartoon',
-                                fontSize: 14,
-                                fontWeight: FontWeight.w800,
-                                height: 1.25,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-
-    overlay.insert(entry);
-    Future.delayed(const Duration(seconds: 4), () {
-      entry.remove();
-    });
-  }
-
   @override
   void initState() {
     super.initState();
@@ -295,23 +229,53 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
         _birthdayController.text.trim().isEmpty ||
         _selectedSex == null ||
         !_agreedToTerms) {
-      _showImportantAlert('Please fill all required fields.');
+      await BackendFeedbackOverlay.showMessage(
+        context: context,
+        title: 'Missing Info',
+        message: 'Please fill all required fields.',
+        tone: BackendFeedbackTone.warning,
+      );
       return;
     }
 
     setState(() => _isSubmitting = true);
     try {
-      await ApiService.register(
-        firstName: _firstNameController.text.trim(),
-        lastName: _lastNameController.text.trim(),
-        nickname: _nicknameController.text.trim(),
-        birthday: _birthdayController.text.trim(),
-        sex: _selectedSex!,
-        area: _areaController.text.trim().isEmpty
-            ? null
-            : _areaController.text.trim(),
+      await BackendFeedbackOverlay.runWithLoading<void>(
+        context: context,
+        title: 'Creating Learner',
+        message: 'Saving your learner profile...',
+        loadingMessages: const [
+          'Saving on this device',
+          'Preparing online sync',
+          'Checking KOW server',
+        ],
+        task: () => ApiService.register(
+          firstName: _firstNameController.text.trim(),
+          lastName: _lastNameController.text.trim(),
+          nickname: _nicknameController.text.trim(),
+          birthday: _birthdayController.text.trim(),
+          sex: _selectedSex!,
+          area: _areaController.text.trim().isEmpty
+              ? null
+              : _areaController.text.trim(),
+        ),
       );
 
+      if (!mounted) {
+        return;
+      }
+
+      final wasUploadedOnline = ApiService.currentStudentId != null;
+      await BackendFeedbackOverlay.showMessage(
+        context: context,
+        title: wasUploadedOnline ? 'Saved Online' : 'Saved Locally',
+        message: wasUploadedOnline
+            ? 'Your learner profile is ready. Welcome to KOW!'
+            : 'Your learner profile is queued in the local database and will sync when the server is reachable.',
+        tone: wasUploadedOnline
+            ? BackendFeedbackTone.success
+            : BackendFeedbackTone.warning,
+      );
       if (!mounted) {
         return;
       }
@@ -321,13 +285,21 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
       if (!mounted) {
         return;
       }
-      _showImportantAlert(e.message);
+      await BackendFeedbackOverlay.showMessage(
+        context: context,
+        title: 'Sign-Up Failed',
+        message: e.message,
+        tone: BackendFeedbackTone.error,
+      );
     } catch (_) {
       if (!mounted) {
         return;
       }
-      _showImportantAlert(
-        'Sign-up failed. Check backend connection and try again.',
+      await BackendFeedbackOverlay.showMessage(
+        context: context,
+        title: 'Server Unreachable',
+        message: 'Sign-up failed. Check backend connection and try again.',
+        tone: BackendFeedbackTone.error,
       );
     } finally {
       if (mounted) {
@@ -617,7 +589,7 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
                           SizedBox(height: 1 * scale),
                           KowTextField(
                             controller: _firstNameController,
-                            hintText: 'Example: Sisa',
+                            hintText: 'Juan',
                             height: fieldHeight,
                             fontSize: fieldFont,
                             borderRadius: fieldRadius,
@@ -628,7 +600,7 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
                           SizedBox(height: 1 * scale),
                           KowTextField(
                             controller: _lastNameController,
-                            hintText: 'Example: Oyo',
+                            hintText: 'Dela Cruz',
                             height: fieldHeight,
                             fontSize: fieldFont,
                             borderRadius: fieldRadius,
@@ -639,7 +611,7 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
                           SizedBox(height: 1 * scale),
                           KowTextField(
                             controller: _nicknameController,
-                            hintText: 'Example: Sample',
+                            hintText: 'Juan',
                             height: fieldHeight,
                             fontSize: fieldFont,
                             borderRadius: fieldRadius,
@@ -714,14 +686,16 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
                                 assetPath: 'assets/icons/male.svg',
                                 selected: _selectedSex == 'MALE',
                                 size: avatarSize,
-                                onTap: () => setState(() => _selectedSex = 'MALE'),
+                                onTap: () =>
+                                    setState(() => _selectedSex = 'MALE'),
                               ),
                               SizedBox(width: 20 * scale),
                               _buildSexAvatar(
                                 assetPath: 'assets/icons/female.svg',
                                 selected: _selectedSex == 'FEMALE',
                                 size: avatarSize,
-                                onTap: () => setState(() => _selectedSex = 'FEMALE'),
+                                onTap: () =>
+                                    setState(() => _selectedSex = 'FEMALE'),
                               ),
                             ],
                           ),

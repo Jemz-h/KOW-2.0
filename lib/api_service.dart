@@ -47,13 +47,15 @@ class ApiService {
       final androidInfo = await _deviceInfo.androidInfo;
       final model = androidInfo.model.trim();
       final manufacturer = androidInfo.manufacturer.trim();
+      final release = androidInfo.version.release.trim();
 
       if (manufacturer.isNotEmpty && model.isNotEmpty) {
-        return '$manufacturer $model';
+        final deviceName = '$manufacturer $model';
+        return release.isEmpty ? deviceName : '$deviceName (Android $release)';
       }
 
       if (model.isNotEmpty) {
-        return model;
+        return release.isEmpty ? model : '$model (Android $release)';
       }
 
       return 'KOW Device';
@@ -192,6 +194,12 @@ class ApiService {
         sex: sex,
         area: area,
       );
+      if (studentId == null) {
+        throw const ApiException(
+          502,
+          'Sign-up reached the server but did not return a learner ID. Please try again.',
+        );
+      }
       _currentStudentId = studentId;
       _currentNickname = nickname;
       _currentBirthday = birthday;
@@ -201,20 +209,18 @@ class ApiService {
         birthday: birthday,
       );
 
-      if (studentId != null) {
-        await LocalSyncStore.instance.saveSyncedStudent(
-          student: Student(
-            studentId: studentId,
-            firstName: firstName,
-            lastName: lastName,
-            nickname: nickname,
-            sex: sex,
-            area: area,
-            totalScore: 0,
-          ),
-          birthday: birthday,
-        );
-      }
+      await LocalSyncStore.instance.saveSyncedStudent(
+        student: Student(
+          studentId: studentId,
+          firstName: firstName,
+          lastName: lastName,
+          nickname: nickname,
+          sex: sex,
+          area: area,
+          totalScore: 0,
+        ),
+        birthday: birthday,
+      );
 
       startContentVersionPolling();
       unawaited(syncPending());
@@ -1058,6 +1064,51 @@ class ApiService {
   }) async {
     final normalizedSubject = _normalizeSubject(subject);
     final normalizedDifficulty = _normalizeDifficultyForServer(difficulty);
+    final gradeLevelId = _gradeLevelIdFor(grade);
+    final subjectId = _subjectIdFor(normalizedSubject);
+    final difficultyId = _difficultyIdFor(normalizedDifficulty);
+    final passed = total > 0 && (score / total) >= 0.7 ? 1 : 0;
+
+    try {
+      final res = await _runWithRetry(
+        () => _sendWithTimeout(
+          _client.post(
+            Uri.parse('$_base/api/sync'),
+            headers: _headers,
+            body: jsonEncode({
+              'device_id': _deviceUuid,
+              'batches': [
+                {
+                  'stud_id': studentId,
+                  'events': [
+                    {
+                      'stud_id': studentId,
+                      'event_type': 'score',
+                      'payload': {
+                        'subject_id': subjectId,
+                        'gradelvl_id': gradeLevelId,
+                        'diff_id': difficultyId,
+                        'score': score,
+                        'max_score': total,
+                        'passed': passed,
+                        'played_at': playedAt,
+                      },
+                    },
+                  ],
+                },
+              ],
+            }),
+          ),
+        ),
+        shouldRetry: _isRetryableSyncError,
+      );
+      _checkStatus(res);
+      return;
+    } on ApiException catch (e) {
+      if (!_isLegacyEndpointFallbackError(e)) {
+        rethrow;
+      }
+    }
 
     final res = await _runWithRetry(
       () => _sendWithTimeout(
@@ -1115,6 +1166,47 @@ class ApiService {
     required String lastPlayedAt,
   }) async {
     final normalizedSubject = _normalizeSubject(subject);
+    final gradeLevelId = _gradeLevelIdFor(grade);
+    final subjectId = _subjectIdFor(normalizedSubject);
+
+    try {
+      final res = await _runWithRetry(
+        () => _sendWithTimeout(
+          _client.post(
+            Uri.parse('$_base/api/sync'),
+            headers: _headers,
+            body: jsonEncode({
+              'device_id': _deviceUuid,
+              'batches': [
+                {
+                  'stud_id': studentId,
+                  'events': [
+                    {
+                      'stud_id': studentId,
+                      'event_type': 'progress',
+                      'payload': {
+                        'subject_id': subjectId,
+                        'gradelvl_id': gradeLevelId,
+                        'highest_diff_passed': highestDiffPassed ?? 0,
+                        'total_time_played': totalTimePlayed,
+                        'last_played_at': lastPlayedAt,
+                      },
+                    },
+                  ],
+                },
+              ],
+            }),
+          ),
+        ),
+        shouldRetry: _isRetryableSyncError,
+      );
+      _checkStatus(res);
+      return;
+    } on ApiException catch (e) {
+      if (!_isLegacyEndpointFallbackError(e)) {
+        rethrow;
+      }
+    }
 
     final res = await _runWithRetry(
       () => _sendWithTimeout(
@@ -1197,6 +1289,10 @@ class ApiService {
 
   static bool _isIgnorableOracleParentKeyError(ApiException e) {
     return e.statusCode == 500 && e.message.contains('ORA-02291');
+  }
+
+  static bool _isLegacyEndpointFallbackError(ApiException e) {
+    return e.statusCode == 400 || e.statusCode == 404 || e.statusCode == 405;
   }
 
   static bool _isRetryableSyncError(Object error) {
@@ -1348,69 +1444,123 @@ class ApiService {
     final tmpLocalId = 'TMP-${_uuid.v4()}';
     final normalizedBirthday = _normalizeBirthday(birthday);
 
-    final res = await _runWithRetry(
+    try {
+      final res = await _runWithRetry(
+        () => _sendWithTimeout(
+          _client.post(
+            Uri.parse('$_base/api/sync'),
+            headers: _headers,
+            body: jsonEncode({
+              'device_id': _deviceUuid,
+              'batches': [
+                {
+                  'stud_id': tmpLocalId,
+                  'events': [
+                    {
+                      'stud_id': tmpLocalId,
+                      'event_type': 'register',
+                      'payload': {
+                        'tmp_local_id': tmpLocalId,
+                        'first_name': firstName,
+                        'last_name': lastName,
+                        'nickname': nickname.trim(),
+                        'birthday': normalizedBirthday,
+                        'sex_id': _sexIdForLabel(sex),
+                      },
+                    },
+                  ],
+                },
+              ],
+            }),
+          ),
+        ),
+        shouldRetry: _isRetryableSyncError,
+      );
+      _checkStatus(res);
+
+      try {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        final errors = body['errors'];
+        if (errors is List && errors.isNotEmpty) {
+          throw ApiException(
+            400,
+            'Live registration failed: ${jsonEncode(errors)}',
+          );
+        }
+
+        final idMappings = body['id_mappings'];
+        if (idMappings is List) {
+          for (final mapping in idMappings) {
+            if (mapping is! Map) {
+              continue;
+            }
+            final tmpId = (mapping['tmp_id'] as String?)?.trim();
+            if (tmpId != tmpLocalId) {
+              continue;
+            }
+            final parsed = _parseStudentId(mapping['real_id']);
+            if (parsed != null && parsed > 0) {
+              return parsed;
+            }
+          }
+        }
+      } on ApiException {
+        rethrow;
+      } catch (_) {
+        // Fall through to lookup if the sync response shape is older than expected.
+      }
+    } on ApiException catch (e) {
+      if (!_isLegacyEndpointFallbackError(e)) {
+        rethrow;
+      }
+    }
+
+    final legacyRes = await _runWithRetry(
       () => _sendWithTimeout(
         _client.post(
-          Uri.parse('$_base/api/sync'),
+          Uri.parse('$_base/api/students/register'),
           headers: _headers,
           body: jsonEncode({
-            'device_id': _deviceUuid,
-            'batches': [
-              {
-                'stud_id': tmpLocalId,
-                'events': [
-                  {
-                    'stud_id': tmpLocalId,
-                    'event_type': 'register',
-                    'payload': {
-                      'tmp_local_id': tmpLocalId,
-                      'first_name': firstName,
-                      'last_name': lastName,
-                      'nickname': nickname.trim(),
-                      'birthday': normalizedBirthday,
-                      'sex_id': _sexIdForLabel(sex),
-                    },
-                  },
-                ],
-              },
-            ],
+            'firstName': firstName,
+            'lastName': lastName,
+            'nickname': nickname.trim(),
+            'birthday': normalizedBirthday,
+            'sex': sex,
+            'sex_id': _sexIdForLabel(sex),
+            'area': area,
+            'deviceUuid': _deviceUuid,
+            'device_uuid': _deviceUuid,
+            'tmpLocalId': tmpLocalId,
+            'tmp_local_id': tmpLocalId,
           }),
         ),
       ),
       shouldRetry: _isRetryableSyncError,
     );
-    _checkStatus(res);
+    _checkStatus(legacyRes);
 
     try {
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
-      final errors = body['errors'];
-      if (errors is List && errors.isNotEmpty) {
-        throw ApiException(
-          400,
-          'Live registration failed: ${jsonEncode(errors)}',
-        );
-      }
-
-      final idMappings = body['id_mappings'];
-      if (idMappings is List) {
-        for (final mapping in idMappings) {
-          if (mapping is! Map) {
-            continue;
-          }
-          final tmpId = (mapping['tmp_id'] as String?)?.trim();
-          if (tmpId != tmpLocalId) {
-            continue;
-          }
-          final parsed = _parseStudentId(mapping['real_id']);
-          if (parsed != null && parsed > 0) {
-            return parsed;
-          }
+      final body = jsonDecode(legacyRes.body) as Map<String, dynamic>;
+      final student = body['student'];
+      if (student is Map) {
+        final parsed =
+            _parseStudentId(student['studentId']) ??
+            _parseStudentId(student['student_id']);
+        if (parsed != null && parsed > 0) {
+          return parsed;
         }
+      }
+      final directId =
+          _parseStudentId(body['studentId']) ??
+          _parseStudentId(body['student_id']) ??
+          _parseStudentId(body['stud_id']);
+      if (directId != null && directId > 0) {
+        return directId;
       }
     } on ApiException {
       rethrow;
     } catch (_) {
-      // Fall through to lookup if the sync response shape is older than expected.
+      // Fall through to lookup if the legacy response shape is older than expected.
     }
 
     final lookup = await _lookupRemoteStudent(

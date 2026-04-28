@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../api_service.dart';
 import '../navigation/route_transitions.dart';
+import '../widgets/backend_feedback.dart';
 import '../widgets/form.dart';
 import '../widgets/kow_animated_button.dart';
 import '../widgets/mock_background.dart';
@@ -41,10 +42,14 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
   @override
   void initState() {
     super.initState();
-    _introController = AnimationController(vsync: this, duration: _kIntroDuration)
-      ..forward();
-    _emphasisController =
-        AnimationController(vsync: this, duration: _kEmphasisDuration)..repeat();
+    _introController = AnimationController(
+      vsync: this,
+      duration: _kIntroDuration,
+    )..forward();
+    _emphasisController = AnimationController(
+      vsync: this,
+      duration: _kEmphasisDuration,
+    )..repeat();
   }
 
   @override
@@ -70,7 +75,10 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
     return FadeTransition(
       opacity: curved,
       child: SlideTransition(
-        position: Tween<Offset>(begin: slideBegin, end: Offset.zero).animate(curved),
+        position: Tween<Offset>(
+          begin: slideBegin,
+          end: Offset.zero,
+        ).animate(curved),
         child: child,
       ),
     );
@@ -85,7 +93,9 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
     return AnimatedBuilder(
       animation: _emphasisController,
       builder: (_, inner) {
-        final wave = math.sin(_emphasisController.value * 2 * math.pi + phaseOffset);
+        final wave = math.sin(
+          _emphasisController.value * 2 * math.pi + phaseOffset,
+        );
         return Transform.translate(
           offset: Offset(0, -liftBuilder(wave)),
           child: Transform.scale(scale: scaleBuilder(wave), child: inner),
@@ -98,17 +108,30 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
   Future<void> _handleStart(BuildContext context) async {
     final isValid = _formKey.currentState?.validate() ?? false;
     if (!isValid) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter your nickname and birthday.')),
+      await BackendFeedbackOverlay.showMessage(
+        context: context,
+        title: 'Missing Info',
+        message: 'Please enter your nickname and birthday.',
+        tone: BackendFeedbackTone.warning,
       );
       return;
     }
 
     setState(() => _isLoading = true);
     try {
-      await ApiService.login(
-        nickname: _nicknameController.text.trim(),
-        birthday: _birthdayController.text.trim(),
+      await BackendFeedbackOverlay.runWithLoading<void>(
+        context: context,
+        title: 'Checking Account',
+        message: 'Opening your saved KOW adventure...',
+        loadingMessages: const [
+          'Checking this device',
+          'Looking for saved progress',
+          'Trying online account lookup',
+        ],
+        task: () => ApiService.login(
+          nickname: _nicknameController.text.trim(),
+          birthday: _birthdayController.text.trim(),
+        ),
       );
 
       if (!context.mounted) {
@@ -119,13 +142,21 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      await BackendFeedbackOverlay.showMessage(
+        context: context,
+        title: 'Login Failed',
+        message: e.message,
+        tone: BackendFeedbackTone.error,
+      );
     } catch (_) {
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not connect to server. Try again.')),
+      await BackendFeedbackOverlay.showMessage(
+        context: context,
+        title: 'Server Unreachable',
+        message: 'Could not connect to the KOW server. Try again.',
+        tone: BackendFeedbackTone.error,
       );
     } finally {
       if (mounted) {
@@ -138,7 +169,8 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
-      initialDate: _selectedBirthday ?? DateTime(now.year - 8, now.month, now.day),
+      initialDate:
+          _selectedBirthday ?? DateTime(now.year - 8, now.month, now.day),
       firstDate: DateTime(1900),
       lastDate: now,
     );
@@ -168,7 +200,10 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
         final mediaH = MediaQuery.of(dialogContext).size.height;
         return Dialog(
           backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 18,
+          ),
           child: Center(
             child: ConstrainedBox(
               constraints: BoxConstraints(
@@ -182,7 +217,8 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
                     Navigator.of(dialogContext).pop();
                     pushFadeReplacement(context, const StartScreen());
                   },
-                  onAlreadyHaveAccountTap: () => Navigator.of(dialogContext).pop(),
+                  onAlreadyHaveAccountTap: () =>
+                      Navigator.of(dialogContext).pop(),
                 ),
               ),
             ),
@@ -202,7 +238,10 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
             final screenW = math.min(constraints.maxWidth, _kWebMaxWidth);
             final screenH = constraints.maxHeight;
             final isTablet = screenW >= _kTabletBreakpoint;
-            final contentW = math.min(screenW, isTablet ? _kMaxContentWidth : screenW);
+            final contentW = math.min(
+              screenW,
+              isTablet ? _kMaxContentWidth : screenW,
+            );
             final scale = math.min(contentW / _kFigmaW, screenH / _kFigmaH);
             final designW = _kFigmaW * scale;
             final designH = _kFigmaH * scale;
@@ -236,35 +275,50 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
                             bottom: sx(200),
                             width: sx(160),
                             height: sx(160),
-                            child: Image.asset('assets/themes/planets_spc.png', fit: BoxFit.contain),
+                            child: Image.asset(
+                              'assets/themes/planets_spc.png',
+                              fit: BoxFit.contain,
+                            ),
                           ),
                           Positioned(
                             left: sx(60),
                             bottom: sx(20),
                             width: sx(140),
                             height: sx(140),
-                            child: Image.asset('assets/themes/planets_spc.png', fit: BoxFit.contain),
+                            child: Image.asset(
+                              'assets/themes/planets_spc.png',
+                              fit: BoxFit.contain,
+                            ),
                           ),
                           Positioned(
                             right: sx(10),
                             bottom: sx(10),
                             width: sx(130),
                             height: sx(130),
-                            child: Image.asset('assets/themes/planets_spc.png', fit: BoxFit.contain),
+                            child: Image.asset(
+                              'assets/themes/planets_spc.png',
+                              fit: BoxFit.contain,
+                            ),
                           ),
                           Positioned(
                             left: sx(-50),
                             top: sx(100),
                             width: sx(200),
                             height: sx(200),
-                            child: Image.asset('assets/sisa_oyo/oyo.png', fit: BoxFit.contain),
+                            child: Image.asset(
+                              'assets/sisa_oyo/oyo.png',
+                              fit: BoxFit.contain,
+                            ),
                           ),
                           Positioned(
                             right: sx(-10),
                             top: sx(100),
                             width: sx(110),
                             height: sx(240),
-                            child: Image.asset('assets/sisa_oyo/sisa.png', fit: BoxFit.contain),
+                            child: Image.asset(
+                              'assets/sisa_oyo/sisa.png',
+                              fit: BoxFit.contain,
+                            ),
                           ),
                           Positioned(
                             left: 0,
@@ -351,7 +405,8 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
                             width: sx(372),
                             child: Form(
                               key: _formKey,
-                              autovalidateMode: AutovalidateMode.onUserInteraction,
+                              autovalidateMode:
+                                  AutovalidateMode.onUserInteraction,
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -401,10 +456,14 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
                                   SizedBox(
                                     height: sx(60).clamp(56.0, 76.0),
                                     child: KowAnimatedButton(
-                                      label: _isLoading ? 'LOADING...' : 'START',
+                                      label: _isLoading
+                                          ? 'LOADING...'
+                                          : 'START',
                                       backgroundColor: const Color(0xFF5C87E5),
                                       textColor: Colors.white,
-                                      onPressed: _isLoading ? null : () => _handleStart(context),
+                                      onPressed: _isLoading
+                                          ? null
+                                          : () => _handleStart(context),
                                       height: sx(66).clamp(56.0, 76.0),
                                       fontSize: sx(25).clamp(20.0, 28.0),
                                     ),
@@ -413,9 +472,15 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
                                   AnimatedBuilder(
                                     animation: _emphasisController,
                                     builder: (_, child) {
-                                      final wave = math.sin(_emphasisController.value * 2 * math.pi);
-                                      final opacity = 0.65 + ((wave + 1) * 0.175);
-                                      return Opacity(opacity: opacity, child: child);
+                                      final wave = math.sin(
+                                        _emphasisController.value * 2 * math.pi,
+                                      );
+                                      final opacity =
+                                          0.65 + ((wave + 1) * 0.175);
+                                      return Opacity(
+                                        opacity: opacity,
+                                        child: child,
+                                      );
                                     },
                                     child: Text(
                                       'NO NICKNAME YET? CLICK THE BUTTON BELOW',
@@ -443,7 +508,8 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
                                       label: 'SIGN UP',
                                       backgroundColor: const Color(0xFFF2F089),
                                       textColor: const Color(0xFF2B2B2B),
-                                      onPressed: () => _showSignUpDialog(context),
+                                      onPressed: () =>
+                                          _showSignUpDialog(context),
                                       height: sx(60).clamp(56.0, 70.0),
                                       fontSize: sx(22).clamp(18.0, 26.0),
                                       width: sx(150).clamp(140.0, 180.0),

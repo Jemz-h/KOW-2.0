@@ -1,0 +1,40 @@
+<svg width="220" height="180" viewBox="0 0 220 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="badge" x1="36" y1="26" x2="184" y2="156" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFA9A"/>
+      <stop offset="0.52" stop-color="#72E7FF"/>
+      <stop offset="1" stop-color="#92FFB8"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="74" y1="61" x2="146" y2="127" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1F3A8A"/>
+      <stop offset="1" stop-color="#071338"/>
+    </linearGradient>
+    <filter id="shadow" x="13" y="9" width="194" height="164" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="8"/>
+      <feGaussianBlur stdDeviation="8"/>
+      <feComposite in2="hardAlpha" operator="out"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.02 0 0 0 0 0.04 0 0 0 0 0.14 0 0 0 0.28 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1_2"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1_2" result="shape"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <path d="M110 22C153.1 22 188 52.6 188 90.4C188 128.2 153.1 158.8 110 158.8C66.9 158.8 32 128.2 32 90.4C32 52.6 66.9 22 110 22Z" fill="url(#badge)"/>
+    <path d="M110 30C148 30 178.8 57.1 178.8 90.4C178.8 123.8 148 150.8 110 150.8C72 150.8 41.2 123.8 41.2 90.4C41.2 57.1 72 30 110 30Z" fill="#FFFDF0" fill-opacity="0.82"/>
+    <path d="M70 74C70 64.1 78.1 56 88 56H132C141.9 56 150 64.1 150 74V116C150 125.9 141.9 134 132 134H88C78.1 134 70 125.9 70 116V74Z" fill="url(#screen)"/>
+    <path d="M82 78C82 72.5 86.5 68 92 68H128C133.5 68 138 72.5 138 78V106C138 111.5 133.5 116 128 116H92C86.5 116 82 111.5 82 106V78Z" fill="#EAFBFF"/>
+    <path d="M91 121H129" stroke="#071338" stroke-width="7" stroke-linecap="round"/>
+    <path d="M98 84C104 78.8 116 78.8 122 84" stroke="#1F8FFF" stroke-width="7" stroke-linecap="round"/>
+    <path d="M104 95C107.3 92.1 112.7 92.1 116 95" stroke="#10B981" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="110" cy="106" r="5" fill="#FFB703"/>
+    <circle cx="74" cy="55" r="7" fill="#FFB703"/>
+    <circle cx="146" cy="57" r="7" fill="#10B981"/>
+    <circle cx="55" cy="102" r="6" fill="#1F8FFF"/>
+    <circle cx="165" cy="105" r="6" fill="#EF4444"/>
+    <path d="M54 68C61.5 58.2 71.8 50.5 84.1 46.5" stroke="#071338" stroke-width="5" stroke-linecap="round" stroke-dasharray="3 10"/>
+    <path d="M166 68C158.5 58.2 148.2 50.5 135.9 46.5" stroke="#071338" stroke-width="5" stroke-linecap="round" stroke-dasharray="3 10"/>
+    <path d="M70 139C79.8 146.4 93.8 150.8 110 150.8C126.2 150.8 140.2 146.4 150 139" stroke="#071338" stroke-width="5" stroke-linecap="round"/>
+  </g>
+</svg>
