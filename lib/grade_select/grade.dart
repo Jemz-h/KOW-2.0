@@ -29,7 +29,6 @@ const List<Map<String, String>> _kGrades = [
   {'label': 'COMING', 'age': 'SOON'},
 ];
 
-/// Returns the SVG asset path for a given grade slot and theme.
 String _gradeAsset(int gradeIndex, String theme) {
   const Map<String, List<String>> _themeAssets = {
     'sauyo':     ['assets/grade_select/s_1.svg', 'assets/grade_select/s_2.svg', 'assets/grade_select/s_3.svg'],
@@ -40,7 +39,6 @@ String _gradeAsset(int gradeIndex, String theme) {
   return assets[gradeIndex.clamp(0, assets.length - 1)];
 }
 
-/// Per-page background assets keyed by theme then page key.
 const Map<String, Map<String, String>> _themePageBackgrounds = {
   'classroom': {
     'grade_select': 'assets/themes/p.class-def.png',
@@ -56,15 +54,18 @@ const Map<String, Map<String, String>> _themePageBackgrounds = {
   },
 };
 
-/// Returns the background asset for [page] under the current [theme],
-/// falling back to the generic themeBackgrounds map if not found.
 String _pageBg(String theme, String page) {
   return _themePageBackgrounds[theme]?[page] ??
       themeBackgrounds[theme] ??
       themeBackgrounds['space']!;
 }
 
-const List<int> _kSlots = [-1, 0, 1];
+// ── Each rendered card holds its grade index for the full animation ─
+class _CardSlot {
+  final int slot;      // visual position: -1 (left), 0 (centre), 1 (right)
+  final int gradeIdx;  // pinned grade index — never changes mid-animation
+  const _CardSlot(this.slot, this.gradeIdx);
+}
 
 class GradeSelectScreen extends StatefulWidget {
   const GradeSelectScreen({super.key});
@@ -74,10 +75,23 @@ class GradeSelectScreen extends StatefulWidget {
 
 class _GradeSelectScreenState extends State<GradeSelectScreen>
     with TickerProviderStateMixin {
-  double _position = 0.0;
-  double _toPosition = 0.0;
+
+  final int _n = _kGrades.length;
+
+  // Settled integer grade index (wraps with modulo).
+  int _centreIndex = 0;
+
+  // Fractional offset: 0.0 = settled, animates to ±1.0 then resets to 0.
+  // All visual transforms read this value so motion is perfectly smooth.
+  double _offset = 0.0;
+
+  // Pinned card assignments — set once at the start of each swipe and
+  // held constant until the animation completes. This is what prevents
+  // image blinking: no slot ever changes its grade image mid-animation.
+  late List<_CardSlot> _cards;
+
   final ValueNotifier<bool> _showPopup = ValueNotifier(false);
-  late List<int> _sortedSlots;
+
   late final AnimationController _carouselCtrl;
   late final AnimationController _bobCtrl;
   late final Animation<double>   _bobAnim;
@@ -87,28 +101,55 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
   late final AnimationController _shipCtrl;
   late final Animation<double>   _shipBob;
   late final Animation<double>   _shipWiggle;
-  late final Tween<double> _carouselTween = Tween<double>(begin: 0, end: 0);
-  late Animation<double>   _carouselAnim;
+
+  // Animates _offset from 0 → ±1 (the direction of the swipe).
+  final Tween<double> _offsetTween = Tween<double>(begin: 0, end: 0);
+  late final CurvedAnimation _offsetCurved;
+
+  int _wrap(int i) => ((i % _n) + _n) % _n;
 
   @override
   void initState() {
     super.initState();
-    _sortedSlots = List.from(_kSlots);
+
+    // Initial card layout: left = grade before centre, centre, right = after.
+    _rebuildCards(centre: 0, dir: 0);
+
     _carouselCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 520));
-    _carouselAnim = _carouselTween.animate(
-        CurvedAnimation(parent: _carouselCtrl, curve: Curves.easeInOut));
+        vsync: this, duration: const Duration(milliseconds: 480));
+
+    _offsetCurved = CurvedAnimation(
+        parent: _carouselCtrl, curve: Curves.easeInOut);
+
+    // Drive _offset every frame — purely a visual float, no index logic here.
+    _carouselCtrl.addListener(() {
+      setState(() => _offset = _offsetTween.evaluate(_offsetCurved));
+    });
+
+    // When the animation finishes: snap _offset back to 0, advance
+    // _centreIndex, and rebuild the card layout for the new rest state.
+    _carouselCtrl.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        setState(() {
+          _offset = 0.0;
+          _rebuildCards(centre: _centreIndex, dir: 0);
+        });
+      }
+    });
+
     _bobCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 2000))
       ..repeat(reverse: true);
     _bobAnim = Tween<double>(begin: -10, end: 10).animate(
         CurvedAnimation(parent: _bobCtrl, curve: Curves.easeInOut));
+
     _popupCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 300));
     _popupScale = Tween<double>(begin: 0.75, end: 1.0).animate(
         CurvedAnimation(parent: _popupCtrl, curve: Curves.easeOutBack));
     _popupFade  = Tween<double>(begin: 0.0,  end: 1.0).animate(
         CurvedAnimation(parent: _popupCtrl, curve: Curves.easeOut));
+
     _shipCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 1800))
       ..repeat(reverse: true);
@@ -118,9 +159,33 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
         CurvedAnimation(parent: _shipCtrl, curve: Curves.easeInOut));
   }
 
+  // Build the pinned card list.
+  // dir == 0  → resting layout  (left=prev, centre=cur, right=next)
+  // dir == 1  → swiping right   (an extra card is introduced on the right)
+  // dir == -1 → swiping left    (an extra card is introduced on the left)
+  void _rebuildCards({required int centre, required int dir}) {
+    _cards = [
+      _CardSlot(-1, _wrap(centre - 1)),
+      _CardSlot( 0, _wrap(centre)),
+      _CardSlot( 1, _wrap(centre + 1)),
+    ];
+  }
+
+  // Z-order: cards farther from visual centre are painted first (behind).
+  List<_CardSlot> get _zSorted {
+    final sorted = List<_CardSlot>.from(_cards);
+    sorted.sort((a, b) {
+      final da = (a.slot - _offset).abs();
+      final db = (b.slot - _offset).abs();
+      return db.compareTo(da);
+    });
+    return sorted;
+  }
+
   @override
   void dispose() {
     _carouselCtrl.dispose();
+    _offsetCurved.dispose();
     _bobCtrl.dispose();
     _popupCtrl.dispose();
     _shipCtrl.dispose();
@@ -128,37 +193,19 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
     super.dispose();
   }
 
-  int get _currentVirtual => _toPosition.round();
-  int _realIndex(int virtual) =>
-      (virtual % _kGrades.length + _kGrades.length) % _kGrades.length;
-  int get _currentIndex => _realIndex(_currentVirtual);
-
-  void _updateSortedSlots() {
-    final animOffset = _position - _currentVirtual;
-    _sortedSlots = List.from(_kSlots)
-      ..sort((a, b) {
-        final da = (a - animOffset).abs();
-        final db = (b - animOffset).abs();
-        return db.compareTo(da);
-      });
-  }
-
   void _go(int dir) {
     if (_carouselCtrl.isAnimating) return;
-    final from = _position;
-    final next = _toPosition + dir;
-    _toPosition = next;
-    _carouselTween
-      ..begin = from
-      ..end   = next;
-    _carouselAnim = _carouselTween.animate(
-        CurvedAnimation(parent: _carouselCtrl, curve: Curves.easeInOut));
-    _carouselAnim.addListener(() {
-      setState(() {
-        _position = _carouselAnim.value;
-        _updateSortedSlots();
-      });
-    });
+
+    // Advance the settled centre index.
+    _centreIndex = _wrap(_centreIndex + dir);
+
+    // Pin the card → grade assignments for this whole animation.
+    // dir > 0 means swiping right → offset moves from 0 to +1
+    // dir < 0 means swiping left  → offset moves from 0 to -1
+    // The card list stays the same; we just animate _offset toward ±1.
+    _offsetTween.begin = 0.0;
+    _offsetTween.end   = dir.toDouble();
+
     _carouselCtrl.forward(from: 0);
   }
 
@@ -176,13 +223,11 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
       _showPopup.value = false;
       Navigator.of(context).push(PageRouteBuilder(
         pageBuilder: (_, animation, __) => LevelMapScreen(
-          grade:    _kGrades[_currentIndex]['label']!,
+          grade:    _kGrades[_centreIndex]['label']!,
           subject:  subject,
-          gradeImg: _gradeAsset(_currentIndex, selectedThemeNotifier.value),
+          gradeImg: _gradeAsset(_centreIndex, selectedThemeNotifier.value),
         ),
         transitionsBuilder: (_, animation, __, child) {
-          // Slide up from ~30 % below + fade in — distinct from the plain
-          // FadeTransition used for Settings and the back-nav routes.
           final slide = Tween<Offset>(
             begin: const Offset(0.0, 0.30),
             end:   Offset.zero,
@@ -219,11 +264,9 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
     final settingSize  = r.s(54.0);
     final backSize     = r.s(58.0);
     final bannerH      = r.sh(90.0);
-    final bannerFloat  = r.sh(120.0);
-    final floatIconSz  = r.sw(130.0);
     final arrowSize    = r.s(95.0);
     final labelSize    = r.s(24.0);
-  final ageSize      = r.s(17.0);
+    final ageSize      = r.s(17.0);
     final bannerRadius = r.sw(30.0);
 
     return Scaffold(
@@ -231,19 +274,17 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
         fit: StackFit.expand,
         children: [
 
-          // ── Background (grade_select variant per theme) ──────────
+          // ── Background ───────────────────────────────────────────
           ValueListenableBuilder<String>(
             valueListenable: selectedThemeNotifier,
-            builder: (context, theme, _) {
-              return RepaintBoundary(
-                child: Image.asset(
-                  _pageBg(theme, 'grade_select'),
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) =>
-                      Container(color: const Color(0xFF0D1B2E)),
-                ),
-              );
-            },
+            builder: (context, theme, _) => RepaintBoundary(
+              child: Image.asset(
+                _pageBg(theme, 'grade_select'),
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) =>
+                    Container(color: const Color(0xFF0D1B2E)),
+              ),
+            ),
           ),
 
           // ── Title ────────────────────────────────────────────────
@@ -299,35 +340,37 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
                 valueListenable: selectedThemeNotifier,
                 builder: (_, theme, __) {
                   return AnimatedBuilder(
-                    animation: _bobCtrl,
+                    animation: Listenable.merge([_carouselCtrl, _bobCtrl]),
                     builder: (_, __) {
-                      final animOffset = _position - _currentVirtual;
+                      final cards = _zSorted;
                       return Stack(
                         alignment: Alignment.center,
-                        children: _sortedSlots.map((slot) {
-                          final gradeIdx = _realIndex(_currentVirtual + slot);
-                          final dist     = slot - animOffset;
-                          final scale    = _scaleFor(dist);
-                          final x        = _xFor(dist, size.width);
-                          final y        = _yFor(dist);
-                          final isCenter = slot == 0;
-                          final isSettled = !_carouselCtrl.isAnimating;
+                        children: cards.map((card) {
+                          // dist is how far this card is from screen centre.
+                          // It is purely a function of the smooth _offset float
+                          // so all transforms are continuous — no snapping.
+                          final dist  = card.slot.toDouble() - _offset;
+                          final scale = _scaleFor(dist);
+                          final x     = _xFor(dist, size.width);
+                          final y     = _yFor(dist);
+
+                          // Bob fades in/out as a card approaches centre.
+                          final bobWeight = (1.0 - dist.abs()).clamp(0.0, 1.0);
+
                           return RepaintBoundary(
+                            // Key on gradeIdx so Flutter never reuses a widget
+                            // for a different image — eliminates any residual
+                            // cross-fade artefact from widget recycling.
+                            key: ValueKey(card.gradeIdx),
                             child: Transform.translate(
-                              offset: Offset(x, y + (isCenter ? _bobAnim.value : 0)),
+                              offset: Offset(x, y + _bobAnim.value * bobWeight),
                               child: Transform.scale(
                                 scale: scale,
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    SvgPicture.asset(
-                                      _gradeAsset(gradeIdx, theme),
-                                      width: islandSize,
-                                      height: islandSize,
-                                      fit: BoxFit.contain,
-                                    ),
-
-                                  ],
+                                child: SvgPicture.asset(
+                                  _gradeAsset(card.gradeIdx, theme),
+                                  width: islandSize,
+                                  height: islandSize,
+                                  fit: BoxFit.contain,
                                 ),
                               ),
                             ),
@@ -341,16 +384,14 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
             ),
           ),
 
-          // ── Bottom banner (THEME-AWARE) ─────────────────────────────
+          // ── Bottom banner ────────────────────────────────────────
           ValueListenableBuilder<String>(
             valueListenable: selectedThemeNotifier,
             builder: (_, theme, __) {
               final isSpaceTheme = theme == 'space';
-
               return Positioned(
                 bottom: size.height * 0.06,
-                left: 0,
-                right: 0,
+                left: 0, right: 0,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -359,6 +400,7 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
+
                           // LEFT ARROW
                           GestureDetector(
                             behavior: HitTestBehavior.opaque,
@@ -367,37 +409,30 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
                               width: arrowSize,
                               height: bannerH * 1.25,
                               child: Center(
-                                child: Stack(
-                                  alignment: Alignment.center,
-                                  children: [
-                                    Text('<', style: TextStyle(
-                                      fontFamily: 'SuperCartoon',
-                                      fontSize: arrowSize,
-                                      foreground: Paint()
-                                        ..style = PaintingStyle.stroke
-                                        ..strokeWidth = 4
-                                        ..color = Colors.black,
-                                    )),
-                                    Text('<', style: TextStyle(
-                                      fontFamily: 'SuperCartoon',
-                                      fontSize: arrowSize,
-                                      color: const Color(0xFFFFD700),
-                                    )),
-                                  ],
-                                ),
+                                child: Stack(alignment: Alignment.center, children: [
+                                  Text('<', style: TextStyle(
+                                    fontFamily: 'SuperCartoon', fontSize: arrowSize,
+                                    foreground: Paint()
+                                      ..style = PaintingStyle.stroke
+                                      ..strokeWidth = 4
+                                      ..color = Colors.black,
+                                  )),
+                                  Text('<', style: TextStyle(
+                                    fontFamily: 'SuperCartoon', fontSize: arrowSize,
+                                    color: const Color(0xFFFFD700),
+                                  )),
+                                ]),
                               ),
                             ),
                           ),
 
-                          // CENTER RECTANGLE
+                          // CENTRE LABEL PANEL
                           Expanded(
                             child: Container(
                               height: bannerH * 1.25,
                               margin: EdgeInsets.symmetric(horizontal: r.sw(2)),
                               padding: EdgeInsets.symmetric(
-                                horizontal: r.sw(12),
-                                vertical: r.sh(6),
-                              ),
+                                  horizontal: r.sw(12), vertical: r.sh(6)),
                               decoration: BoxDecoration(
                                 color: isSpaceTheme
                                     ? const Color.fromARGB(150, 255, 255, 255)
@@ -407,12 +442,8 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  // LABEL
-                                  Stack(
-                                    alignment: Alignment.center,
-                                    children: [
-                                      Text(
-                                        _kGrades[_currentIndex]['label']!,
+                                  Stack(alignment: Alignment.center, children: [
+                                    Text(_kGrades[_centreIndex]['label']!,
                                         style: TextStyle(
                                           fontFamily: 'SuperCartoon',
                                           fontSize: labelSize * 1.15,
@@ -421,53 +452,33 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
                                             ..style = PaintingStyle.stroke
                                             ..strokeWidth = 4
                                             ..color = Colors.black,
-                                        ),
-                                      ),
-                                      Text(
-                                        _kGrades[_currentIndex]['label']!,
+                                        )),
+                                    Text(_kGrades[_centreIndex]['label']!,
                                         style: TextStyle(
                                           fontFamily: 'SuperCartoon',
                                           fontSize: labelSize * 1.15,
                                           color: const Color(0xFFFFD700),
                                           letterSpacing: labelSize * 0.20,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-
-                                  // DIVIDER (THEME-AWARE)
+                                        )),
+                                  ]),
                                   Padding(
                                     padding: EdgeInsets.symmetric(
-                                      vertical: r.sh(6),
-                                      horizontal: r.sw(16),
-                                    ),
+                                        vertical: r.sh(6), horizontal: r.sw(16)),
                                     child: Container(
                                       height: 4,
                                       decoration: BoxDecoration(
-                                        color: isSpaceTheme
-                                            ? Colors.black
-                                            : Colors.white,
+                                        color: isSpaceTheme ? Colors.black : Colors.white,
                                         borderRadius: BorderRadius.circular(3),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: (isSpaceTheme
-                                                    ? Colors.black
-                                                    : Colors.white)
-                                                .withValues(alpha: 0.6),
-                                            blurRadius: 6,
-                                            spreadRadius: 1,
-                                          )
-                                        ],
+                                        boxShadow: [BoxShadow(
+                                          color: (isSpaceTheme ? Colors.black : Colors.white)
+                                              .withValues(alpha: 0.6),
+                                          blurRadius: 6, spreadRadius: 1,
+                                        )],
                                       ),
                                     ),
                                   ),
-
-                                  // AGE
-                                  Stack(
-                                    alignment: Alignment.center,
-                                    children: [
-                                      Text(
-                                        _kGrades[_currentIndex]['age']!,
+                                  Stack(alignment: Alignment.center, children: [
+                                    Text(_kGrades[_centreIndex]['age']!,
                                         style: TextStyle(
                                           fontFamily: 'SuperCartoon',
                                           fontSize: ageSize * 1.1,
@@ -476,19 +487,15 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
                                             ..style = PaintingStyle.stroke
                                             ..strokeWidth = 3
                                             ..color = Colors.black,
-                                        ),
-                                      ),
-                                      Text(
-                                        _kGrades[_currentIndex]['age']!,
+                                        )),
+                                    Text(_kGrades[_centreIndex]['age']!,
                                         style: TextStyle(
                                           fontFamily: 'SuperCartoon',
                                           fontSize: ageSize * 1.1,
                                           color: const Color(0xFFFFD700),
                                           letterSpacing: ageSize * 0.20,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                        )),
+                                  ]),
                                 ],
                               ),
                             ),
@@ -502,24 +509,19 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
                               width: arrowSize,
                               height: bannerH * 1.25,
                               child: Center(
-                                child: Stack(
-                                  alignment: Alignment.center,
-                                  children: [
-                                    Text('>', style: TextStyle(
-                                      fontFamily: 'SuperCartoon',
-                                      fontSize: arrowSize,
-                                      foreground: Paint()
-                                        ..style = PaintingStyle.stroke
-                                        ..strokeWidth = 4
-                                        ..color = Colors.black,
-                                    )),
-                                    Text('>', style: TextStyle(
-                                      fontFamily: 'SuperCartoon',
-                                      fontSize: arrowSize,
-                                      color: const Color(0xFFFFD700),
-                                    )),
-                                  ],
-                                ),
+                                child: Stack(alignment: Alignment.center, children: [
+                                  Text('>', style: TextStyle(
+                                    fontFamily: 'SuperCartoon', fontSize: arrowSize,
+                                    foreground: Paint()
+                                      ..style = PaintingStyle.stroke
+                                      ..strokeWidth = 4
+                                      ..color = Colors.black,
+                                  )),
+                                  Text('>', style: TextStyle(
+                                    fontFamily: 'SuperCartoon', fontSize: arrowSize,
+                                    color: const Color(0xFFFFD700),
+                                  )),
+                                ]),
                               ),
                             ),
                           ),
@@ -531,14 +533,13 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
 
                     // PLAY BUTTON
                     AnimatedOpacity(
-                      opacity: !_carouselCtrl.isAnimating ? 1.0 : 0.0,
+                      opacity: _carouselCtrl.isAnimating ? 0.0 : 1.0,
                       duration: const Duration(milliseconds: 300),
                       child: _TapIcon(
                         onTap: _openPopup,
                         child: SvgPicture.asset(
                           'assets/icons/play.svg',
-                          width: r.sw(90),
-                          height: r.sw(90),
+                          width: r.sw(90), height: r.sw(90),
                         ),
                       ),
                     ),
@@ -548,7 +549,6 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
             },
           ),
 
-          
           // ── Back button ──────────────────────────────────────────
           Positioned(
             bottom: r.sh(20), left: r.sw(20),
@@ -606,8 +606,7 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Text(
-                                          'CHOOSE\nSUBJECT',
+                                        Text('CHOOSE\nSUBJECT',
                                           textAlign: TextAlign.center,
                                           style: TextStyle(
                                             fontFamily: 'SuperCartoon',
@@ -616,8 +615,7 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
                                             height: 1.1,
                                             shadows: const [Shadow(
                                               color: Colors.black45,
-                                              blurRadius: 4,
-                                              offset: Offset(2, 3),
+                                              blurRadius: 4, offset: Offset(2, 3),
                                             )],
                                           ),
                                         ),
@@ -723,8 +721,7 @@ class _SubjectButton extends StatelessWidget {
           clipBehavior: Clip.none,
           children: [
             Center(
-              child: Text(
-                label,
+              child: Text(label,
                 style: TextStyle(
                   fontFamily: 'SuperCartoon',
                   fontSize: scaledLabel,
@@ -741,8 +738,7 @@ class _SubjectButton extends StatelessWidget {
               top: (scaledBtnH - scaledIcon) / 2,
               child: SvgPicture.asset(
                 iconPath,
-                width: scaledIcon,
-                height: scaledIcon,
+                width: scaledIcon, height: scaledIcon,
                 allowDrawingOutsideViewBox: true,
               ),
             ),
