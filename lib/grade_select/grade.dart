@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'level_map.dart';
 import '../screens/settings.dart';
 import '../widgets/mock_background.dart';
+import '../widgets/coming_soon.dart'; // ← comingsoon()
 
 // ── Responsive helper ──────────────────────────────────────────
 class R {
@@ -62,8 +63,8 @@ String _pageBg(String theme, String page) {
 
 // ── Each rendered card holds its grade index for the full animation ─
 class _CardSlot {
-  final int slot;      // visual position: -1 (left), 0 (centre), 1 (right)
-  final int gradeIdx;  // pinned grade index — never changes mid-animation
+  final int slot;
+  final int gradeIdx;
   const _CardSlot(this.slot, this.gradeIdx);
 }
 
@@ -78,16 +79,9 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
 
   final int _n = _kGrades.length;
 
-  // Settled integer grade index (wraps with modulo).
   int _centreIndex = 0;
-
-  // Fractional offset: 0.0 = settled, animates to ±1.0 then resets to 0.
-  // All visual transforms read this value so motion is perfectly smooth.
   double _offset = 0.0;
 
-  // Pinned card assignments — set once at the start of each swipe and
-  // held constant until the animation completes. This is what prevents
-  // image blinking: no slot ever changes its grade image mid-animation.
   late List<_CardSlot> _cards;
 
   final ValueNotifier<bool> _showPopup = ValueNotifier(false);
@@ -102,17 +96,18 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
   late final Animation<double>   _shipBob;
   late final Animation<double>   _shipWiggle;
 
-  // Animates _offset from 0 → ±1 (the direction of the swipe).
   final Tween<double> _offsetTween = Tween<double>(begin: 0, end: 0);
   late final CurvedAnimation _offsetCurved;
 
   int _wrap(int i) => ((i % _n) + _n) % _n;
 
+  // True when the currently centred grade is the "COMING SOON" placeholder.
+  bool get _isComing => _kGrades[_centreIndex]['label'] == 'COMING';
+
   @override
   void initState() {
     super.initState();
 
-    // Initial card layout: left = grade before centre, centre, right = after.
     _rebuildCards(centre: 0, dir: 0);
 
     _carouselCtrl = AnimationController(
@@ -121,13 +116,10 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
     _offsetCurved = CurvedAnimation(
         parent: _carouselCtrl, curve: Curves.easeInOut);
 
-    // Drive _offset every frame — purely a visual float, no index logic here.
     _carouselCtrl.addListener(() {
       setState(() => _offset = _offsetTween.evaluate(_offsetCurved));
     });
 
-    // When the animation finishes: snap _offset back to 0, advance
-    // _centreIndex, and rebuild the card layout for the new rest state.
     _carouselCtrl.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         setState(() {
@@ -159,10 +151,6 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
         CurvedAnimation(parent: _shipCtrl, curve: Curves.easeInOut));
   }
 
-  // Build the pinned card list.
-  // dir == 0  → resting layout  (left=prev, centre=cur, right=next)
-  // dir == 1  → swiping right   (an extra card is introduced on the right)
-  // dir == -1 → swiping left    (an extra card is introduced on the left)
   void _rebuildCards({required int centre, required int dir}) {
     _cards = [
       _CardSlot(-1, _wrap(centre - 1)),
@@ -171,7 +159,6 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
     ];
   }
 
-  // Z-order: cards farther from visual centre are painted first (behind).
   List<_CardSlot> get _zSorted {
     final sorted = List<_CardSlot>.from(_cards);
     sorted.sort((a, b) {
@@ -195,18 +182,21 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
 
   void _go(int dir) {
     if (_carouselCtrl.isAnimating) return;
-
-    // Advance the settled centre index.
     _centreIndex = _wrap(_centreIndex + dir);
-
-    // Pin the card → grade assignments for this whole animation.
-    // dir > 0 means swiping right → offset moves from 0 to +1
-    // dir < 0 means swiping left  → offset moves from 0 to -1
-    // The card list stays the same; we just animate _offset toward ±1.
     _offsetTween.begin = 0.0;
     _offsetTween.end   = dir.toDouble();
-
     _carouselCtrl.forward(from: 0);
+  }
+
+  // Called when the play button is tapped.
+  // Shows the coming-soon dialog if the selected grade is a placeholder,
+  // otherwise opens the subject picker popup as normal.
+  void _onPlayTapped() {
+    if (_isComing) {
+      comingsoon(context);
+    } else {
+      _openPopup();
+    }
   }
 
   void _openPopup() {
@@ -346,21 +336,13 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
                       return Stack(
                         alignment: Alignment.center,
                         children: cards.map((card) {
-                          // dist is how far this card is from screen centre.
-                          // It is purely a function of the smooth _offset float
-                          // so all transforms are continuous — no snapping.
                           final dist  = card.slot.toDouble() - _offset;
                           final scale = _scaleFor(dist);
                           final x     = _xFor(dist, size.width);
                           final y     = _yFor(dist);
-
-                          // Bob fades in/out as a card approaches centre.
                           final bobWeight = (1.0 - dist.abs()).clamp(0.0, 1.0);
 
                           return RepaintBoundary(
-                            // Key on gradeIdx so Flutter never reuses a widget
-                            // for a different image — eliminates any residual
-                            // cross-fade artefact from widget recycling.
                             key: ValueKey(card.gradeIdx),
                             child: Transform.translate(
                               offset: Offset(x, y + _bobAnim.value * bobWeight),
@@ -531,12 +513,12 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
 
                     SizedBox(height: r.sh(14)),
 
-                    // PLAY BUTTON
+                    // PLAY BUTTON — routes to comingsoon() or subject popup
                     AnimatedOpacity(
                       opacity: _carouselCtrl.isAnimating ? 0.0 : 1.0,
                       duration: const Duration(milliseconds: 300),
                       child: _TapIcon(
-                        onTap: _openPopup,
+                        onTap: _onPlayTapped,
                         child: SvgPicture.asset(
                           'assets/icons/play.svg',
                           width: r.sw(90), height: r.sw(90),

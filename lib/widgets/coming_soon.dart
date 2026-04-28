@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 /// Shows the "OOPS!" coming-soon dialog (Image 3 left).
 ///
 /// Light-cyan card with construction mascot, message, and a RETURN button.
-void showComingSoonPopup(BuildContext context) {
+void comingsoon(BuildContext context) {
   showDialog(
     context: context,
     barrierDismissible: true,
