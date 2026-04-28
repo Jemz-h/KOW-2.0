@@ -425,13 +425,6 @@ class ApiService {
       }
     }
 
-    if (lookupCompletedOnline) {
-      throw const ApiException(
-        401,
-        'Live login failed: account was not found on the server.',
-      );
-    }
-
     final offlineStudent = await LocalSyncStore.instance.findOfflineStudent(
       nickname: normalizedNickname,
       birthday: normalizedBirthday,
@@ -446,7 +439,16 @@ class ApiService {
         nickname: offlineStudent.nickname,
         birthday: _currentBirthday!,
       );
+      startContentVersionPolling();
+      unawaited(syncPending());
       return offlineStudent;
+    }
+
+    if (lookupCompletedOnline) {
+      throw const ApiException(
+        401,
+        'Live login failed: account was not found on the server.',
+      );
     }
 
     if (lookupError != null && !_isConnectivityException(lookupError)) {
