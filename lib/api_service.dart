@@ -38,7 +38,7 @@ class ApiService {
 
   static Map<String, String> get _headers => {
     'Content-Type': 'application/json',
-    'Accept':       'application/json',
+    'Accept': 'application/json',
     if (_deviceToken != null) 'Authorization': 'Bearer $_deviceToken',
   };
 
@@ -259,7 +259,7 @@ class ApiService {
 
     // Ensure lookup-capable backends receive a device token before login attempts.
     await _tryEnsureDeviceAuth();
-    unawaited(syncPending());
+    await syncPending();
 
     ApiException? loginError;
 
@@ -278,15 +278,18 @@ class ApiService {
         );
         _checkStatus(res);
         final body = jsonDecode(res.body) as Map<String, dynamic>;
-        final student = Student.fromJson(body['student'] as Map<String, dynamic>);
+        final student = Student.fromJson(
+          body['student'] as Map<String, dynamic>,
+        );
         final resolvedBirthday = _normalizeBirthday(
           student.birthday == null || student.birthday!.isEmpty
               ? normalizedBirthday
               : student.birthday!,
         );
         _currentStudentId = student.studentId;
-        _currentNickname =
-            student.nickname.isEmpty ? normalizedNickname : student.nickname;
+        _currentNickname = student.nickname.isEmpty
+            ? normalizedNickname
+            : student.nickname;
         _currentBirthday = resolvedBirthday;
         await LocalSyncStore.instance.saveActiveSession(
           studentId: student.studentId,
@@ -317,97 +320,110 @@ class ApiService {
     }
 
     ApiException? lookupError;
-    final shouldAttemptLookupFallback = !_supportsStudentAuthLogin ||
+    var lookupCompletedOnline = false;
+    final shouldAttemptLookupFallback =
+        !_supportsStudentAuthLogin ||
         loginError == null ||
         loginError.statusCode == 400 ||
         loginError.statusCode == 404;
     if (shouldAttemptLookupFallback) {
       try {
-          final lookupCandidates = _nicknameCandidates(normalizedNickname);
-          Map<String, dynamic>? lookupBody;
+        final lookupCandidates = _nicknameCandidates(normalizedNickname);
+        Map<String, dynamic>? lookupBody;
 
-          for (final candidate in lookupCandidates) {
-            final lookupRes = await _sendWithTimeout(
-              _client.post(
-                Uri.parse('$_base/api/students/lookup'),
-                headers: _headers,
-                body: jsonEncode({
-                  'nickname': candidate,
-                  'birthday': normalizedBirthday,
-                }),
-              ),
-              timeout: _interactiveAuthTimeout,
-            );
-            _checkStatus(lookupRes);
+        for (final candidate in lookupCandidates) {
+          final lookupRes = await _sendWithTimeout(
+            _client.post(
+              Uri.parse('$_base/api/students/lookup'),
+              headers: _headers,
+              body: jsonEncode({
+                'nickname': candidate,
+                'birthday': normalizedBirthday,
+              }),
+            ),
+            timeout: _interactiveAuthTimeout,
+          );
+          _checkStatus(lookupRes);
+          lookupCompletedOnline = true;
 
-            final parsed = jsonDecode(lookupRes.body) as Map<String, dynamic>;
-            if (parsed['found'] == true) {
-              lookupBody = parsed;
-              break;
-            }
+          final parsed = jsonDecode(lookupRes.body) as Map<String, dynamic>;
+          if (parsed['found'] == true) {
+            lookupBody = parsed;
+            break;
           }
+        }
 
-          if (lookupBody != null && lookupBody['found'] == true) {
-            final resolvedBirthday = _normalizeBirthday(normalizedBirthday);
-            final resolvedStudentId =
-                _parseStudentId(lookupBody['stud_id']) ??
-                _parseStudentId(lookupBody['student_id']) ??
-                _parseStudentId(
-                  (lookupBody['student'] as Map<String, dynamic>?)?['STUDENT_ID'],
-                ) ??
-                _parseStudentId(
-                  (lookupBody['student'] as Map<String, dynamic>?)?['student_id'],
-                );
-            if (resolvedStudentId == null || resolvedStudentId <= 0) {
-              throw const ApiException(404, 'Student lookup did not return a valid ID.');
-            }
-            final resolvedNickname =
-                (lookupBody['nickname'] as String?)?.trim().isNotEmpty == true
-                ? (lookupBody['nickname'] as String).trim()
-                : normalizedNickname;
-
-            _currentStudentId = resolvedStudentId;
-            _currentNickname = resolvedNickname;
-            _currentBirthday = resolvedBirthday;
-
-            await LocalSyncStore.instance.saveActiveSession(
-              studentId: resolvedStudentId,
-              nickname: resolvedNickname,
-              birthday: resolvedBirthday,
+        if (lookupBody != null && lookupBody['found'] == true) {
+          final resolvedBirthday = _normalizeBirthday(normalizedBirthday);
+          final resolvedStudentId =
+              _parseStudentId(lookupBody['stud_id']) ??
+              _parseStudentId(lookupBody['student_id']) ??
+              _parseStudentId(
+                (lookupBody['student'] as Map<String, dynamic>?)?['STUDENT_ID'],
+              ) ??
+              _parseStudentId(
+                (lookupBody['student'] as Map<String, dynamic>?)?['student_id'],
+              );
+          if (resolvedStudentId == null || resolvedStudentId <= 0) {
+            throw const ApiException(
+              404,
+              'Student lookup did not return a valid ID.',
             );
-
-            startContentVersionPolling();
-            unawaited(syncPending());
-
-            final fallbackStudent = Student(
-              studentId: resolvedStudentId,
-              firstName: (lookupBody['first_name'] as String?) ?? '',
-              lastName: (lookupBody['last_name'] as String?) ?? '',
-              nickname: resolvedNickname,
-              sex: ((lookupBody['sex'] as String?) ?? 'Unknown').trim(),
-              area: (lookupBody['area'] as String?)?.isEmpty == true
-                  ? null
-                  : lookupBody['area'] as String?,
-              birthday: resolvedBirthday,
-              totalScore: 0,
-            );
-
-            await LocalSyncStore.instance.saveSyncedStudent(
-              student: fallbackStudent,
-              birthday: resolvedBirthday,
-            );
-
-            _scheduleOracleReconciliation(
-              nickname: resolvedNickname,
-              birthday: resolvedBirthday,
-            );
-
-            return fallbackStudent;
           }
+          final resolvedNickname =
+              (lookupBody['nickname'] as String?)?.trim().isNotEmpty == true
+              ? (lookupBody['nickname'] as String).trim()
+              : normalizedNickname;
+
+          _currentStudentId = resolvedStudentId;
+          _currentNickname = resolvedNickname;
+          _currentBirthday = resolvedBirthday;
+
+          await LocalSyncStore.instance.saveActiveSession(
+            studentId: resolvedStudentId,
+            nickname: resolvedNickname,
+            birthday: resolvedBirthday,
+          );
+
+          startContentVersionPolling();
+          unawaited(syncPending());
+
+          final fallbackStudent = Student(
+            studentId: resolvedStudentId,
+            firstName: (lookupBody['first_name'] as String?) ?? '',
+            lastName: (lookupBody['last_name'] as String?) ?? '',
+            nickname: resolvedNickname,
+            sex: ((lookupBody['sex'] as String?) ?? 'Unknown').trim(),
+            area: (lookupBody['area'] as String?)?.isEmpty == true
+                ? null
+                : lookupBody['area'] as String?,
+            birthday: resolvedBirthday,
+            totalScore: 0,
+          );
+
+          await LocalSyncStore.instance.saveSyncedStudent(
+            student: fallbackStudent,
+            birthday: resolvedBirthday,
+          );
+
+          _scheduleOracleReconciliation(
+            nickname: resolvedNickname,
+            birthday: resolvedBirthday,
+          );
+
+          return fallbackStudent;
+        }
       } on ApiException catch (e) {
         lookupError = e;
         // Continue to local/offline fallback.
       }
+    }
+
+    if (lookupCompletedOnline) {
+      throw const ApiException(
+        401,
+        'Live login failed: account was not found on the server.',
+      );
     }
 
     final offlineStudent = await LocalSyncStore.instance.findOfflineStudent(
@@ -440,17 +456,18 @@ class ApiService {
 
     throw const ApiException(
       401,
-      'Offline login failed: account not found on this device.',
+      'Live login failed: account was not found on the server.',
     );
   }
 
   /// Returns best-known current student profile data from local cache.
   static Future<Map<String, dynamic>?> getCurrentProfile() async {
     if (_currentNickname != null && _currentBirthday != null) {
-      final byIdentity = await LocalSyncStore.instance.getStudentProfileByIdentity(
-        nickname: _currentNickname!,
-        birthday: _currentBirthday!,
-      );
+      final byIdentity = await LocalSyncStore.instance
+          .getStudentProfileByIdentity(
+            nickname: _currentNickname!,
+            birthday: _currentBirthday!,
+          );
       if (byIdentity != null) {
         final id = byIdentity['student_id'];
         if (id is num) {
@@ -625,19 +642,6 @@ class ApiService {
       difficulty: normalizedDifficulty,
     );
 
-    final cached = _questionCache[cacheKey];
-    if (cached != null && cached.isNotEmpty) {
-      unawaited(
-        _refreshQuestionsCache(
-          cacheKey: cacheKey,
-          grade: grade,
-          subject: normalizedSubject,
-          difficulty: normalizedDifficulty,
-        ),
-      );
-      return cached;
-    }
-
     return _refreshQuestionsCache(
       cacheKey: cacheKey,
       grade: grade,
@@ -652,20 +656,29 @@ class ApiService {
     required String subject,
     String? difficulty,
   }) async {
-    final previousRows = _questionCache[cacheKey];
-
     try {
-      final remoteRows = await _fetchRemoteQuestions(
+      final remoteResult = await _fetchRemoteQuestions(
         grade: grade,
         subject: subject,
         difficulty: difficulty,
       );
-      if (remoteRows.isNotEmpty) {
-        _questionCache[cacheKey] = remoteRows;
-        return remoteRows;
-      }
+      _questionCache[cacheKey] = remoteResult.rows;
+      await LocalSyncStore.instance.saveCachedQuestionRows(
+        cacheKey: cacheKey,
+        rows: remoteResult.rows,
+        contentVersion: remoteResult.versionTag,
+      );
+      return remoteResult.rows;
     } catch (_) {
-      // Fall back to bundled/local data when the backend is unavailable.
+      // Fall back to the last successful remote payload, then bundled seed.
+    }
+
+    final persistedRows = await LocalSyncStore.instance.getCachedQuestionRows(
+      cacheKey,
+    );
+    if (persistedRows.isNotEmpty) {
+      _questionCache[cacheKey] = persistedRows;
+      return persistedRows;
     }
 
     final localRows = await SeededQuestionStore.instance.getQuestions(
@@ -678,6 +691,7 @@ class ApiService {
       return localRows;
     }
 
+    final previousRows = _questionCache[cacheKey];
     if (previousRows != null && previousRows.isNotEmpty) {
       return previousRows;
     }
@@ -686,7 +700,7 @@ class ApiService {
     return const <Map<String, dynamic>>[];
   }
 
-  static Future<List<Map<String, dynamic>>> _fetchRemoteQuestions({
+  static Future<_RemoteQuestionResult> _fetchRemoteQuestions({
     required String grade,
     required String subject,
     String? difficulty,
@@ -705,7 +719,8 @@ class ApiService {
     List<dynamic>? rawQuestions;
 
     if (decoded is Map<String, dynamic>) {
-      final versionTag = _asString(decoded['version_tag']) ?? _asString(decoded['versionTag']);
+      final versionTag =
+          _asString(decoded['version_tag']) ?? _asString(decoded['versionTag']);
       if (versionTag != null) {
         _lastContentVersionTag = versionTag;
       }
@@ -716,14 +731,17 @@ class ApiService {
     }
 
     if (rawQuestions == null || rawQuestions.isEmpty) {
-      return const <Map<String, dynamic>>[];
+      return _RemoteQuestionResult(
+        rows: const <Map<String, dynamic>>[],
+        versionTag: _lastContentVersionTag,
+      );
     }
 
     final gradeLevelId = _gradeLevelIdFor(grade);
     final subjectId = _subjectIdFor(subject);
     final diffId = _difficultyIdFor(difficulty);
 
-    return rawQuestions
+    final filteredRows = rawQuestions
         .whereType<Map>()
         .map((row) => Map<String, dynamic>.from(row))
         .map(_mapContentQuestionToQuizRow)
@@ -748,6 +766,80 @@ class ApiService {
               (diffId == null || resolvedDiffId == diffId);
         })
         .toList(growable: false);
+
+    final hydratedRows = await _hydrateQuestionImages(filteredRows);
+    return _RemoteQuestionResult(
+      rows: hydratedRows,
+      versionTag: _lastContentVersionTag,
+    );
+  }
+
+  static Future<List<Map<String, dynamic>>> _hydrateQuestionImages(
+    List<Map<String, dynamic>> rows,
+  ) async {
+    if (rows.isEmpty) {
+      return rows;
+    }
+
+    final hydrated = <Map<String, dynamic>>[];
+    for (final row in rows) {
+      final copy = Map<String, dynamic>.from(row);
+      final questionId = _asInt(copy['id']) ?? _asInt(copy['question_id']);
+      final imageUrl =
+          _asString(copy['imagePath']) ?? _asString(copy['image_url']);
+
+      if (questionId != null &&
+          imageUrl != null &&
+          _isNetworkImageUrl(imageUrl)) {
+        final cachedBytes = await LocalSyncStore.instance
+            .getCachedQuestionImage(questionId: questionId, imageUrl: imageUrl);
+
+        if (cachedBytes != null && cachedBytes.isNotEmpty) {
+          copy['imageBlob'] = base64Encode(cachedBytes);
+        } else {
+          unawaited(
+            _downloadAndCacheQuestionImage(
+              questionId: questionId,
+              imageUrl: imageUrl,
+            ),
+          );
+        }
+      }
+
+      hydrated.add(copy);
+    }
+
+    return hydrated;
+  }
+
+  static bool _isNetworkImageUrl(String value) {
+    final uri = Uri.tryParse(value.trim());
+    return uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
+  }
+
+  static Future<void> _downloadAndCacheQuestionImage({
+    required int questionId,
+    required String imageUrl,
+  }) async {
+    try {
+      final res = await _client
+          .get(Uri.parse(imageUrl))
+          .timeout(_requestTimeout);
+      if (res.statusCode < 200 ||
+          res.statusCode >= 300 ||
+          res.bodyBytes.isEmpty) {
+        return;
+      }
+
+      await LocalSyncStore.instance.saveCachedQuestionImage(
+        questionId: questionId,
+        imageUrl: imageUrl,
+        imageBytes: res.bodyBytes,
+        mimeType: res.headers['content-type'],
+      );
+    } catch (_) {
+      // Image cache warming is best-effort; gameplay can still use the CDN URL.
+    }
   }
 
   static String _questionCacheKey({
@@ -763,12 +855,12 @@ class ApiService {
 
   /// Submit a quiz score.
   static Future<void> submitScore({
-    required int    studentId,
+    required int studentId,
     required String grade,
     required String subject,
     required String difficulty,
-    required int    score,
-    required int    total,
+    required int score,
+    required int total,
     String? playedAt,
   }) async {
     final normalizedSubject = _normalizeSubject(subject);
@@ -826,41 +918,41 @@ class ApiService {
             .toList(growable: false);
       }
     } on ApiException catch (e) {
-      if (e.statusCode != 404 && e.statusCode != 400 && !_isConnectivityException(e)) {
+      if (e.statusCode != 404 &&
+          e.statusCode != 400 &&
+          !_isConnectivityException(e)) {
         rethrow;
       }
     }
 
-    final pending = await LocalSyncStore.instance.getPendingScoresForStudent(studentId);
-    final pendingRows = pending.map((row) {
-      final score = (row['score'] as num?)?.toInt() ?? 0;
-      final total = (row['total'] as num?)?.toInt() ?? 0;
-      final passed = total > 0 && (score / total) >= 0.7;
-      return <String, dynamic>{
-        'gradelvl': row['grade'],
-        'subject': row['subject'],
-        'difficulty': row['difficulty'],
-        'score': score,
-        'max_score': total,
-        'passed': passed ? 1 : 0,
-        'played_at': row['played_at'],
-      };
-    }).toList(growable: false);
+    final pending = await LocalSyncStore.instance.getPendingScoresForStudent(
+      studentId,
+    );
+    final pendingRows = pending
+        .map((row) {
+          final score = (row['score'] as num?)?.toInt() ?? 0;
+          final total = (row['total'] as num?)?.toInt() ?? 0;
+          final passed = total > 0 && (score / total) >= 0.7;
+          return <String, dynamic>{
+            'gradelvl': row['grade'],
+            'subject': row['subject'],
+            'difficulty': row['difficulty'],
+            'score': score,
+            'max_score': total,
+            'passed': passed ? 1 : 0,
+            'played_at': row['played_at'],
+          };
+        })
+        .toList(growable: false);
 
-    return <Map<String, dynamic>>[
-      ...remoteRows,
-      ...pendingRows,
-    ];
+    return <Map<String, dynamic>>[...remoteRows, ...pendingRows];
   }
 
   /// Fetch all progress rows for a student.
   static Future<List<Map<String, dynamic>>> getProgress(int studentId) async {
     Future<List<Map<String, dynamic>>> fetchPath(String path) async {
       final res = await _sendWithTimeout(
-        _client.get(
-          Uri.parse('$_base$path'),
-          headers: _headers,
-        ),
+        _client.get(Uri.parse('$_base$path'), headers: _headers),
       );
       _checkStatus(res);
       final body = jsonDecode(res.body) as Map<String, dynamic>;
@@ -883,28 +975,35 @@ class ApiService {
         try {
           remoteRows = await fetchPath('/api/progress/$studentId');
         } on ApiException catch (fallbackError) {
-          if (fallbackError.statusCode != 404 && fallbackError.statusCode != 400 && !_isConnectivityException(fallbackError)) {
+          if (fallbackError.statusCode != 404 &&
+              fallbackError.statusCode != 400 &&
+              !_isConnectivityException(fallbackError)) {
             rethrow;
           }
         }
-      } else if (e.statusCode != 404 && e.statusCode != 400 && !_isConnectivityException(e)) {
+      } else if (e.statusCode != 404 &&
+          e.statusCode != 400 &&
+          !_isConnectivityException(e)) {
         rethrow;
       }
     }
 
-    final pending = await LocalSyncStore.instance.getPendingProgressForStudent(studentId);
-    final pendingRows = pending.map((row) => <String, dynamic>{
-      'gradelvl': row['grade'],
-      'subject': row['subject'],
-      'highest_diff_passed': row['highest_diff_passed'],
-      'total_time_played': row['total_time_played'],
-      'last_played_at': row['last_played_at'],
-    }).toList(growable: false);
+    final pending = await LocalSyncStore.instance.getPendingProgressForStudent(
+      studentId,
+    );
+    final pendingRows = pending
+        .map(
+          (row) => <String, dynamic>{
+            'gradelvl': row['grade'],
+            'subject': row['subject'],
+            'highest_diff_passed': row['highest_diff_passed'],
+            'total_time_played': row['total_time_played'],
+            'last_played_at': row['last_played_at'],
+          },
+        )
+        .toList(growable: false);
 
-    return <Map<String, dynamic>>[
-      ...remoteRows,
-      ...pendingRows,
-    ];
+    return <Map<String, dynamic>>[...remoteRows, ...pendingRows];
   }
 
   /// Save or update learner progress.
@@ -966,13 +1065,13 @@ class ApiService {
           Uri.parse('$_base/api/quiz/score'),
           headers: _headers,
           body: jsonEncode({
-            'studentId':  studentId,
-            'grade':      grade,
-            'subject':    normalizedSubject,
+            'studentId': studentId,
+            'grade': grade,
+            'subject': normalizedSubject,
             'difficulty': normalizedDifficulty,
-            'score':      score,
-            'total':      total,
-            'played_at':  playedAt,
+            'score': score,
+            'total': total,
+            'played_at': playedAt,
           }),
         ),
       ),
@@ -1059,7 +1158,8 @@ class ApiService {
     final upToDate = body['up_to_date'] == true;
 
     if (versionTag != null && versionTag.isNotEmpty) {
-      if (_lastContentVersionTag != null && _lastContentVersionTag != versionTag) {
+      if (_lastContentVersionTag != null &&
+          _lastContentVersionTag != versionTag) {
         _questionCache.clear();
       }
       _lastContentVersionTag = versionTag;
@@ -1076,11 +1176,9 @@ class ApiService {
   }
 
   static Future<http.Response> _sendWithTimeout(
-    Future<http.Response> request,
-    {
-      Duration? timeout,
-    }
-  ) async {
+    Future<http.Response> request, {
+    Duration? timeout,
+  }) async {
     try {
       return await request.timeout(timeout ?? _requestTimeout);
     } on TimeoutException {
@@ -1089,10 +1187,7 @@ class ApiService {
         'Request timed out. Check backend server at $_base.',
       );
     } on http.ClientException {
-      throw ApiException(
-        503,
-        'Cannot reach backend server at $_base.',
-      );
+      throw ApiException(503, 'Cannot reach backend server at $_base.');
     }
   }
 
@@ -1116,7 +1211,9 @@ class ApiService {
     if (normalized == 'AVERAGE' || normalized == 'MEDIUM') {
       return 'Average';
     }
-    if (normalized == 'HARD' || normalized == 'ADVANCED' || normalized == 'DIFFICULT') {
+    if (normalized == 'HARD' ||
+        normalized == 'ADVANCED' ||
+        normalized == 'DIFFICULT') {
       return 'Hard';
     }
     return 'Average';
@@ -1128,7 +1225,9 @@ class ApiService {
     }
 
     final normalized = difficulty.trim().toUpperCase();
-    if (normalized == 'HARD' || normalized == 'ADVANCED' || normalized == 'DIFFICULT') {
+    if (normalized == 'HARD' ||
+        normalized == 'ADVANCED' ||
+        normalized == 'DIFFICULT') {
       return 'Hard';
     }
 
@@ -1149,7 +1248,12 @@ class ApiService {
     if (ymd != null) {
       final month = int.tryParse(ymd.group(2) ?? '');
       final day = int.tryParse(ymd.group(3) ?? '');
-      if (month == null || day == null || month < 1 || month > 12 || day < 1 || day > 31) {
+      if (month == null ||
+          day == null ||
+          month < 1 ||
+          month > 12 ||
+          day < 1 ||
+          day > 31) {
         return raw;
       }
       return '${ymd.group(1)}-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
@@ -1162,7 +1266,12 @@ class ApiService {
 
     final month = int.tryParse(mdy.group(1) ?? '');
     final day = int.tryParse(mdy.group(2) ?? '');
-    if (month == null || day == null || month < 1 || month > 12 || day < 1 || day > 31) {
+    if (month == null ||
+        day == null ||
+        month < 1 ||
+        month > 12 ||
+        day < 1 ||
+        day > 31) {
       return raw;
     }
 
@@ -1187,7 +1296,9 @@ class ApiService {
       );
     }
 
-    return candidates.where((value) => value.isNotEmpty).toList(growable: false);
+    return candidates
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
   }
 
   static int? _parseStudentId(dynamic raw) {
@@ -1209,7 +1320,10 @@ class ApiService {
       return direct;
     }
 
-    final canonical = RegExp(r'^STU-(\d+)$', caseSensitive: false).firstMatch(text);
+    final canonical = RegExp(
+      r'^STU-(\d+)$',
+      caseSensitive: false,
+    ).firstMatch(text);
     if (canonical != null) {
       return int.tryParse(canonical.group(1)!);
     }
@@ -1231,19 +1345,35 @@ class ApiService {
     String? area,
   }) async {
     await _ensureDeviceAuth();
+    final tmpLocalId = 'TMP-${_uuid.v4()}';
+    final normalizedBirthday = _normalizeBirthday(birthday);
 
     final res = await _runWithRetry(
       () => _sendWithTimeout(
         _client.post(
-          Uri.parse('$_base/api/students/register'),
+          Uri.parse('$_base/api/sync'),
           headers: _headers,
           body: jsonEncode({
-            'firstName': firstName,
-            'lastName': lastName,
-            'nickname': nickname,
-            'birthday': birthday,
-            'sex': sex,
-            ...?(area == null ? null : {'area': area}),
+            'device_id': _deviceUuid,
+            'batches': [
+              {
+                'stud_id': tmpLocalId,
+                'events': [
+                  {
+                    'stud_id': tmpLocalId,
+                    'event_type': 'register',
+                    'payload': {
+                      'tmp_local_id': tmpLocalId,
+                      'first_name': firstName,
+                      'last_name': lastName,
+                      'nickname': nickname.trim(),
+                      'birthday': normalizedBirthday,
+                      'sex_id': _sexIdForLabel(sex),
+                    },
+                  },
+                ],
+              },
+            ],
           }),
         ),
       ),
@@ -1253,19 +1383,54 @@ class ApiService {
 
     try {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
-      final student = body['student'];
-      if (student is Map<String, dynamic>) {
-        final idValue = student['studentId'];
-        if (idValue is num) return idValue.toInt();
+      final errors = body['errors'];
+      if (errors is List && errors.isNotEmpty) {
+        throw ApiException(
+          400,
+          'Live registration failed: ${jsonEncode(errors)}',
+        );
       }
 
-      final userId = body['userId'];
-      if (userId is num) return userId.toInt();
+      final idMappings = body['id_mappings'];
+      if (idMappings is List) {
+        for (final mapping in idMappings) {
+          if (mapping is! Map) {
+            continue;
+          }
+          final tmpId = (mapping['tmp_id'] as String?)?.trim();
+          if (tmpId != tmpLocalId) {
+            continue;
+          }
+          final parsed = _parseStudentId(mapping['real_id']);
+          if (parsed != null && parsed > 0) {
+            return parsed;
+          }
+        }
+      }
+    } on ApiException {
+      rethrow;
     } catch (_) {
-      // Return null if response payload does not include an ID.
+      // Fall through to lookup if the sync response shape is older than expected.
+    }
+
+    final lookup = await _lookupRemoteStudent(
+      nickname: nickname.trim(),
+      birthday: normalizedBirthday,
+    );
+    final parsedLookupId = _parseStudentId(lookup?['stud_id']);
+    if (parsedLookupId != null && parsedLookupId > 0) {
+      return parsedLookupId;
     }
 
     return null;
+  }
+
+  static int _sexIdForLabel(String sex) {
+    final normalized = sex.trim().toLowerCase();
+    if (normalized == 'female' || normalized == 'girl' || normalized == '2') {
+      return 2;
+    }
+    return 1;
   }
 
   static Future<void> _ensureDeviceAuth() async {
@@ -1344,13 +1509,15 @@ class ApiService {
     required String nickname,
     required String birthday,
   }) async {
-    var localProfile = await LocalSyncStore.instance.getStudentProfileByIdentity(
-      nickname: nickname,
-      birthday: birthday,
-    );
+    var localProfile = await LocalSyncStore.instance
+        .getStudentProfileByIdentity(nickname: nickname, birthday: birthday);
 
-    if (localProfile == null && _currentStudentId != null && _currentStudentId! > 0) {
-      localProfile = await LocalSyncStore.instance.getStudentProfileById(_currentStudentId!);
+    if (localProfile == null &&
+        _currentStudentId != null &&
+        _currentStudentId! > 0) {
+      localProfile = await LocalSyncStore.instance.getStudentProfileById(
+        _currentStudentId!,
+      );
     }
 
     return localProfile;
@@ -1427,7 +1594,10 @@ class ApiService {
         : _normalizedTextValue(localProfile['sex']);
     final area = _normalizedTextValue(localProfile['area']);
 
-    if (firstName.isEmpty || lastName.isEmpty || nickname.isEmpty || birthday.isEmpty) {
+    if (firstName.isEmpty ||
+        lastName.isEmpty ||
+        nickname.isEmpty ||
+        birthday.isEmpty) {
       return;
     }
 
@@ -1522,7 +1692,6 @@ class ApiService {
     );
 
     if (remoteRow == null) {
-
       if (localProfile == null) {
         return;
       }
@@ -1548,7 +1717,8 @@ class ApiService {
           area: area,
         );
       } on ApiException catch (e) {
-        if (_isConnectivityException(e) || _isIgnorableOracleParentKeyError(e)) {
+        if (_isConnectivityException(e) ||
+            _isIgnorableOracleParentKeyError(e)) {
           return;
         }
         rethrow;
@@ -1591,7 +1761,8 @@ class ApiService {
           remoteRow = refreshedRemote;
         }
       } on ApiException catch (e) {
-        if (!_isConnectivityException(e) && !_isIgnorableOracleParentKeyError(e)) {
+        if (!_isConnectivityException(e) &&
+            !_isIgnorableOracleParentKeyError(e)) {
           rethrow;
         }
       }
@@ -1638,7 +1809,8 @@ class ApiService {
     }
 
     final identityKey = '$normalizedNickname|$normalizedBirthday';
-    if (_oracleReconciliationTask != null && _oracleReconciliationIdentity == identityKey) {
+    if (_oracleReconciliationTask != null &&
+        _oracleReconciliationIdentity == identityKey) {
       return;
     }
 
@@ -1696,8 +1868,8 @@ class ApiService {
     }
 
     final message = body is Map<String, dynamic>
-      ? ((body['error'] as String?) ?? (body['message'] as String?))
-      : null;
+        ? ((body['error'] as String?) ?? (body['message'] as String?))
+        : null;
 
     throw ApiException(
       res.statusCode,
@@ -1746,7 +1918,10 @@ class ApiService {
       case 'ENGLISH':
         return 4;
       default:
-        throw ApiException(400, 'Unsupported subject for remote content: $subject');
+        throw ApiException(
+          400,
+          'Unsupported subject for remote content: $subject',
+        );
     }
   }
 
@@ -1780,9 +1955,7 @@ class ApiService {
         _asInt(row['gradelvl_id']) ??
         _asInt(row['gradelevel_id']) ??
         _asInt(row['grade_level_id']);
-    final subjectId =
-        _asInt(row['subject_id']) ??
-        _asInt(row['subjectId']);
+    final subjectId = _asInt(row['subject_id']) ?? _asInt(row['subjectId']);
     final diffId =
         _asInt(row['diff_id']) ??
         _asInt(row['difficulty_id']) ??
@@ -1809,18 +1982,25 @@ class ApiService {
         _asString(row['imageBlob']) ??
         _asString(row['question_image']) ??
         _asString(row['questionImage']);
-    final funFact = _asString(row['fun_fact']) ?? _asString(row['funFact']) ?? '';
-    final wordType = _asString(row['word_type']) ?? _asString(row['wordType']) ?? '';
-    final subPrompt = _asString(row['sub_prompt']) ?? _asString(row['subPrompt']) ?? '';
+    final funFact =
+        _asString(row['fun_fact']) ?? _asString(row['funFact']) ?? '';
+    final wordType =
+        _asString(row['word_type']) ?? _asString(row['wordType']) ?? '';
+    final subPrompt =
+        _asString(row['sub_prompt']) ?? _asString(row['subPrompt']) ?? '';
 
     return <String, dynamic>{
       'id': questionId,
       'gradelvl_id': gradeLevelId,
       'subject_id': subjectId,
       'diff_id': diffId,
-      'gradelvl': _asString(row['gradelvl']) ?? _asString(row['grade']) ?? _asString(row['grade_level']),
+      'gradelvl':
+          _asString(row['gradelvl']) ??
+          _asString(row['grade']) ??
+          _asString(row['grade_level']),
       'subject': _asString(row['subject']) ?? _asString(row['subject_name']),
-      'difficulty': _asString(row['difficulty']) ?? _asString(row['difficulty_name']),
+      'difficulty':
+          _asString(row['difficulty']) ?? _asString(row['difficulty_name']),
       'prompt': prompt,
       'imagePath': imagePath,
       'imageBlob': imageBlob,
@@ -1909,8 +2089,7 @@ class ApiService {
     const letterToIndex = <String, int>{'A': 0, 'B': 1, 'C': 2, 'D': 3};
 
     final indexCandidate =
-        _asInt(row['correct_index']) ??
-        _asInt(row['correctIndex']);
+        _asInt(row['correct_index']) ?? _asInt(row['correctIndex']);
     if (indexCandidate != null && indexCandidate >= 0 && indexCandidate <= 3) {
       return indexCandidate;
     }
@@ -1968,7 +2147,7 @@ class ApiService {
 
 /// Thrown when the server returns a non-2xx status code.
 class ApiException implements Exception {
-  final int    statusCode;
+  final int statusCode;
   final String message;
   const ApiException(this.statusCode, this.message);
 
@@ -1988,4 +2167,11 @@ class ContentRefreshStatus {
     required this.hasUpdate,
     this.versionTag,
   });
+}
+
+class _RemoteQuestionResult {
+  final List<Map<String, dynamic>> rows;
+  final String? versionTag;
+
+  const _RemoteQuestionResult({required this.rows, this.versionTag});
 }

@@ -1,46 +1,52 @@
+import 'dart:convert';
+
 import 'package:path/path.dart' as p;
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'student_model.dart';
 
-typedef RegisterRemoteFn = Future<int?> Function({
-  required String firstName,
-  required String lastName,
-  required String nickname,
-  required String birthday,
-  required String sex,
-  String? area,
-});
+typedef RegisterRemoteFn =
+    Future<int?> Function({
+      required String firstName,
+      required String lastName,
+      required String nickname,
+      required String birthday,
+      required String sex,
+      String? area,
+    });
 
-typedef SubmitScoreRemoteFn = Future<void> Function({
-  required int studentId,
-  required String grade,
-  required String subject,
-  required String difficulty,
-  required int score,
-  required int total,
-  required String playedAt,
-});
+typedef SubmitScoreRemoteFn =
+    Future<void> Function({
+      required int studentId,
+      required String grade,
+      required String subject,
+      required String difficulty,
+      required int score,
+      required int total,
+      required String playedAt,
+    });
 
-typedef SubmitProgressRemoteFn = Future<void> Function({
-  required int studentId,
-  required String grade,
-  required String subject,
-  int? highestDiffPassed,
-  required int totalTimePlayed,
-  required String lastPlayedAt,
-});
+typedef SubmitProgressRemoteFn =
+    Future<void> Function({
+      required int studentId,
+      required String grade,
+      required String subject,
+      int? highestDiffPassed,
+      required int totalTimePlayed,
+      required String lastPlayedAt,
+    });
 
-typedef UpdateProfileRemoteFn = Future<void> Function({
-  required int studentId,
-  required String firstName,
-  required String lastName,
-  required String nickname,
-  required String birthday,
-  required String sex,
-  String? area,
-});
+typedef UpdateProfileRemoteFn =
+    Future<void> Function({
+      required int studentId,
+      required String firstName,
+      required String lastName,
+      required String nickname,
+      required String birthday,
+      required String sex,
+      String? area,
+    });
 
 class LocalSyncStore {
   LocalSyncStore._();
@@ -49,10 +55,17 @@ class LocalSyncStore {
 
   Database? _db;
   final List<Map<String, dynamic>> _webStudentsLocal = <Map<String, dynamic>>[];
-  final List<Map<String, dynamic>> _webPendingRegistrations = <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> _webPendingRegistrations =
+      <Map<String, dynamic>>[];
   final List<Map<String, dynamic>> _webPendingScores = <Map<String, dynamic>>[];
-  final List<Map<String, dynamic>> _webPendingProgress = <Map<String, dynamic>>[];
-  final List<Map<String, dynamic>> _webPendingProfileUpdates = <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> _webPendingProgress =
+      <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> _webPendingProfileUpdates =
+      <Map<String, dynamic>>[];
+  final Map<String, List<Map<String, dynamic>>> _webQuestionCache =
+      <String, List<Map<String, dynamic>>>{};
+  final Map<int, Map<String, dynamic>> _webQuestionImageCache =
+      <int, Map<String, dynamic>>{};
   final Map<String, String> _webSettings = <String, String>{};
   Map<String, dynamic>? _webSession;
 
@@ -69,7 +82,11 @@ class LocalSyncStore {
     return maxId + 1;
   }
 
-  bool _matchesIdentity(Map<String, dynamic> row, String nickname, String birthday) {
+  bool _matchesIdentity(
+    Map<String, dynamic> row,
+    String nickname,
+    String birthday,
+  ) {
     final normalizedBirthday = _normalizeBirthday(birthday);
     final rowNickname = (row['nickname'] as String? ?? '').trim().toLowerCase();
     final rowBirthday = (row['birthday'] as String? ?? '').trim();
@@ -88,10 +105,8 @@ class LocalSyncStore {
 
     list.sort((a, b) {
       if (preferSynced) {
-        final syncedCompare =
-            ((b['is_synced'] as num?)?.toInt() ?? 0).compareTo(
-              (a['is_synced'] as num?)?.toInt() ?? 0,
-            );
+        final syncedCompare = ((b['is_synced'] as num?)?.toInt() ?? 0)
+            .compareTo((a['is_synced'] as num?)?.toInt() ?? 0);
         if (syncedCompare != 0) {
           return syncedCompare;
         }
@@ -118,7 +133,12 @@ class LocalSyncStore {
     if (ymd != null) {
       final month = int.tryParse(ymd.group(2) ?? '');
       final day = int.tryParse(ymd.group(3) ?? '');
-      if (month == null || day == null || month < 1 || month > 12 || day < 1 || day > 31) {
+      if (month == null ||
+          day == null ||
+          month < 1 ||
+          month > 12 ||
+          day < 1 ||
+          day > 31) {
         return raw;
       }
       final mm = month.toString().padLeft(2, '0');
@@ -133,7 +153,12 @@ class LocalSyncStore {
 
     final month = int.tryParse(mdy.group(1) ?? '');
     final day = int.tryParse(mdy.group(2) ?? '');
-    if (month == null || day == null || month < 1 || month > 12 || day < 1 || day > 31) {
+    if (month == null ||
+        day == null ||
+        month < 1 ||
+        month > 12 ||
+        day < 1 ||
+        day > 31) {
       return raw;
     }
 
@@ -154,7 +179,7 @@ class LocalSyncStore {
 
     _db = await openDatabase(
       dbPath,
-      version: 6,
+      version: 8,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE students_local (
@@ -245,6 +270,28 @@ class LocalSyncStore {
             created_at TEXT NOT NULL
           )
         ''');
+
+        await db.execute('''
+          CREATE TABLE question_cache (
+            cache_key TEXT NOT NULL,
+            question_id INTEGER NOT NULL,
+            payload_json TEXT NOT NULL,
+            content_version TEXT,
+            cached_at TEXT NOT NULL,
+            PRIMARY KEY (cache_key, question_id)
+          )
+        ''');
+
+        await db.execute('''
+          CREATE TABLE question_image_cache (
+            question_id INTEGER PRIMARY KEY,
+            image_url TEXT NOT NULL,
+            image_bytes BLOB NOT NULL,
+            mime_type TEXT,
+            cached_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          )
+        ''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -316,6 +363,32 @@ class LocalSyncStore {
             )
           ''');
         }
+
+        if (oldVersion < 7) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS question_cache (
+              cache_key TEXT NOT NULL,
+              question_id INTEGER NOT NULL,
+              payload_json TEXT NOT NULL,
+              content_version TEXT,
+              cached_at TEXT NOT NULL,
+              PRIMARY KEY (cache_key, question_id)
+            )
+          ''');
+        }
+
+        if (oldVersion < 8) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS question_image_cache (
+              question_id INTEGER PRIMARY KEY,
+              image_url TEXT NOT NULL,
+              image_bytes BLOB NOT NULL,
+              mime_type TEXT,
+              cached_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )
+          ''');
+        }
       },
     );
 
@@ -339,7 +412,9 @@ class LocalSyncStore {
         'nickname': _normalizeLowerText(student.nickname),
         'birthday': normalizedBirthday,
         'sex': student.sex.trim(),
-        'area': student.area == null ? null : _normalizeLowerText(student.area!),
+        'area': student.area == null
+            ? null
+            : _normalizeLowerText(student.area!),
         'is_synced': 1,
         'created_at': DateTime.now().toIso8601String(),
       });
@@ -351,21 +426,17 @@ class LocalSyncStore {
 
     final db = await _database();
     final normalizedBirthday = _normalizeBirthday(birthday);
-    await db.insert(
-      'students_local',
-      {
-        'student_id': student.studentId,
-        'first_name': _normalizeLowerText(student.firstName),
-        'last_name': _normalizeLowerText(student.lastName),
-        'nickname': _normalizeLowerText(student.nickname),
-        'birthday': normalizedBirthday,
-        'sex': student.sex.trim(),
-        'area': student.area == null ? null : _normalizeLowerText(student.area!),
-        'is_synced': 1,
-        'created_at': DateTime.now().toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('students_local', {
+      'student_id': student.studentId,
+      'first_name': _normalizeLowerText(student.firstName),
+      'last_name': _normalizeLowerText(student.lastName),
+      'nickname': _normalizeLowerText(student.nickname),
+      'birthday': normalizedBirthday,
+      'sex': student.sex.trim(),
+      'area': student.area == null ? null : _normalizeLowerText(student.area!),
+      'is_synced': 1,
+      'created_at': DateTime.now().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
 
     await db.delete(
       'pending_registrations',
@@ -422,35 +493,27 @@ class LocalSyncStore {
     final db = await _database();
     final normalizedBirthday = _normalizeBirthday(birthday);
 
-    await db.insert(
-      'students_local',
-      {
-        'student_id': -DateTime.now().millisecondsSinceEpoch,
-        'first_name': _normalizeLowerText(firstName),
-        'last_name': _normalizeLowerText(lastName),
-        'nickname': _normalizeLowerText(nickname),
-        'birthday': normalizedBirthday,
-        'sex': sex.trim(),
-        'area': area == null ? null : _normalizeLowerText(area),
-        'is_synced': 0,
-        'created_at': DateTime.now().toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.ignore,
-    );
+    await db.insert('students_local', {
+      'student_id': -DateTime.now().millisecondsSinceEpoch,
+      'first_name': _normalizeLowerText(firstName),
+      'last_name': _normalizeLowerText(lastName),
+      'nickname': _normalizeLowerText(nickname),
+      'birthday': normalizedBirthday,
+      'sex': sex.trim(),
+      'area': area == null ? null : _normalizeLowerText(area),
+      'is_synced': 0,
+      'created_at': DateTime.now().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
 
-    await db.insert(
-      'pending_registrations',
-      {
-        'first_name': firstName,
-        'last_name': lastName,
-        'nickname': nickname,
-        'birthday': normalizedBirthday,
-        'sex': sex,
-        'area': area,
-        'created_at': DateTime.now().toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.ignore,
-    );
+    await db.insert('pending_registrations', {
+      'first_name': firstName,
+      'last_name': lastName,
+      'nickname': nickname,
+      'birthday': normalizedBirthday,
+      'sex': sex,
+      'area': area,
+      'created_at': DateTime.now().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
   }
 
   Future<void> queueOfflineScore({
@@ -465,14 +528,16 @@ class LocalSyncStore {
     if (_useWebMemoryStore) {
       final now = DateTime.now().toIso8601String();
       final playedAtValue = playedAt ?? now;
-      final exists = _webPendingScores.any((row) =>
-          row['student_id'] == studentId &&
-          row['grade'] == grade &&
-          row['subject'] == subject &&
-          row['difficulty'] == difficulty &&
-          row['score'] == score &&
-          row['total'] == total &&
-          row['played_at'] == playedAtValue);
+      final exists = _webPendingScores.any(
+        (row) =>
+            row['student_id'] == studentId &&
+            row['grade'] == grade &&
+            row['subject'] == subject &&
+            row['difficulty'] == difficulty &&
+            row['score'] == score &&
+            row['total'] == total &&
+            row['played_at'] == playedAtValue,
+      );
       if (!exists) {
         _webPendingScores.add({
           'id': _nextWebId(_webPendingScores),
@@ -493,20 +558,16 @@ class LocalSyncStore {
     final now = DateTime.now().toIso8601String();
     final playedAtValue = playedAt ?? now;
 
-    await db.insert(
-      'pending_scores',
-      {
-        'student_id': studentId,
-        'grade': grade,
-        'subject': subject,
-        'difficulty': difficulty,
-        'score': score,
-        'total': total,
-        'played_at': playedAtValue,
-        'created_at': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.ignore,
-    );
+    await db.insert('pending_scores', {
+      'student_id': studentId,
+      'grade': grade,
+      'subject': subject,
+      'difficulty': difficulty,
+      'score': score,
+      'total': total,
+      'played_at': playedAtValue,
+      'created_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
   }
 
   Future<void> queueOfflineProgress({
@@ -520,12 +581,14 @@ class LocalSyncStore {
     if (_useWebMemoryStore) {
       final now = DateTime.now().toIso8601String();
       final playedAtValue = lastPlayedAt ?? now;
-      final exists = _webPendingProgress.any((row) =>
-          row['student_id'] == studentId &&
-          row['grade'] == grade &&
-          row['subject'] == subject &&
-          row['total_time_played'] == totalTimePlayed &&
-          row['last_played_at'] == playedAtValue);
+      final exists = _webPendingProgress.any(
+        (row) =>
+            row['student_id'] == studentId &&
+            row['grade'] == grade &&
+            row['subject'] == subject &&
+            row['total_time_played'] == totalTimePlayed &&
+            row['last_played_at'] == playedAtValue,
+      );
       if (!exists) {
         _webPendingProgress.add({
           'id': _nextWebId(_webPendingProgress),
@@ -545,19 +608,15 @@ class LocalSyncStore {
     final now = DateTime.now().toIso8601String();
     final playedAtValue = lastPlayedAt ?? now;
 
-    await db.insert(
-      'pending_progress',
-      {
-        'student_id': studentId,
-        'grade': grade,
-        'subject': subject,
-        'highest_diff_passed': highestDiffPassed,
-        'total_time_played': totalTimePlayed,
-        'last_played_at': playedAtValue,
-        'created_at': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.ignore,
-    );
+    await db.insert('pending_progress', {
+      'student_id': studentId,
+      'grade': grade,
+      'subject': subject,
+      'highest_diff_passed': highestDiffPassed,
+      'total_time_played': totalTimePlayed,
+      'last_played_at': playedAtValue,
+      'created_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
   }
 
   Future<Student?> findOfflineStudent({
@@ -735,22 +794,20 @@ class LocalSyncStore {
     final db = await _database();
     final normalizedBirthday = _normalizeBirthday(birthday);
 
-    await db.insert(
-      'app_session',
-      {
-        'id': 1,
-        'student_id': studentId,
-        'nickname': nickname.trim(),
-        'birthday': normalizedBirthday,
-        'updated_at': DateTime.now().toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('app_session', {
+      'id': 1,
+      'student_id': studentId,
+      'nickname': nickname.trim(),
+      'birthday': normalizedBirthday,
+      'updated_at': DateTime.now().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<Map<String, dynamic>?> getActiveSession() async {
     if (_useWebMemoryStore) {
-      return _webSession == null ? null : Map<String, dynamic>.from(_webSession!);
+      return _webSession == null
+          ? null
+          : Map<String, dynamic>.from(_webSession!);
     }
 
     final db = await _database();
@@ -776,14 +833,10 @@ class LocalSyncStore {
     }
 
     final db = await _database();
-    await db.insert(
-      'app_settings',
-      {
-        'key': 'selected_theme',
-        'value': themeKey,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('app_settings', {
+      'key': 'selected_theme',
+      'value': themeKey,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<String?> getSelectedTheme() async {
@@ -813,14 +866,10 @@ class LocalSyncStore {
     }
 
     final db = await _database();
-    await db.insert(
-      'app_settings',
-      {
-        'key': 'music_enabled',
-        'value': enabled ? '1' : '0',
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('app_settings', {
+      'key': 'music_enabled',
+      'value': enabled ? '1' : '0',
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<bool?> getMusicEnabled() async {
@@ -859,14 +908,10 @@ class LocalSyncStore {
     }
 
     final db = await _database();
-    await db.insert(
-      'app_settings',
-      {
-        'key': 'music_volume',
-        'value': volume.clamp(0.0, 1.0).toString(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('app_settings', {
+      'key': 'music_volume',
+      'value': volume.clamp(0.0, 1.0).toString(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<double?> getMusicVolume() async {
@@ -902,14 +947,10 @@ class LocalSyncStore {
     }
 
     final db = await _database();
-    await db.insert(
-      'app_settings',
-      {
-        'key': 'sfx_enabled',
-        'value': enabled ? '1' : '0',
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('app_settings', {
+      'key': 'sfx_enabled',
+      'value': enabled ? '1' : '0',
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<bool?> getSfxEnabled() async {
@@ -948,14 +989,10 @@ class LocalSyncStore {
     }
 
     final db = await _database();
-    await db.insert(
-      'app_settings',
-      {
-        'key': 'sfx_volume',
-        'value': volume.clamp(0.0, 1.0).toString(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('app_settings', {
+      'key': 'sfx_volume',
+      'value': volume.clamp(0.0, 1.0).toString(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<double?> getSfxVolume() async {
@@ -1064,20 +1101,16 @@ class LocalSyncStore {
       whereArgs: [studentId],
     );
 
-    await db.insert(
-      'pending_profile_updates',
-      {
-        'student_id': studentId,
-        'first_name': firstName,
-        'last_name': lastName,
-        'nickname': nickname,
-        'birthday': normalizedBirthday,
-        'sex': sex,
-        'area': area,
-        'created_at': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('pending_profile_updates', {
+      'student_id': studentId,
+      'first_name': firstName,
+      'last_name': lastName,
+      'nickname': nickname,
+      'birthday': normalizedBirthday,
+      'sex': sex,
+      'area': area,
+      'created_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<void> syncPendingRegistrations({
@@ -1105,18 +1138,19 @@ class LocalSyncStore {
             'birthday': localRow['birthday'],
             'sex': localRow['sex'],
             'area': localRow['area'],
-            'created_at': localRow['created_at'] ?? DateTime.now().toIso8601String(),
+            'created_at':
+                localRow['created_at'] ?? DateTime.now().toIso8601String(),
           });
         }
       }
 
-      final pending = _webPendingRegistrations
-          .map(Map<String, dynamic>.from)
-          .toList()
-        ..sort((a, b) =>
-            ((a['id'] as num?)?.toInt() ?? 0).compareTo(
-              (b['id'] as num?)?.toInt() ?? 0,
-            ));
+      final pending =
+          _webPendingRegistrations.map(Map<String, dynamic>.from).toList()
+            ..sort(
+              (a, b) => ((a['id'] as num?)?.toInt() ?? 0).compareTo(
+                (b['id'] as num?)?.toInt() ?? 0,
+              ),
+            );
 
       for (final row in pending) {
         final id = row['id'] as int;
@@ -1168,7 +1202,8 @@ class LocalSyncStore {
               }
             }
             for (final progressRow in _webPendingProgress) {
-              if ((progressRow['student_id'] as num?)?.toInt() == oldStudentId) {
+              if ((progressRow['student_id'] as num?)?.toInt() ==
+                  oldStudentId) {
                 progressRow['student_id'] = resolvedStudentId;
               }
             }
@@ -1220,10 +1255,7 @@ class LocalSyncStore {
       WHERE is_synced = 0
     ''');
 
-    final pending = await db.query(
-      'pending_registrations',
-      orderBy: 'id ASC',
-    );
+    final pending = await db.query('pending_registrations', orderBy: 'id ASC');
 
     for (final row in pending) {
       final id = row['id'] as int;
@@ -1258,13 +1290,17 @@ class LocalSyncStore {
           {
             'is_synced': 1,
             'birthday': normalizedBirthday,
-            ...?resolvedStudentId == null ? null : {'student_id': resolvedStudentId},
+            ...?resolvedStudentId == null
+                ? null
+                : {'student_id': resolvedStudentId},
           },
           where: 'nickname = ? AND (birthday = ? OR birthday = ?)',
           whereArgs: [row['nickname'], rawBirthday, normalizedBirthday],
         );
 
-        if (resolvedStudentId != null && oldStudentId != null && oldStudentId != resolvedStudentId) {
+        if (resolvedStudentId != null &&
+            oldStudentId != null &&
+            oldStudentId != resolvedStudentId) {
           await db.update(
             'pending_scores',
             {'student_id': resolvedStudentId},
@@ -1310,10 +1346,11 @@ class LocalSyncStore {
     if (_useWebMemoryStore) {
       Object? lastError;
       final pending = _webPendingScores.map(Map<String, dynamic>.from).toList()
-        ..sort((a, b) =>
-            ((a['id'] as num?)?.toInt() ?? 0).compareTo(
-              (b['id'] as num?)?.toInt() ?? 0,
-            ));
+        ..sort(
+          (a, b) => ((a['id'] as num?)?.toInt() ?? 0).compareTo(
+            (b['id'] as num?)?.toInt() ?? 0,
+          ),
+        );
 
       for (final row in pending) {
         final id = row['id'] as int;
@@ -1360,11 +1397,7 @@ class LocalSyncStore {
           playedAt: row['played_at'] as String,
         );
 
-        await db.delete(
-          'pending_scores',
-          where: 'id = ?',
-          whereArgs: [id],
-        );
+        await db.delete('pending_scores', where: 'id = ?', whereArgs: [id]);
       } catch (error) {
         // Stop at first failure to preserve queue order.
         lastError = error;
@@ -1382,11 +1415,12 @@ class LocalSyncStore {
   }) async {
     if (_useWebMemoryStore) {
       Object? lastError;
-      final pending = _webPendingProgress.map(Map<String, dynamic>.from).toList()
-        ..sort((a, b) =>
-            ((a['id'] as num?)?.toInt() ?? 0).compareTo(
+      final pending =
+          _webPendingProgress.map(Map<String, dynamic>.from).toList()..sort(
+            (a, b) => ((a['id'] as num?)?.toInt() ?? 0).compareTo(
               (b['id'] as num?)?.toInt() ?? 0,
-            ));
+            ),
+          );
 
       for (final row in pending) {
         final id = row['id'] as int;
@@ -1431,11 +1465,7 @@ class LocalSyncStore {
           lastPlayedAt: row['last_played_at'] as String,
         );
 
-        await db.delete(
-          'pending_progress',
-          where: 'id = ?',
-          whereArgs: [id],
-        );
+        await db.delete('pending_progress', where: 'id = ?', whereArgs: [id]);
       } catch (error) {
         // Stop at first failure to preserve queue order.
         lastError = error;
@@ -1453,13 +1483,13 @@ class LocalSyncStore {
   }) async {
     if (_useWebMemoryStore) {
       Object? lastError;
-      final pending = _webPendingProfileUpdates
-          .map(Map<String, dynamic>.from)
-          .toList()
-        ..sort((a, b) =>
-            ((a['id'] as num?)?.toInt() ?? 0).compareTo(
-              (b['id'] as num?)?.toInt() ?? 0,
-            ));
+      final pending =
+          _webPendingProfileUpdates.map(Map<String, dynamic>.from).toList()
+            ..sort(
+              (a, b) => ((a['id'] as num?)?.toInt() ?? 0).compareTo(
+                (b['id'] as num?)?.toInt() ?? 0,
+              ),
+            );
 
       for (final row in pending) {
         final id = row['id'] as int;
@@ -1490,7 +1520,10 @@ class LocalSyncStore {
     }
 
     final db = await _database();
-    final pending = await db.query('pending_profile_updates', orderBy: 'id ASC');
+    final pending = await db.query(
+      'pending_profile_updates',
+      orderBy: 'id ASC',
+    );
     Object? lastError;
 
     for (final row in pending) {
@@ -1522,23 +1555,26 @@ class LocalSyncStore {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getPendingScoresForStudent(int studentId) async {
+  Future<List<Map<String, dynamic>>> getPendingScoresForStudent(
+    int studentId,
+  ) async {
     if (_useWebMemoryStore) {
-      final rows = _webPendingScores
-          .where((row) => (row['student_id'] as num?)?.toInt() == studentId)
-          .map(Map<String, dynamic>.from)
-          .toList()
-        ..sort((a, b) {
-          final playedCompare = (b['played_at'] as String? ?? '').compareTo(
-            a['played_at'] as String? ?? '',
-          );
-          if (playedCompare != 0) {
-            return playedCompare;
-          }
-          return ((b['id'] as num?)?.toInt() ?? 0).compareTo(
-            (a['id'] as num?)?.toInt() ?? 0,
-          );
-        });
+      final rows =
+          _webPendingScores
+              .where((row) => (row['student_id'] as num?)?.toInt() == studentId)
+              .map(Map<String, dynamic>.from)
+              .toList()
+            ..sort((a, b) {
+              final playedCompare = (b['played_at'] as String? ?? '').compareTo(
+                a['played_at'] as String? ?? '',
+              );
+              if (playedCompare != 0) {
+                return playedCompare;
+              }
+              return ((b['id'] as num?)?.toInt() ?? 0).compareTo(
+                (a['id'] as num?)?.toInt() ?? 0,
+              );
+            });
       return rows;
     }
 
@@ -1552,24 +1588,25 @@ class LocalSyncStore {
     return rows;
   }
 
-  Future<List<Map<String, dynamic>>> getPendingProgressForStudent(int studentId) async {
+  Future<List<Map<String, dynamic>>> getPendingProgressForStudent(
+    int studentId,
+  ) async {
     if (_useWebMemoryStore) {
-      final rows = _webPendingProgress
-          .where((row) => (row['student_id'] as num?)?.toInt() == studentId)
-          .map(Map<String, dynamic>.from)
-          .toList()
-        ..sort((a, b) {
-          final playedCompare =
-              (b['last_played_at'] as String? ?? '').compareTo(
-                a['last_played_at'] as String? ?? '',
+      final rows =
+          _webPendingProgress
+              .where((row) => (row['student_id'] as num?)?.toInt() == studentId)
+              .map(Map<String, dynamic>.from)
+              .toList()
+            ..sort((a, b) {
+              final playedCompare = (b['last_played_at'] as String? ?? '')
+                  .compareTo(a['last_played_at'] as String? ?? '');
+              if (playedCompare != 0) {
+                return playedCompare;
+              }
+              return ((b['id'] as num?)?.toInt() ?? 0).compareTo(
+                (a['id'] as num?)?.toInt() ?? 0,
               );
-          if (playedCompare != 0) {
-            return playedCompare;
-          }
-          return ((b['id'] as num?)?.toInt() ?? 0).compareTo(
-            (a['id'] as num?)?.toInt() ?? 0,
-          );
-        });
+            });
       return rows;
     }
 
@@ -1581,5 +1618,148 @@ class LocalSyncStore {
       orderBy: 'last_played_at DESC, id DESC',
     );
     return rows;
+  }
+
+  Future<void> saveCachedQuestionRows({
+    required String cacheKey,
+    required List<Map<String, dynamic>> rows,
+    String? contentVersion,
+  }) async {
+    if (_useWebMemoryStore) {
+      _webQuestionCache[cacheKey] = rows
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+      return;
+    }
+
+    final db = await _database();
+    final now = DateTime.now().toIso8601String();
+    await db.transaction((txn) async {
+      await txn.delete(
+        'question_cache',
+        where: 'cache_key = ?',
+        whereArgs: [cacheKey],
+      );
+
+      for (var index = 0; index < rows.length; index++) {
+        final row = rows[index];
+        final rawQuestionId = row['id'] ?? row['question_id'];
+        final questionId = rawQuestionId is num
+            ? rawQuestionId.toInt()
+            : int.tryParse('$rawQuestionId') ?? -(index + 1);
+
+        await txn.insert('question_cache', {
+          'cache_key': cacheKey,
+          'question_id': questionId,
+          'payload_json': jsonEncode(row),
+          'content_version': contentVersion,
+          'cached_at': now,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getCachedQuestionRows(
+    String cacheKey,
+  ) async {
+    if (_useWebMemoryStore) {
+      return (_webQuestionCache[cacheKey] ?? const <Map<String, dynamic>>[])
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(growable: false);
+    }
+
+    final db = await _database();
+    final rows = await db.query(
+      'question_cache',
+      columns: ['payload_json'],
+      where: 'cache_key = ?',
+      whereArgs: [cacheKey],
+      orderBy: 'question_id ASC',
+    );
+
+    return rows
+        .map((row) {
+          try {
+            final decoded = jsonDecode(
+              (row['payload_json'] as String?) ?? '{}',
+            );
+            return decoded is Map<String, dynamic>
+                ? decoded
+                : const <String, dynamic>{};
+          } catch (_) {
+            return const <String, dynamic>{};
+          }
+        })
+        .where((row) => row.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  Future<Uint8List?> getCachedQuestionImage({
+    required int questionId,
+    required String imageUrl,
+  }) async {
+    if (_useWebMemoryStore) {
+      final row = _webQuestionImageCache[questionId];
+      if (row == null || row['image_url'] != imageUrl) {
+        return null;
+      }
+      final bytes = row['image_bytes'];
+      return bytes is Uint8List ? bytes : null;
+    }
+
+    final db = await _database();
+    final rows = await db.query(
+      'question_image_cache',
+      columns: ['image_bytes'],
+      where: 'question_id = ? AND image_url = ?',
+      whereArgs: [questionId, imageUrl],
+      limit: 1,
+    );
+
+    if (rows.isEmpty) {
+      return null;
+    }
+
+    final bytes = rows.first['image_bytes'];
+    if (bytes is Uint8List) {
+      return bytes;
+    }
+    if (bytes is List<int>) {
+      return Uint8List.fromList(bytes);
+    }
+    return null;
+  }
+
+  Future<void> saveCachedQuestionImage({
+    required int questionId,
+    required String imageUrl,
+    required Uint8List imageBytes,
+    String? mimeType,
+  }) async {
+    if (imageBytes.isEmpty) {
+      return;
+    }
+
+    final now = DateTime.now().toIso8601String();
+    if (_useWebMemoryStore) {
+      _webQuestionImageCache[questionId] = {
+        'image_url': imageUrl,
+        'image_bytes': imageBytes,
+        'mime_type': mimeType,
+        'cached_at': now,
+        'updated_at': now,
+      };
+      return;
+    }
+
+    final db = await _database();
+    await db.insert('question_image_cache', {
+      'question_id': questionId,
+      'image_url': imageUrl,
+      'image_bytes': imageBytes,
+      'mime_type': mimeType,
+      'cached_at': now,
+      'updated_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 }

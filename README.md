@@ -67,6 +67,25 @@ The frontend project is located in the root of the workspace.
    flutter run
    ```
 
+### Frontend API Target Profiles
+
+Use these files in the project root:
+
+- `.env.dev` -> `API_BASE_URL=http://localhost:3001`
+- `.env.prod` -> `API_BASE_URL=http://localhost:3000`
+
+Run on Chrome with explicit target:
+
+```bash
+flutter run -d chrome --dart-define-from-file=.env.dev
+```
+
+Run on Chrome against prod profile:
+
+```bash
+flutter run -d chrome --dart-define-from-file=.env.prod
+```
+
 ## 📂 Backend Structure
 Endpoints have been separated dynamically within the backend configuration:
 * `src/config/db.js` Handles the active pool connecting Node to Oracle.

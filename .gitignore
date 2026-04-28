@@ -74,3 +74,5 @@ IMPLEMENTATION_STATUS.md
 backend/node_modules/
 backend/.env
 backend/.env.development
+.env.dev
+.env.prod
