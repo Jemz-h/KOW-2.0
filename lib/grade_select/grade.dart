@@ -26,7 +26,7 @@ class GradeApp extends StatelessWidget {
 // ── Grade data ─────────────────────────────────────────────────
 const List<Map<String, String>> _kGrades = [
   {'label': 'PUNLA',  'age': '4-5 YRS OLD'},
-  {'label': 'BINHI',  'age': '6-8 YRS OLD'},
+  {'label': 'BINHI',  'age': '6-7 YRS OLD'},
   {'label': 'COMING', 'age': 'SOON'},
 ];
 
@@ -61,11 +61,13 @@ String _pageBg(String theme, String page) {
       themeBackgrounds['space']!;
 }
 
-// ── Each rendered card holds its grade index for the full animation ─
+// ── Each rendered card holds its grade index and whether it is
+//    the one being displaced (exits with a fade-out).
 class _CardSlot {
   final int slot;
   final int gradeIdx;
-  const _CardSlot(this.slot, this.gradeIdx);
+  final bool isExiting; // true → fade out as it leaves centre
+  const _CardSlot(this.slot, this.gradeIdx, {this.isExiting = false});
 }
 
 class GradeSelectScreen extends StatefulWidget {
@@ -81,6 +83,7 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
 
   int _centreIndex = 0;
   double _offset = 0.0;
+  int _lastDir = 0; // -1 = went left, 1 = went right
 
   late List<_CardSlot> _cards;
 
@@ -124,6 +127,7 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
       if (status == AnimationStatus.completed) {
         setState(() {
           _offset = 0.0;
+          _lastDir = 0;
           _rebuildCards(centre: _centreIndex, dir: 0);
         });
       }
@@ -151,12 +155,41 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
         CurvedAnimation(parent: _shipCtrl, curve: Curves.easeInOut));
   }
 
+  // ── Card layout ────────────────────────────────────────────────
+  // Slots map to visual positions BEFORE the tween plays.
+  //
+  // dir == 0  →  normal resting state (init / after snap)
+  //
+  // dir == 1  →  swiped forward (next grade, from the right)
+  //   offset tween: 0 → 1
+  //   new centre sits at slot 1  → dist = 1-0=1 (right) … 1-1=0 (centre) ✓
+  //   old centre sits at slot 0  → dist = 0-0=0 (centre) … 0-1=-1 (exit left) ✓  isExiting=true
+  //   right wing  sits at slot 2
+  //
+  // dir == -1 →  swiped back (previous grade, from the left) — mirror image
+
+  
   void _rebuildCards({required int centre, required int dir}) {
-    _cards = [
-      _CardSlot(-1, _wrap(centre - 1)),
-      _CardSlot( 0, _wrap(centre)),
-      _CardSlot( 1, _wrap(centre + 1)),
-    ];
+    if (dir == 0) {
+      _cards = [
+        _CardSlot(-1, _wrap(centre - 1)),
+        _CardSlot( 0, _wrap(centre)),
+        _CardSlot( 1, _wrap(centre + 1)),
+      ];
+    } else if (dir == 1) {
+      _cards = [
+        _CardSlot( 0, _wrap(centre - 1), isExiting: true), // previous centre → exits left
+        _CardSlot( 1, _wrap(centre)),                      // NEW centre → slides in from right
+        _CardSlot( 2, _wrap(centre + 1)),                  // right wing
+      ];
+    } else {
+      // dir == -1
+      _cards = [
+        _CardSlot(-2, _wrap(centre - 1)),                  // left wing
+        _CardSlot(-1, _wrap(centre)),                      // NEW centre → slides in from left
+        _CardSlot( 0, _wrap(centre + 1), isExiting: true), // previous centre → exits right
+      ];
+    }
   }
 
   List<_CardSlot> get _zSorted {
@@ -167,6 +200,17 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
       return db.compareTo(da);
     });
     return sorted;
+  }
+
+  // ── Opacity for a card given its current dist from centre ──────
+  // All cards maintain full opacity for smooth slide animations
+  double _opacityFor(double dist, bool isExiting) {
+    final absDist = dist.abs();
+    // Full opacity for all cards - no fade effect
+    if (absDist <= 1.0) {
+      return 1.0;
+    }
+    return 1.0;
   }
 
   @override
@@ -182,9 +226,12 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
 
   void _go(int dir) {
     if (_carouselCtrl.isAnimating) return;
+    _lastDir = dir;
     _centreIndex = _wrap(_centreIndex + dir);
     _offsetTween.begin = 0.0;
     _offsetTween.end   = dir.toDouble();
+    // Rebuild BEFORE forwarding so the incoming card starts at its off-screen slot
+    setState(() => _rebuildCards(centre: _centreIndex, dir: dir));
     _carouselCtrl.forward(from: 0);
   }
 
@@ -335,24 +382,29 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
                       final cards = _zSorted;
                       return Stack(
                         alignment: Alignment.center,
+                        clipBehavior: Clip.none, // allow off-screen cards to slide in visibly
                         children: cards.map((card) {
-                          final dist  = card.slot.toDouble() - _offset;
-                          final scale = _scaleFor(dist);
-                          final x     = _xFor(dist, size.width);
-                          final y     = _yFor(dist);
+                          final dist      = card.slot.toDouble() - _offset;
+                          final scale     = _scaleFor(dist);
+                          final x         = _xFor(dist, size.width);
+                          final y         = _yFor(dist);
                           final bobWeight = (1.0 - dist.abs()).clamp(0.0, 1.0);
+                          final opacity   = _opacityFor(dist, card.isExiting);
 
                           return RepaintBoundary(
                             key: ValueKey(card.gradeIdx),
-                            child: Transform.translate(
-                              offset: Offset(x, y + _bobAnim.value * bobWeight),
-                              child: Transform.scale(
-                                scale: scale,
-                                child: SvgPicture.asset(
-                                  _gradeAsset(card.gradeIdx, theme),
-                                  width: islandSize,
-                                  height: islandSize,
-                                  fit: BoxFit.contain,
+                            child: Opacity(
+                              opacity: opacity,
+                              child: Transform.translate(
+                                offset: Offset(x, y + _bobAnim.value * bobWeight),
+                                child: Transform.scale(
+                                  scale: scale,
+                                  child: SvgPicture.asset(
+                                    _gradeAsset(card.gradeIdx, theme),
+                                    width: islandSize,
+                                    height: islandSize,
+                                    fit: BoxFit.contain,
+                                  ),
                                 ),
                               ),
                             ),

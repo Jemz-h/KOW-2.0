@@ -45,23 +45,8 @@ class TutorialScreen extends StatelessWidget {
                             ),
                             decoration: BoxDecoration(
                               // Dark gradient background matching screenshot
-                              gradient: const LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  Color(0xFF1A1A2E),
-                                  Color(0xFF16213E),
-                                  Color(0xFF0F3460),
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(28),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Colors.black38,
-                                  blurRadius: 14,
-                                  offset: Offset(0, 6),
-                                ),
-                              ],
+                              color: const Color.fromARGB(150, 0, 0, 0),
+                              borderRadius: BorderRadius.circular(16),
                             ),
                             child: LayoutBuilder(
                               builder: (context, cardConstraints) {

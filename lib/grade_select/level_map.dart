@@ -34,7 +34,10 @@ String _gradeAsset(int gradeIndex, String theme) {
   final assets = _themeAssets[theme] ?? _themeAssets['space']!;
   return assets[gradeIndex.clamp(0, assets.length - 1)];
 }
+late final AnimationController _nodeSlideCtrl;
+late Animation<Offset> _nodeSlideAnim;
 
+int _prevNodeIndex = 0;
 // Maps grade name → carousel slot index (must stay in sync with _kGrades in grade.dart)
 int _gradeIndexFromName(String grade) {
   switch (grade.toUpperCase()) {
@@ -173,6 +176,12 @@ class _LevelMapScreenState extends State<LevelMapScreen>
   @override
   void initState() {
     super.initState();
+
+    _nodeSlideCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    );
+        _nodeSlideCtrl.dispose();
 
     _gojoCtrl = AnimationController(
       vsync: this,
@@ -439,20 +448,50 @@ class _LevelMapScreenState extends State<LevelMapScreen>
   }
 
   Future<void> _updateSelectedNode(int nextNodeIndex) async {
-    if (nextNodeIndex < 0 || nextNodeIndex >= _nodeTravelOrder.length) {
-      return;
-    }
-
-    if (nextNodeIndex > _maxUnlockedNodeIndex()) {
-      await _showLevelLockedDialog();
-      return;
-    }
-
-    setState(() {
-      _selectedNodeIndex = nextNodeIndex;
-      _selectedDifficultyIndex = _difficultyIndexFromNode(nextNodeIndex);
-    });
+  if (nextNodeIndex < 0 || nextNodeIndex >= _nodeTravelOrder.length) {
+    return;
   }
+
+  if (nextNodeIndex > _maxUnlockedNodeIndex()) {
+    await _showLevelLockedDialog();
+    return;
+  }
+
+  final travelNodes = _nodeTravelOrder
+      .map((index) => _Node(
+            MediaQuery.of(context).size.width * [
+              kN1X,kN2X,kN3X,kN4X,kN5X,kN6X,kN7X,kN8X,kN9X
+            ][index],
+            MediaQuery.of(context).size.height * [
+              kN1Y,kN2Y,kN3Y,kN4Y,kN5Y,kN6Y,kN7Y,kN8Y,kN9Y
+            ][index],
+            Colors.white,
+          ))
+      .toList();
+
+  final current = travelNodes[_selectedNodeIndex];
+  final next    = travelNodes[nextNodeIndex];
+
+  _prevNodeIndex = _selectedNodeIndex;
+
+  _nodeSlideAnim = Tween<Offset>(
+    begin: Offset(current.x, current.y),
+    end: Offset(next.x, next.y),
+  ).animate(
+    CurvedAnimation(
+      parent: _nodeSlideCtrl,
+      curve: Curves.easeOutCubic,
+    ),
+  );
+
+  setState(() {
+    _selectedNodeIndex = nextNodeIndex;
+    _selectedDifficultyIndex =
+        _difficultyIndexFromNode(nextNodeIndex);
+  });
+
+  _nodeSlideCtrl.forward(from: 0);
+}
 
   Future<void> _handleDifficultySwipe(double velocity) async {
     if (_loadingProgress) return;
@@ -616,21 +655,48 @@ class _LevelMapScreenState extends State<LevelMapScreen>
 
           // 5. Gojo / sisa character — floats between mars and earth
           AnimatedBuilder(
-            animation: _gojoAnim,
-            builder: (_, child) => Positioned(
-              left: selectedTravelNode.x - (characterSize / 2),
-              top: selectedTravelNode.y - (characterSize / 2) + _gojoAnim.value,
-              child: child!,
-            ),
-            child: Image.asset(
-              'assets/sisa_oyo/sisa_node.gif',
-              width: characterSize,
-              height: characterSize,
-              fit: BoxFit.contain,
-              errorBuilder: (_, _, _) =>
-                  const Icon(Icons.person, color: Colors.white, size: 32),
-            ),
-          ),
+  animation: Listenable.merge([_nodeSlideCtrl, _gojoAnim]),
+  builder: (_, child) {
+    final size = MediaQuery.of(context).size;
+    final sw = size.width;
+    final sh = size.height;
+
+    final nodes = [
+      Offset(sw * kN1X, sh * kN1Y),
+      Offset(sw * kN2X, sh * kN2Y),
+      Offset(sw * kN3X, sh * kN3Y),
+      Offset(sw * kN4X, sh * kN4Y),
+      Offset(sw * kN5X, sh * kN5Y),
+      Offset(sw * kN6X, sh * kN6Y),
+      Offset(sw * kN7X, sh * kN7Y),
+      Offset(sw * kN8X, sh * kN8Y),
+      Offset(sw * kN9X, sh * kN9Y),
+    ];
+
+    final travelNodes =
+        _nodeTravelOrder.map((i) => nodes[i]).toList();
+
+    final selected = travelNodes[_selectedNodeIndex];
+
+    final pos = _nodeSlideCtrl.isAnimating
+        ? _nodeSlideAnim.value
+        : selected;
+
+    final characterSize = sw * kGojoSize;
+
+    return Positioned(
+      left: pos.dx - (characterSize / 2),
+      top: pos.dy - (characterSize / 2) + _gojoAnim.value,
+      child: child!,
+    );
+  },
+  child: Image.asset(
+    'assets/sisa_oyo/sisa_node.gif',
+    width: MediaQuery.of(context).size.width * kGojoSize,
+    height: MediaQuery.of(context).size.width * kGojoSize,
+    fit: BoxFit.contain,
+  ),
+),
 
           // 6. Label pill — drawn FIRST so island overlaps it
           Positioned(
