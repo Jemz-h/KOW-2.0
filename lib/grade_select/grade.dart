@@ -627,10 +627,8 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
                                     padding: EdgeInsets.fromLTRB(
                                         r.sw(20), r.sh(28), r.sw(20), r.sh(28)),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF1C2B4A),
+                                      color: const Color.fromARGB(197, 0, 0, 0),
                                       borderRadius: BorderRadius.circular(r.sw(32)),
-                                      border: Border.all(
-                                          color: const Color(0xFF2E4A7A), width: 2.5),
                                       boxShadow: const [BoxShadow(
                                         color: Colors.black54,
                                         blurRadius: 24,
@@ -674,28 +672,7 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
                                       ),
                                     ),
                                   ),
-                                  Positioned(
-                                    bottom: -r.sh(40), right: -r.sw(15),
-                                    child: RepaintBoundary(
-                                      child: AnimatedBuilder(
-                                        animation: _shipCtrl,
-                                        builder: (_, child) => Transform.translate(
-                                          offset: Offset(0, _shipBob.value),
-                                          child: Transform.rotate(
-                                            angle: _shipWiggle.value,
-                                            child: child,
-                                          ),
-                                        ),
-                                        child: Image.asset(
-                                          'assets/themes/spaceship.png',
-                                          width: r.sw(120), height: r.sw(120),
-                                          fit: BoxFit.contain,
-                                          errorBuilder: (_, __, ___) =>
-                                              const SizedBox.shrink(),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
+                                  
                                 ],
                               ),
                             ),

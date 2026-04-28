@@ -159,42 +159,24 @@ class _MenuScreenState extends State<MenuScreen>
                       _buildLogoRow(),
 
                       // TITLE
-                      Positioned(
-                        top: designH * 0.14,
-                        left: 20,
-                        right: 20,
-                        child: FadeTransition(
-                          opacity: _titleOpacity,
-                          child: SlideTransition(
-                            position: _titleSlide,
-                            child: ScaleTransition(
-                              scale: _idleTitleScale,
-                              child: Text(
-                                'KARUNUNGAN\nON WHEELS',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontFamily: 'SuperCartoon',
-                                  fontSize: isTablet ? 70 : contentW * 0.13,
-                                  fontWeight: FontWeight.w900,
-                                  height: 1.2,
-                                  color: Colors.white,
-                                  shadows: const [
-                                    Shadow(
-                                      blurRadius: 4,
-                                      color: Colors.black54,
-                                      offset: Offset(2, 2),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
+                     Positioned(
+                      top: sx(20) + (contentW * 0.12),
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: Transform.scale(
+                          scale: 0.8, // ← adjust this (1.2–1.8 sweet spot)
+                          child: Image.asset(
+                            'assets/misc/kow.png',
+                            fit: BoxFit.contain,
                           ),
                         ),
                       ),
+                    ),
 
                       // SUBTITLE
                       Positioned(
-                        top: designH * 0.28,
+                        top: designH * 0.30,
                         left: 10,
                         right: 10,
                         child: FadeTransition(

@@ -617,7 +617,7 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
                           SizedBox(height: 1 * scale),
                           KowTextField(
                             controller: _firstNameController,
-                            hintText: 'Example: Sisa',
+                            hintText: 'Juan',
                             height: fieldHeight,
                             fontSize: fieldFont,
                             borderRadius: fieldRadius,
@@ -628,7 +628,7 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
                           SizedBox(height: 1 * scale),
                           KowTextField(
                             controller: _lastNameController,
-                            hintText: 'Example: Oyo',
+                            hintText: 'Dela Cruz',
                             height: fieldHeight,
                             fontSize: fieldFont,
                             borderRadius: fieldRadius,
@@ -639,7 +639,7 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
                           SizedBox(height: 1 * scale),
                           KowTextField(
                             controller: _nicknameController,
-                            hintText: 'Example: Sample',
+                            hintText: 'Juan',
                             height: fieldHeight,
                             fontSize: fieldFont,
                             borderRadius: fieldRadius,
