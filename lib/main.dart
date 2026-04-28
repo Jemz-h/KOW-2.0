@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -62,11 +63,40 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  bool _wasOnline = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     unawaited(_restoreSavedTheme());
+    unawaited(_watchConnectivity());
+  }
+
+  Future<void> _watchConnectivity() async {
+    final connectivity = Connectivity();
+    _wasOnline = _isOnline(await connectivity.checkConnectivity());
+    _connectivitySubscription = connectivity.onConnectivityChanged.listen((
+      results,
+    ) {
+      final isOnline = _isOnline(results);
+      final cameBackOnline = !_wasOnline && isOnline;
+      _wasOnline = isOnline;
+      if (cameBackOnline && mounted) {
+        unawaited(_syncPendingWithFeedback());
+      }
+    });
+  }
+
+  bool _isOnline(List<ConnectivityResult> results) {
+    return results.any(
+      (result) =>
+          result == ConnectivityResult.mobile ||
+          result == ConnectivityResult.wifi ||
+          result == ConnectivityResult.ethernet ||
+          result == ConnectivityResult.vpn,
+    );
   }
 
   Future<void> _restoreSavedTheme() async {
@@ -118,6 +148,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _connectivitySubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

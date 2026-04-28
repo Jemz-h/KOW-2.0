@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import 'mock_background.dart';
 
@@ -166,12 +165,12 @@ class _BackendFeedbackOverlayState extends State<BackendFeedbackOverlay> {
   String get _assetPath {
     final theme = selectedThemeNotifier.value.toLowerCase();
     if (theme.contains('classroom')) {
-      return 'assets/misc/backend_feedback_classroom.svg';
+      return 'assets/misc/feedback_classroom.png';
     }
     if (theme.contains('sauyo')) {
-      return 'assets/misc/backend_feedback_sauyo.svg';
+      return 'assets/misc/feedback_sauyo.png';
     }
-    return 'assets/misc/backend_feedback_space.svg';
+    return 'assets/misc/feedback_space.png';
   }
 
   Color get _cardColor {
@@ -242,7 +241,7 @@ class _BackendFeedbackOverlayState extends State<BackendFeedbackOverlay> {
                           child: child,
                         );
                       },
-                      child: SvgPicture.asset(
+                      child: Image.asset(
                         _assetPath,
                         height: 116 * scale,
                         fit: BoxFit.contain,
