@@ -28,6 +28,24 @@ class LevelProgression {
     return 0;
   }
 
+  static int currentNodeForLearner({
+    required int selectedNodeIndex,
+    required int maxUnlockedNodeIndex,
+  }) {
+    final maxUnlocked = maxUnlockedNodeIndex.clamp(0, totalNodes - 1).toInt();
+    final selected = selectedNodeIndex.clamp(0, totalNodes - 1).toInt();
+
+    if (selected == 0 && maxUnlocked > 0) {
+      return maxUnlocked;
+    }
+
+    if (selected > maxUnlocked) {
+      return maxUnlocked;
+    }
+
+    return selected;
+  }
+
   static List<Map<String, dynamic>> questionsForNode({
     required List<Map<String, dynamic>> rows,
     required int nodeIndex,

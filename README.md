@@ -27,15 +27,7 @@ The backend provides the API necessary for the Flutter application to interact w
    ```
 4. **Configure Oracle Database Environment**:
    Use `backend/.env.development` for local development. Add your Oracle credentials:
-   ```env
-   PORT=3010
-   NODE_ENV=development
-   DB_CLIENT=oracle
-   DB_FALLBACK_SQLITE=false
-   DB_USER=your_oracle_username
-   DB_PASSWORD=your_oracle_password
-   DB_CONNECTION_STRING=localhost:1521/XEPDB1
-   ```
+
    *Note: Install Oracle locally or use Oracle cloud. Run `backend/src/config/KOW.sql` in SQL Developer/DataGrip to initialize schema. For strict Oracle testing, keep `DB_FALLBACK_SQLITE=false`.*
 5. **Start the Development Server**:
    ```bash
@@ -68,11 +60,6 @@ The frontend project is located in the root of the workspace.
    ```
 
 ### Frontend API Target Profiles
-
-Use these files in the project root:
-
-- `.env.dev` -> `API_BASE_URL=http://localhost:3001`
-- `.env.prod` -> `API_BASE_URL=http://localhost:3000`
 
 Run on Chrome with explicit target:
 

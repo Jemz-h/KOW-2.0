@@ -265,16 +265,11 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
         return;
       }
 
-      final wasUploadedOnline = ApiService.currentStudentId != null;
       await BackendFeedbackOverlay.showMessage(
         context: context,
-        title: wasUploadedOnline ? 'Saved Online' : 'Saved Locally',
-        message: wasUploadedOnline
-            ? 'Your learner profile is ready. Welcome to KOW!'
-            : 'Your learner profile is queued in the local database and will sync when the server is reachable.',
-        tone: wasUploadedOnline
-            ? BackendFeedbackTone.success
-            : BackendFeedbackTone.warning,
+        title: 'Saved Online',
+        message: 'Your learner profile is ready. Welcome to KOW!',
+        tone: BackendFeedbackTone.success,
       );
       if (!mounted) {
         return;

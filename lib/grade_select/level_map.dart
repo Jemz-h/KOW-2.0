@@ -11,6 +11,7 @@ import '../local_sync_store.dart';
 import '../widgets/backend_feedback.dart';
 import '../widgets/break_time.dart';
 import '../widgets/mock_background.dart';
+import '../writing_activity.dart';
 
 const bool _debugShowBreakTimeOnEveryNextLevel = true;
 
@@ -255,15 +256,17 @@ class _LevelMapScreenState extends State<LevelMapScreen>
       duration: const Duration(milliseconds: 2100),
     )..repeat(reverse: true);
 
-    // Warm the first question payload while user is on the map.
-    unawaited(
-      ApiService.getQuestions(
-        grade: widget.grade,
-        subject: widget.subject,
-      ).catchError((_) {
-        return <Map<String, dynamic>>[];
-      }),
-    );
+    if (!isWritingSubject(widget.subject)) {
+      // Warm the first question payload while user is on the map.
+      unawaited(
+        ApiService.getQuestions(
+          grade: widget.grade,
+          subject: widget.subject,
+        ).catchError((_) {
+          return <Map<String, dynamic>>[];
+        }),
+      );
+    }
 
     unawaited(_loadProgressUnlocks());
     unawaited(_checkCategoryHasAnyContent());
@@ -343,6 +346,24 @@ class _LevelMapScreenState extends State<LevelMapScreen>
     if (!mounted) return;
 
     final difficulty = LevelProgression.difficultyForNode(nodeIndex);
+    if (isWritingSubject(widget.subject)) {
+      final shouldPlay = await BackendFeedbackOverlay.showChoice(
+        context: context,
+        title: 'Level ${nodeIndex + 1} Unlocked',
+        tone: BackendFeedbackTone.success,
+        message:
+            '${widget.grade} - Writing\n$difficulty slab\nUse the printed writing sheet, then record the outcome.',
+        primaryLabel: 'Start Writing',
+        secondaryLabel: 'Stay on Map',
+        barrierDismissible: false,
+      );
+
+      if (shouldPlay == true && mounted) {
+        await _launchQuizForSelectedLevel();
+      }
+      return;
+    }
+
     final rows = await ApiService.getQuestions(
       grade: widget.grade,
       subject: widget.subject,
@@ -392,6 +413,14 @@ class _LevelMapScreenState extends State<LevelMapScreen>
       _checkingCategoryContent = true;
     });
 
+    if (isWritingSubject(widget.subject)) {
+      setState(() {
+        _checkingCategoryContent = false;
+        _categoryHasContent = true;
+      });
+      return;
+    }
+
     bool hasAnyContent = false;
     bool connectionOrServerIssue = false;
 
@@ -435,6 +464,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
       case 'ENGLISH':
         return 'ENGLISH';
       case 'WRITING':
+        return 'WRITING';
       case 'FILIPINO':
         return 'FILIPINO';
       default:
@@ -548,9 +578,10 @@ class _LevelMapScreenState extends State<LevelMapScreen>
       setState(() {
         _maxUnlockedTravelNodeIndex = maxUnlockedNode;
         final maxNode = _maxUnlockedNodeIndex();
-        if (_selectedNodeIndex > maxNode) {
-          _selectedNodeIndex = maxNode;
-        }
+        _selectedNodeIndex = LevelProgression.currentNodeForLearner(
+          selectedNodeIndex: _selectedNodeIndex,
+          maxUnlockedNodeIndex: maxNode,
+        );
         _selectedDifficultyIndex = _difficultyIndexFromNode(_selectedNodeIndex);
       });
     } catch (_) {
@@ -635,23 +666,25 @@ class _LevelMapScreenState extends State<LevelMapScreen>
 
     final selectedDifficulty = _difficultyOrder[_selectedDifficultyIndex];
 
-    final rows = await ApiService.getQuestions(
-      grade: widget.grade,
-      subject: widget.subject,
-      difficulty: selectedDifficulty,
-    );
-    if (!mounted) return;
+    if (!isWritingSubject(widget.subject)) {
+      final rows = await ApiService.getQuestions(
+        grade: widget.grade,
+        subject: widget.subject,
+        difficulty: selectedDifficulty,
+      );
+      if (!mounted) return;
 
-    final levelNumber = _selectedNodeIndex + 1;
-    final levelRows = LevelProgression.questionsForNode(
-      rows: rows,
-      nodeIndex: _selectedNodeIndex,
-      difficulty: selectedDifficulty,
-    );
+      final levelNumber = _selectedNodeIndex + 1;
+      final levelRows = LevelProgression.questionsForNode(
+        rows: rows,
+        nodeIndex: _selectedNodeIndex,
+        difficulty: selectedDifficulty,
+      );
 
-    if (levelRows.isEmpty) {
-      await _showMissingLevelDialog(levelNumber);
-      return;
+      if (levelRows.isEmpty) {
+        await _showMissingLevelDialog(levelNumber);
+        return;
+      }
     }
 
     if (!mounted) return;

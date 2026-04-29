@@ -184,6 +184,7 @@ class LocalSyncStore {
       case 'ENGLISH':
         return 'ENGLISH';
       case 'WRITING':
+        return 'WRITING';
       case 'FILIPINO':
         return 'FILIPINO';
       default:

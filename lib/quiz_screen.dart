@@ -8,6 +8,7 @@ import 'level_progression.dart';
 import 'local_sync_store.dart';
 import 'screens/start.dart';
 import 'widgets/mock_background.dart';
+import 'writing_activity.dart';
 
 // ╔══════════════════════════════════════════════════════════════════════════╗
 // ║  LAYOUT & SIZE CONSTANTS                                                ║
@@ -508,7 +509,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
   Future<void>? _completionPersistFuture;
   List<QuizQuestion>? _remoteQuestions;
   String? _quizErrorMessage;
-  String? _completionSyncErrorMessage;
   late final DateTime _sessionStartedAt;
 
   late final AnimationController _fadeCtrl;
@@ -520,6 +520,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
 
   QuizQuestion get _q => _qs[_qi];
   bool get _isEasy => widget.difficulty == 'EASY';
+  bool get _isWritingActivity => isWritingSubject(widget.subject);
   bool get _isCorrect => _selectedIdx == _q.correctIndex;
   String get _scoreText => 'Score: $_score/${_qs.length}';
   bool get _passedCurrentLevel =>
@@ -568,6 +569,34 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
         setState(() {
           _isLoadingQuestions = true;
         });
+      }
+
+      if (_isWritingActivity) {
+        final labels = writingActivityChoices
+            .map((choice) => choice.label)
+            .toList(growable: false);
+
+        setState(() {
+          _quizErrorMessage = null;
+          _remoteQuestions = [
+            QuizQuestion(
+              questionNumber: 'WRITING LEVEL ${widget.nodeIndex + 1}',
+              prompt: writingActivityPrompt(
+                grade: widget.grade,
+                difficulty: widget.difficulty,
+                nodeIndex: widget.nodeIndex,
+              ),
+              wordType: widget.difficulty,
+              subPrompt: writingActivitySubPrompt(),
+              choices: labels,
+              correctIndex: 0,
+              funFact:
+                  'Writing on paper counts here. Choose honestly so Sisa can keep the right progress.',
+            ),
+          ];
+          _isLoadingQuestions = false;
+        });
+        return;
       }
 
       final rows = await ApiService.getQuestions(
@@ -691,11 +720,18 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
     _isSubmittingScore = true;
     try {
       final playedAt = DateTime.now().toIso8601String();
-      if (mounted) {
-        setState(() {
-          _completionSyncErrorMessage = null;
-        });
+      final maxScore = _qs.isNotEmpty ? _qs.length : 1;
+      final passed = (_score / maxScore) >= 0.7;
+
+      if (passed) {
+        await LocalSyncStore.instance.saveLocalLevelProgress(
+          studentId: studentId,
+          grade: widget.grade,
+          subject: widget.subject,
+          highestNodeIndex: widget.nodeIndex + 1,
+        );
       }
+
       await ApiService.submitScore(
         studentId: studentId,
         grade: widget.grade,
@@ -705,17 +741,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
         total: _qs.length,
         playedAt: playedAt,
       );
-
-      final maxScore = _qs.isNotEmpty ? _qs.length : 1;
-      final passed = (_score / maxScore) >= 0.7;
-      if (passed) {
-        await LocalSyncStore.instance.saveLocalLevelProgress(
-          studentId: studentId,
-          grade: widget.grade,
-          subject: widget.subject,
-          highestNodeIndex: widget.nodeIndex + 1,
-        );
-      }
 
       final diffId = switch (widget.difficulty) {
         'EASY' => 1,
@@ -736,23 +761,8 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
         totalTimePlayed: timeSpentSeconds < 0 ? 0 : timeSpentSeconds,
         lastPlayedAt: playedAt,
       );
-    } on ApiException catch (e) {
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _completionSyncErrorMessage = e.message;
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _completionSyncErrorMessage =
-            'Unable to save progress to the server: $error';
-      });
+    } catch (_) {
+      // Keep gameplay uninterrupted if score sync fails.
     } finally {
       _isSubmittingScore = false;
     }
@@ -784,7 +794,11 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
     setState(() {
       _hasQuestionInteraction = true;
       _selectedIdx = idx;
-      if (idx == _q.correctIndex) _score++;
+      if (_isWritingActivity) {
+        _score += scoreForWritingChoice(idx).score;
+      } else if (idx == _q.correctIndex) {
+        _score++;
+      }
     });
     Future.delayed(const Duration(milliseconds: 500), () {
       if (!mounted) return;
@@ -1415,7 +1429,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
               total: _qs.length,
               difficulty: widget.difficulty,
               canAdvance: _passedCurrentLevel,
-              syncErrorMessage: _completionSyncErrorMessage,
               onNext: () async {
                 if (!_passedCurrentLevel) {
                   setState(() {
@@ -1426,7 +1439,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                     _showResult = false;
                     _showDonePopup = false;
                     _completionPersistFuture = null;
-                    _completionSyncErrorMessage = null;
                   });
                   _fadeCtrl.reset();
                   return;
@@ -1447,7 +1459,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                   _showResult = false;
                   _showDonePopup = false;
                   _completionPersistFuture = null;
-                  _completionSyncErrorMessage = null;
                 });
                 _fadeCtrl.reset();
               },
@@ -1514,29 +1525,31 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
             ),
           ),
         ),
-        SizedBox(height: sh * kSkipGapT),
-        Center(
-          child: _SkipButton(
-            skipsLeft: _skipsLeft,
-            disabled: _selectedIdx != null,
-            padH: sw * kSkipPadH,
-            padV: sh * kSkipPadV,
-            radius: sw * kSkipRadius,
-            fontSize: sw * kSkipFs,
-            onTap: _onSkip,
-          ),
-        ),
-        SizedBox(height: sh * kSkipsLabelGapT),
-        Center(
-          child: Text(
-            'Available Skips: $_skipsLeft',
-            style: TextStyle(
-              fontFamily: 'SuperCartoon',
-              fontSize: sw * kSkipsLabelFs,
-              color: Colors.white70,
+        if (!_isWritingActivity) ...[
+          SizedBox(height: sh * kSkipGapT),
+          Center(
+            child: _SkipButton(
+              skipsLeft: _skipsLeft,
+              disabled: _selectedIdx != null,
+              padH: sw * kSkipPadH,
+              padV: sh * kSkipPadV,
+              radius: sw * kSkipRadius,
+              fontSize: sw * kSkipFs,
+              onTap: _onSkip,
             ),
           ),
-        ),
+          SizedBox(height: sh * kSkipsLabelGapT),
+          Center(
+            child: Text(
+              'Available Skips: $_skipsLeft',
+              style: TextStyle(
+                fontFamily: 'SuperCartoon',
+                fontSize: sw * kSkipsLabelFs,
+                color: Colors.white70,
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -1550,6 +1563,14 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
     final resultColor = _isCorrect
         ? const Color(0xFF66CC66)
         : const Color(0xFFBB77EE);
+    final resultTitle = _isWritingActivity
+        ? (_isCorrect ? 'Great Writing!' : 'Keep Practicing!')
+        : (_isCorrect ? 'Correct!' : 'Nice Try!');
+    final resultBody = _isWritingActivity
+        ? (_isCorrect
+              ? 'Sisa recorded this writing slab as complete'
+              : 'Sisa saved this try. Practice the sheet again when ready')
+        : correctWord;
     const funFactColor = Color(0xFF44CCEE);
 
     Widget outlinedTitle(String t, Color fill, double fs, double ls) {
@@ -1621,7 +1642,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             outlinedTitle(
-              _isCorrect ? 'Correct!' : 'Nice Try!',
+              resultTitle,
               resultColor,
               sw * kResultTitleFs,
               kResultTitleLS,
@@ -1637,25 +1658,13 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                   color: const Color(0xFF1A2340),
                   height: 1.5,
                 ),
-                children: _isEasy
-                    ? [
-                        const TextSpan(
-                          text: '',
-                        ), //<- text for correct pop up eg. the image shown below is
-                        TextSpan(
-                          text: correctWord,
-                          style: TextStyle(color: resultColor),
-                        ),
-                        const TextSpan(text: '.'),
-                      ] //<- highlighted answer
-                    : [
-                        const TextSpan(text: ''), // for nice try
-                        TextSpan(
-                          text: correctWord,
-                          style: TextStyle(color: resultColor),
-                        ),
-                        const TextSpan(text: '.'),
-                      ], // same here
+                children: [
+                  TextSpan(
+                    text: resultBody,
+                    style: TextStyle(color: resultColor),
+                  ),
+                  const TextSpan(text: '.'),
+                ],
               ),
             ),
             if (hasFunFact) ...[
@@ -1703,7 +1712,6 @@ class _LevelCompletePopup extends StatefulWidget {
   final int score, total;
   final String difficulty;
   final bool canAdvance;
-  final String? syncErrorMessage;
   final VoidCallback onNext, onRestart, onReturnMap, onHome;
 
   const _LevelCompletePopup({
@@ -1711,7 +1719,6 @@ class _LevelCompletePopup extends StatefulWidget {
     required this.total,
     required this.difficulty,
     required this.canAdvance,
-    this.syncErrorMessage,
     required this.onNext,
     required this.onRestart,
     required this.onReturnMap,
@@ -1904,36 +1911,6 @@ class _LevelCompletePopupState extends State<_LevelCompletePopup>
                                   sw * kPopGradeFs,
                                   kPopGradeLS,
                                 ),
-
-                                if (widget.syncErrorMessage != null) ...[
-                                  SizedBox(height: sh * kPopGapGS),
-                                  Container(
-                                    width: double.infinity,
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: sw * 0.03,
-                                      vertical: sh * 0.016,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFFFE6E6),
-                                      borderRadius: BorderRadius.circular(
-                                        sw * 0.022,
-                                      ),
-                                      border: Border.all(
-                                        color: const Color(0xFFD94A4A),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      widget.syncErrorMessage!,
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontFamily: 'SuperCartoon',
-                                        fontSize: sw * 0.028,
-                                        color: const Color(0xFFB03434),
-                                        height: 1.35,
-                                      ),
-                                    ),
-                                  ),
-                                ],
 
                                 SizedBox(height: sh * kPopGapGS),
 

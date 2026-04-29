@@ -267,6 +267,9 @@ class ApiService {
     await _tryEnsureDeviceAuth();
     await syncPending();
 
+    // The live KOW backend exposes lookup-based student login, not /api/auth/login.
+    _supportsStudentAuthLogin = false;
+
     ApiException? loginError;
 
     if (_supportsStudentAuthLogin) {
@@ -2038,7 +2041,7 @@ class ApiService {
       case 'READING':
         return 'English';
       case 'WRITING':
-        return 'Filipino';
+        return 'Writing';
       case 'ENGLISH':
         return 'English';
       case 'FILIPINO':
@@ -2069,6 +2072,8 @@ class ApiService {
         return 3;
       case 'ENGLISH':
         return 4;
+      case 'WRITING':
+        return 5;
       default:
         throw ApiException(
           400,

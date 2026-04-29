@@ -154,8 +154,9 @@ class SeededQuestionStore {
         case 'READING':
           return const <String>['ENGLISH', 'READING'];
         case 'FILIPINO':
+          return const <String>['FILIPINO'];
         case 'WRITING':
-          return const <String>['FILIPINO', 'WRITING'];
+          return const <String>['WRITING'];
         case 'MATHEMATICS':
         case 'MATH':
           return const <String>['MATHEMATICS', 'MATH'];
@@ -179,8 +180,7 @@ class SeededQuestionStore {
       args.add(normalizedDifficulty);
     }
 
-    final rows = await db.rawQuery(
-      '''
+    final rows = await db.rawQuery('''
       SELECT q.question_id,
              q.question_txt,
              q.option_a,
@@ -194,9 +194,7 @@ class SeededQuestionStore {
       JOIN diffTb d ON q.diff_id = d.diff_id
       WHERE ${where.toString()}
       ORDER BY q.question_id
-      ''',
-      args,
-    );
+      ''', args);
 
     if (rows.isEmpty) {
       return const <Map<String, dynamic>>[];
@@ -232,7 +230,10 @@ class SeededQuestionStore {
       ];
       final hasAnyChoiceImage = choiceImageBlobs.any((entry) => entry != null);
 
-      final correctOpt = (row['correct_opt'] ?? '').toString().trim().toUpperCase();
+      final correctOpt = (row['correct_opt'] ?? '')
+          .toString()
+          .trim()
+          .toUpperCase();
 
       result.add(<String, dynamic>{
         'id': questionId,
