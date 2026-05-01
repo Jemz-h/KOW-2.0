@@ -3,7 +3,7 @@ description: "Karunungan On Wheels"
 
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 0.0.5+5
 
 environment:
   sdk: ^3.10.7
