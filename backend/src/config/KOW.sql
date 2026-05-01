@@ -20,6 +20,7 @@ BEGIN
     BEGIN EXECUTE IMMEDIATE 'DROP TRIGGER trg_question_updated'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP TRIGGER trg_student_updated';  EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP TRIGGER trg_student_audit';    EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'DROP TRIGGER trg_ai_adminsession';  EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP TRIGGER trg_ai_synclog';       EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP TRIGGER trg_ai_contentver';    EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP TRIGGER trg_ai_question';      EXCEPTION WHEN OTHERS THEN NULL; END;
@@ -55,9 +56,12 @@ BEGIN
     BEGIN EXECUTE IMMEDIATE 'DROP SYNONYM subjects';  EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP SYNONYM scores';    EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP SYNONYM students';  EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'DROP SYNONYM admin_sessions'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'DROP SYNONYM activity_logs';  EXCEPTION WHEN OTHERS THEN NULL; END;
 
     -- Tables (most-dependent first; CASCADE CONSTRAINTS drops child FKs automatically)
     BEGIN EXECUTE IMMEDIATE 'DROP TABLE auditTb          CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'DROP TABLE activityLogTb    CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP TABLE syncLogTb        CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP TABLE contentVersionTb CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP TABLE questionTb       CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
@@ -67,6 +71,7 @@ BEGIN
     BEGIN EXECUTE IMMEDIATE 'DROP TABLE scoreTb          CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP TABLE customTb         CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP TABLE deviceTb         CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'DROP TABLE adminSessionTb   CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP TABLE adminTb          CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP TABLE studentTb        CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP TABLE teacherTb        CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
@@ -89,6 +94,8 @@ BEGIN
     BEGIN EXECUTE IMMEDIATE 'DROP SEQUENCE seq_sync_id';      EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP SEQUENCE seq_content_ver';  EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'DROP SEQUENCE seq_audit_id';     EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'DROP SEQUENCE seq_admin_session_id'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'DROP SEQUENCE seq_activity_log_id';  EXCEPTION WHEN OTHERS THEN NULL; END;
 
     -- Roles (may fail if kow_admin lacks DROP ROLE privilege — that is fine)
     BEGIN EXECUTE IMMEDIATE 'DROP ROLE kow_admin_role';    EXCEPTION WHEN OTHERS THEN NULL; END;
@@ -114,6 +121,8 @@ CREATE SEQUENCE seq_question_id  START WITH 1    INCREMENT BY 1 NOCACHE NOCYCLE;
 CREATE SEQUENCE seq_sync_id      START WITH 1    INCREMENT BY 1 NOCACHE NOCYCLE;
 CREATE SEQUENCE seq_content_ver  START WITH 1    INCREMENT BY 1 NOCACHE NOCYCLE;
 CREATE SEQUENCE seq_audit_id     START WITH 1    INCREMENT BY 1 NOCACHE NOCYCLE;
+CREATE SEQUENCE seq_admin_session_id START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
+CREATE SEQUENCE seq_activity_log_id  START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
 
 
 -- =============================================================================
@@ -156,6 +165,7 @@ INSERT INTO subjectTb VALUES (1, 'Mathematics');
 INSERT INTO subjectTb VALUES (2, 'Science');
 INSERT INTO subjectTb VALUES (3, 'Filipino');
 INSERT INTO subjectTb VALUES (4, 'English');
+INSERT INTO subjectTb VALUES (5, 'Writing');
 
 -- Barangay reference
 CREATE TABLE barangayTb (
@@ -239,8 +249,10 @@ COMMIT;
 CREATE TABLE teacherTb (
     teacher_id  NUMBER(10)   DEFAULT seq_teacher_id.NEXTVAL PRIMARY KEY,
     first_name  VARCHAR2(60) NOT NULL,
+    middle_initial VARCHAR2(5),
     last_name   VARCHAR2(60) NOT NULL,
-    created_at  DATE         DEFAULT SYSDATE NOT NULL
+    created_at  DATE         DEFAULT SYSDATE NOT NULL,
+    updated_at  DATE         DEFAULT SYSDATE NOT NULL
 );
 
 -- Students
@@ -267,8 +279,31 @@ CREATE TABLE adminTb (
     username       VARCHAR2(60)  NOT NULL UNIQUE,
     password_hash  VARCHAR2(255) NOT NULL,  -- bcrypt hash (10 rounds)
     role           VARCHAR2(20)  DEFAULT 'admin' NOT NULL,
+    teacher_id     NUMBER(10)    REFERENCES teacherTb(teacher_id),
+    is_active      NUMBER(1)     DEFAULT 1 NOT NULL,
+    must_change_password NUMBER(1) DEFAULT 0 NOT NULL,
+    mfa_enabled    NUMBER(1)     DEFAULT 0 NOT NULL,
+    mfa_secret_enc VARCHAR2(2000),
+    failed_login_count NUMBER(10) DEFAULT 0 NOT NULL,
+    locked_until   DATE,
     created_at     DATE          DEFAULT SYSDATE NOT NULL,
+    updated_at     DATE          DEFAULT SYSDATE,
     last_login_at  DATE
+);
+
+-- Admin web cookie/session records
+CREATE TABLE adminSessionTb (
+    session_id         NUMBER(10) DEFAULT seq_admin_session_id.NEXTVAL PRIMARY KEY,
+    admin_id           NUMBER(10) NOT NULL REFERENCES adminTb(admin_id),
+    session_token_hash VARCHAR2(64 CHAR) NOT NULL,
+    csrf_token_hash    VARCHAR2(64 CHAR) NOT NULL,
+    expires_at         DATE NOT NULL,
+    ip_address         VARCHAR2(64 CHAR),
+    user_agent         VARCHAR2(500 CHAR),
+    last_seen_at       DATE DEFAULT SYSDATE NOT NULL,
+    revoked_at         DATE,
+    created_at         DATE DEFAULT SYSDATE NOT NULL,
+    CONSTRAINT uq_adminsession_token UNIQUE (session_token_hash)
 );
 
 -- Registered devices
@@ -356,19 +391,20 @@ CREATE TABLE questionTb (
     gradelvl_id  NUMBER(3)     NOT NULL REFERENCES gradelvlTb(gradelvl_id),
     diff_id      NUMBER(3)     NOT NULL REFERENCES diffTb(diff_id),
     question_txt VARCHAR2(500) NOT NULL,
-    question_image BLOB,
+    image_url    VARCHAR2(500),
+    fun_fact     VARCHAR2(1000),
+    word_type    VARCHAR2(100),
+    sub_prompt   VARCHAR2(500),
     option_a     VARCHAR2(200) NOT NULL,
     option_b     VARCHAR2(200) NOT NULL,
     option_c     VARCHAR2(200) NOT NULL,
     option_d     VARCHAR2(200) NOT NULL,
-    option_a_image BLOB,
-    option_b_image BLOB,
-    option_c_image BLOB,
-    option_d_image BLOB,
     correct_opt  CHAR(1)       NOT NULL,  -- 'A', 'B', 'C', or 'D'
     is_active    NUMBER(1)     DEFAULT 1,
     created_at   DATE          DEFAULT SYSDATE,
-    updated_at   DATE          DEFAULT SYSDATE
+    updated_at   DATE          DEFAULT SYSDATE,
+    created_by_admin_id NUMBER(10) REFERENCES adminTb(admin_id),
+    updated_by_admin_id NUMBER(10) REFERENCES adminTb(admin_id)
 );
 
 -- Content version tracker (devices compare this to decide if cache needs refresh)
@@ -394,6 +430,22 @@ CREATE TABLE syncLogTb (
     payload     CLOB,                   -- raw JSON from device
     received_at DATE         DEFAULT SYSDATE NOT NULL,
     status      VARCHAR2(20) DEFAULT 'processed'
+);
+
+-- Admin-side action log used by security hardening and monitoring screens
+CREATE TABLE activityLogTb (
+    log_id         NUMBER(10) DEFAULT seq_activity_log_id.NEXTVAL PRIMARY KEY,
+    admin_id       NUMBER(10) REFERENCES adminTb(admin_id),
+    actor_username VARCHAR2(60),
+    actor_role     VARCHAR2(20),
+    action         VARCHAR2(80) NOT NULL,
+    target_type    VARCHAR2(80),
+    target_id      VARCHAR2(80),
+    status         VARCHAR2(20) DEFAULT 'success' NOT NULL,
+    ip_address     VARCHAR2(64),
+    user_agent     VARCHAR2(500),
+    metadata       CLOB,
+    created_at     DATE DEFAULT SYSDATE NOT NULL
 );
 
 
@@ -699,6 +751,9 @@ BEGIN
     BEGIN EXECUTE IMMEDIATE 'GRANT SELECT, INSERT, UPDATE, DELETE ON customTb         TO kow_admin_role'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'GRANT SELECT, INSERT, UPDATE, DELETE ON deviceTb         TO kow_admin_role'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'GRANT SELECT, INSERT, UPDATE, DELETE ON adminTb          TO kow_admin_role'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'GRANT SELECT, INSERT, UPDATE, DELETE ON adminSessionTb   TO kow_admin_role'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'GRANT SELECT, INSERT, UPDATE, DELETE ON activityLogTb    TO kow_admin_role'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'GRANT SELECT, INSERT, UPDATE, DELETE ON areaTb           TO kow_admin_role'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'GRANT SELECT, INSERT, UPDATE, DELETE ON contentVersionTb TO kow_admin_role'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'GRANT SELECT, INSERT ON syncLogTb TO kow_admin_role';                        EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'GRANT SELECT ON auditTb TO kow_admin_role';                                  EXCEPTION WHEN OTHERS THEN NULL; END;
@@ -721,6 +776,7 @@ BEGIN
     BEGIN EXECUTE IMMEDIATE 'GRANT SELECT ON subjectTb        TO kow_device_role'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'GRANT SELECT ON gradelvlTb       TO kow_device_role'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'GRANT SELECT ON diffTb           TO kow_device_role'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'GRANT SELECT ON areaTb           TO kow_device_role'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'GRANT SELECT ON questionTb       TO kow_device_role'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'GRANT SELECT ON contentVersionTb TO kow_device_role'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'GRANT EXECUTE ON sp_upsert_student    TO kow_device_role'; EXCEPTION WHEN OTHERS THEN NULL; END;
@@ -733,6 +789,7 @@ BEGIN
     BEGIN EXECUTE IMMEDIATE 'GRANT SELECT ON vw_age_group_progress TO kow_readonly_role'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'GRANT SELECT ON vw_device_status      TO kow_readonly_role'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'GRANT SELECT ON analyticsTb           TO kow_readonly_role'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'GRANT SELECT ON areaTb                TO kow_readonly_role'; EXCEPTION WHEN OTHERS THEN NULL; END;
 END;
 /
 
@@ -750,6 +807,8 @@ BEGIN
     BEGIN EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM progress  FOR progressTb'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM devices   FOR deviceTb'; EXCEPTION WHEN OTHERS THEN NULL; END;
     BEGIN EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM admins    FOR adminTb'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM admin_sessions FOR adminSessionTb'; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM activity_logs  FOR activityLogTb'; EXCEPTION WHEN OTHERS THEN NULL; END;
 END;
 /
 
@@ -767,15 +826,12 @@ WHEN NOT MATCHED THEN
 
 -- Sample admin user
 -- Default password: Admin@KOW2026
--- IMPORTANT: Regenerate this hash with bcryptjs before production:
---   const bcrypt = require('bcryptjs');
---   console.log(bcrypt.hashSync('YourNewPassword', 10));
 MERGE INTO adminTb a
 USING (SELECT 'kow_admin' username FROM DUAL) s
 ON (a.username = s.username)
 WHEN NOT MATCHED THEN
   INSERT (username, password_hash, role) 
-  VALUES ('kow_admin', '$2b$10$exampleHashChangeBeforeUse1234567890abcdefgh', 'admin');
+  VALUES ('kow_admin', '$2a$10$VOd87aY8CP4Cm2IebNDIQuLeVY9/cp1Q1fitE0zS6AYcDGsIi3bwO', 'admin');
 
 -- Sample students (idempotent)
 MERGE INTO studentTb s
@@ -818,68 +874,68 @@ WHEN NOT MATCHED THEN
 -- Sample questions (idempotent - won't insert same question twice)
 -- Punla: 5 questions
 MERGE INTO questionTb q
-USING (SELECT 1 subject_id, 1 gradelvl_id, 1 diff_id, 'What is 1 + 1?' question_txt, NULL question_image, '1' option_a, '2' option_b, '3' option_c, '4' option_d, 'B' correct_opt FROM DUAL) s
+USING (SELECT 1 subject_id, 1 gradelvl_id, 1 diff_id, 'What is 1 + 1?' question_txt, '1' option_a, '2' option_b, '3' option_c, '4' option_d, 'B' correct_opt FROM DUAL) s
 ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
 WHEN NOT MATCHED THEN
-    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
-    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.question_image, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
+    INSERT (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
 
 MERGE INTO questionTb q
-USING (SELECT 3 subject_id, 1 gradelvl_id, 1 diff_id, 'Which word rhymes with cat?' question_txt, NULL question_image, 'Dog' option_a, 'Hat' option_b, 'Tree' option_c, 'Sun' option_d, 'B' correct_opt FROM DUAL) s
+USING (SELECT 3 subject_id, 1 gradelvl_id, 1 diff_id, 'Which word rhymes with cat?' question_txt, 'Dog' option_a, 'Hat' option_b, 'Tree' option_c, 'Sun' option_d, 'B' correct_opt FROM DUAL) s
 ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
 WHEN NOT MATCHED THEN
-    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
-    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.question_image, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
+    INSERT (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
 
 MERGE INTO questionTb q
-USING (SELECT 4 subject_id, 1 gradelvl_id, 1 diff_id, 'What color is the sky?' question_txt, NULL question_image, 'Red' option_a, 'Green' option_b, 'Blue' option_c, 'Yellow' option_d, 'C' correct_opt FROM DUAL) s
+USING (SELECT 4 subject_id, 1 gradelvl_id, 1 diff_id, 'What color is the sky?' question_txt, 'Red' option_a, 'Green' option_b, 'Blue' option_c, 'Yellow' option_d, 'C' correct_opt FROM DUAL) s
 ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
 WHEN NOT MATCHED THEN
-    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
-    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.question_image, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
+    INSERT (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
 
 MERGE INTO questionTb q
-USING (SELECT 2 subject_id, 1 gradelvl_id, 2 diff_id, 'How many sides does a triangle have?' question_txt, NULL question_image, '2' option_a, '3' option_b, '4' option_c, '5' option_d, 'B' correct_opt FROM DUAL) s
+USING (SELECT 2 subject_id, 1 gradelvl_id, 2 diff_id, 'How many sides does a triangle have?' question_txt, '2' option_a, '3' option_b, '4' option_c, '5' option_d, 'B' correct_opt FROM DUAL) s
 ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
 WHEN NOT MATCHED THEN
-    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
-    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.question_image, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
+    INSERT (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
 
 MERGE INTO questionTb q
-USING (SELECT 4 subject_id, 1 gradelvl_id, 2 diff_id, 'Which letter comes after B?' question_txt, NULL question_image, 'A' option_a, 'D' option_b, 'C' option_c, 'E' option_d, 'C' correct_opt FROM DUAL) s
+USING (SELECT 4 subject_id, 1 gradelvl_id, 2 diff_id, 'Which letter comes after B?' question_txt, 'A' option_a, 'D' option_b, 'C' option_c, 'E' option_d, 'C' correct_opt FROM DUAL) s
 ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
 WHEN NOT MATCHED THEN
-    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
-    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.question_image, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
+    INSERT (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
 
 MERGE INTO questionTb q
-USING (SELECT 3 subject_id, 1 gradelvl_id, 2 diff_id, 'Which word means the same as small?' question_txt, NULL question_image, 'Tiny' option_a, 'Big' option_b, 'Hot' option_c, 'Fast' option_d, 'A' correct_opt FROM DUAL) s
+USING (SELECT 3 subject_id, 1 gradelvl_id, 2 diff_id, 'Which word means the same as small?' question_txt, 'Tiny' option_a, 'Big' option_b, 'Hot' option_c, 'Fast' option_d, 'A' correct_opt FROM DUAL) s
 ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
 WHEN NOT MATCHED THEN
-    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
-    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.question_image, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
+    INSERT (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
 
 -- Binhi: 3 questions
 MERGE INTO questionTb q
-USING (SELECT 1 subject_id, 2 gradelvl_id, 1 diff_id, 'What is 2 + 2?' question_txt, NULL question_image, '3' option_a, '4' option_b, '5' option_c, '6' option_d, 'B' correct_opt FROM DUAL) s
+USING (SELECT 1 subject_id, 2 gradelvl_id, 1 diff_id, 'What is 2 + 2?' question_txt, '3' option_a, '4' option_b, '5' option_c, '6' option_d, 'B' correct_opt FROM DUAL) s
 ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
 WHEN NOT MATCHED THEN
-    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
-    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.question_image, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
+    INSERT (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
 
 MERGE INTO questionTb q
-USING (SELECT 2 subject_id, 2 gradelvl_id, 2 diff_id, 'What shape has 4 equal sides?' question_txt, NULL question_image, 'Circle' option_a, 'Square' option_b, 'Triangle' option_c, 'Star' option_d, 'B' correct_opt FROM DUAL) s
+USING (SELECT 2 subject_id, 2 gradelvl_id, 2 diff_id, 'What shape has 4 equal sides?' question_txt, 'Circle' option_a, 'Square' option_b, 'Triangle' option_c, 'Star' option_d, 'B' correct_opt FROM DUAL) s
 ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
 WHEN NOT MATCHED THEN
-    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
-    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.question_image, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
+    INSERT (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
 
 MERGE INTO questionTb q
-USING (SELECT 4 subject_id, 2 gradelvl_id, 2 diff_id, 'Which word is written correctly?' question_txt, NULL question_image, 'Frend' option_a, 'Friend' option_b, 'Freand' option_c, 'Frined' option_d, 'B' correct_opt FROM DUAL) s
+USING (SELECT 4 subject_id, 2 gradelvl_id, 2 diff_id, 'Which word is written correctly?' question_txt, 'Frend' option_a, 'Friend' option_b, 'Freand' option_c, 'Frined' option_d, 'B' correct_opt FROM DUAL) s
 ON (q.subject_id = s.subject_id AND q.gradelvl_id = s.gradelvl_id AND q.diff_id = s.diff_id AND q.question_txt = s.question_txt AND q.correct_opt = s.correct_opt)
 WHEN NOT MATCHED THEN
-    INSERT (subject_id, gradelvl_id, diff_id, question_txt, question_image, option_a, option_b, option_c, option_d, correct_opt)
-    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.question_image, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
+    INSERT (subject_id, gradelvl_id, diff_id, question_txt, option_a, option_b, option_c, option_d, correct_opt)
+    VALUES (s.subject_id, s.gradelvl_id, s.diff_id, s.question_txt, s.option_a, s.option_b, s.option_c, s.option_d, s.correct_opt);
 
 -- Initial content version (idempotent)
 MERGE INTO contentVersionTb c
@@ -900,19 +956,20 @@ WHERE table_name IN (
     'STUDENTTB','SCORETB','SUBJECTTB','GRADELVLTB','DIFFTB',
     'AREATB','BARANGAYTB','SEXTB','TEACHERTB','CUSTOMTB','ANALYTICSTB',
     'TIMEPLTB','PROGRESSTB','QUESTIONTB','CONTENTVERSIONTB',
-    'SYNCLOGTB','AUDITTB','DEVICETB','ADMINTB'
+    'SYNCLOGTB','ACTIVITYLOGTB','AUDITTB','DEVICETB','ADMINTB','ADMINSESSIONTB'
 );
--- Expected: 19
+-- Expected: 21
 
 SELECT 'Sequences:  ' || COUNT(*) AS status FROM user_sequences;
--- Expected: 11
+-- Expected: 13
 
 SELECT 'Sequences(KOW): ' || COUNT(*) AS status FROM user_sequences
 WHERE sequence_name IN (
     'SEQ_STUD_ID','SEQ_SCORE_ID','SEQ_TEACHER_ID','SEQ_ANALYTICS_ID','SEQ_TIMEPLAY_ID',
-    'SEQ_DEVICE_ID','SEQ_ADMIN_ID','SEQ_QUESTION_ID','SEQ_SYNC_ID','SEQ_CONTENT_VER','SEQ_AUDIT_ID'
+    'SEQ_DEVICE_ID','SEQ_ADMIN_ID','SEQ_QUESTION_ID','SEQ_SYNC_ID','SEQ_CONTENT_VER','SEQ_AUDIT_ID',
+    'SEQ_ADMIN_SESSION_ID','SEQ_ACTIVITY_LOG_ID'
 );
--- Expected: 11
+-- Expected: 13
 
 SELECT 'Views:      ' || COUNT(*) AS status FROM user_views;
 -- Expected: 4
