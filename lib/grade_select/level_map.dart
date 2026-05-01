@@ -2,18 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import '../break_time_policy.dart';
 import '../screens/settings.dart';
 import '../quiz_screen.dart';
 import '../api_service.dart';
 import '../level_progression.dart';
 import '../local_sync_store.dart';
 import '../widgets/backend_feedback.dart';
-import '../widgets/break_time.dart';
 import '../widgets/mock_background.dart';
 import '../writing_activity.dart';
-
-const bool _debugShowBreakTimeOnEveryNextLevel = false;
 
 const _gradePlanets = {
   'PUNLA': [
@@ -683,12 +679,6 @@ class _LevelMapScreenState extends State<LevelMapScreen>
 
     await Future.delayed(const Duration(milliseconds: 260));
     if (!mounted) return;
-
-    if (_debugShowBreakTimeOnEveryNextLevel ||
-        BreakTimePolicy.shouldShowAfterPassedLevel(result.completedNodeIndex)) {
-      await showBreakTimePopup(context);
-      if (!mounted) return;
-    }
 
     await _showNextLevelDialog(nextNodeIndex);
   }

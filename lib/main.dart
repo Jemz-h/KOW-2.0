@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'api_service.dart';
+import 'break_time_coordinator.dart';
 import 'local_sync_store.dart';
 import 'services/audio.dart';
 import 'screens/start.dart';
@@ -72,6 +73,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    BreakTimeCoordinator.instance.initialize(_navigatorKey);
     unawaited(_restoreSavedTheme());
     unawaited(_watchConnectivity());
   }
@@ -133,8 +135,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Pause music when app goes to background, resume when it comes back
     if (state == AppLifecycleState.paused) {
+      BreakTimeCoordinator.instance.onPaused();
       AudioService().stop();
     } else if (state == AppLifecycleState.resumed) {
+      BreakTimeCoordinator.instance.onResumed();
       AudioService().playBackgroundMusic();
       unawaited(_syncPendingWithFeedback());
     }
@@ -218,6 +222,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     _connectivitySubscription?.cancel();
+    BreakTimeCoordinator.instance.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

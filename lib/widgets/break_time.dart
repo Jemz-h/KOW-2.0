@@ -4,16 +4,14 @@ import 'package:flutter/material.dart';
 
 const Duration kBreakTimeDuration = Duration(minutes: 20);
 const RadialGradient kBreakTimeCardGradient = RadialGradient(
-  center: Alignment.center,
-  radius: 0.92,
-  colors: [Color(0xFFD4EBD9), Color(0xFF8FBA98), Color(0xFF6FA178)],
-  stops: [0.16, 0.62, 1.0],
+  center: Alignment(0, -0.06),
+  radius: 0.88,
+  colors: [Color(0xFFF5FAF2), Color(0xFFBDD8BB), Color(0xFF85AA82)],
+  stops: [0.08, 0.56, 1.0],
 );
-const Color kBreakTimeTimerColor = Color(0xFF62B985);
-const Color kBreakTimeTimerBorderColor = Color(0xBFE8FFF0);
-const Color kBreakTimeRestingButtonColor = Color(0xFF96B79C);
-const Color kBreakTimeRestingTextColor = Color(0xFF5E7E68);
-const Color kBreakTimeContinueButtonColor = Color(0xFFFFC96B);
+const Color kBreakTimeTimerColor = Color(0xFF6FBE87);
+const Color kBreakTimeTimerBorderColor = Color(0xD8B5E0C1);
+const Color kBreakTimeContinueButtonColor = Color(0xFFF7C86D);
 
 Future<void> showBreakTimePopup(
   BuildContext context, {
@@ -77,133 +75,147 @@ class _BreakTimeDialogState extends State<_BreakTimeDialog> {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.sizeOf(context).width;
-    final cardWidth = screenWidth < 390 ? 214.0 : 232.0;
+    final cardWidth = screenWidth < 420 ? 252.0 : 272.0;
 
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 72),
-      child: Container(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 54),
+      child: SizedBox(
         width: cardWidth,
-        padding: const EdgeInsets.fromLTRB(15, 9, 15, 13),
-        decoration: BoxDecoration(
-          gradient: kBreakTimeCardGradient,
-          borderRadius: BorderRadius.circular(7),
-          boxShadow: const [
-            BoxShadow(
-              color: Colors.black26,
-              blurRadius: 8,
-              offset: Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              _finished ? 'BREAK DONE!' : 'BREAK TIME!',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontFamily: 'SuperCartoon',
-                fontSize: 19,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-                shadows: [
-                  Shadow(
-                    blurRadius: 3,
-                    color: Colors.black45,
-                    offset: Offset(1, 2),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 2),
-              decoration: BoxDecoration(
-                color: kBreakTimeTimerColor,
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: kBreakTimeTimerBorderColor),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x26000000),
-                    blurRadius: 8,
-                    offset: Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Text(
-                _timeLabel,
-                style: const TextStyle(
-                  fontFamily: 'SuperCartoon',
-                  fontSize: 21,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
+        child: AspectRatio(
+          aspectRatio: 0.79,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final scale = constraints.maxWidth / 252;
+
+              return Container(
+                padding: EdgeInsets.fromLTRB(
+                  16 * scale,
+                  12 * scale,
+                  16 * scale,
+                  13 * scale,
                 ),
-              ),
-            ),
-            const SizedBox(height: 6),
-            SizedBox.square(
-              dimension: 132,
-              child: Image.asset(
-                'assets/sisa_oyo/sisabreaktime.png',
-                fit: BoxFit.contain,
-                errorBuilder: (_, _, _) => Image.asset(
-                  'assets/sisa_oyo/sisa.png',
-                  fit: BoxFit.contain,
+                decoration: BoxDecoration(
+                  gradient: kBreakTimeCardGradient,
+                  borderRadius: BorderRadius.circular(7),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 8,
+                      offset: Offset(0, 4),
+                    ),
+                  ],
                 ),
-              ),
-            ),
-            const SizedBox(height: 7),
-            Text(
-              _finished
-                  ? 'SISA IS READY.\nLET US CONTINUE!'
-                  : 'SISA IS TIRED. GO OUT AND\nHAVE FUN WITH YOUR FRIENDS\nFOR A WHILE!',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontFamily: 'SuperCartoon',
-                fontSize: 10.5,
-                fontWeight: FontWeight.w800,
-                height: 1.18,
-                color: Colors.white,
-                shadows: [
-                  Shadow(
-                    blurRadius: 2,
-                    color: Colors.black45,
-                    offset: Offset(1, 1),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: 90,
-              height: 28,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _finished
-                      ? kBreakTimeContinueButtonColor
-                      : kBreakTimeRestingButtonColor,
-                  disabledBackgroundColor: kBreakTimeRestingButtonColor,
-                  disabledForegroundColor: kBreakTimeRestingTextColor,
-                  foregroundColor: const Color(0xFF2D2D2D),
-                  padding: EdgeInsets.zero,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  elevation: _finished ? 4 : 0,
+                child: Column(
+                  children: [
+                    Text(
+                      _finished ? 'BREAK DONE!' : 'BREAK TIME!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'SuperCartoon',
+                        fontSize: 19 * scale,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        shadows: const [
+                          Shadow(
+                            blurRadius: 3,
+                            color: Colors.black45,
+                            offset: Offset(1, 2),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: 5 * scale),
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 18 * scale,
+                        vertical: 4 * scale,
+                      ),
+                      decoration: BoxDecoration(
+                        color: kBreakTimeTimerColor,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: kBreakTimeTimerBorderColor),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x24000000),
+                            blurRadius: 8,
+                            offset: Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        _timeLabel,
+                        style: TextStyle(
+                          fontFamily: 'SuperCartoon',
+                          fontSize: 18 * scale,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 8 * scale),
+                    SizedBox.square(
+                      dimension: 145 * scale,
+                      child: Image.asset(
+                        'assets/sisa_oyo/sisabreaktime.png',
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, _, _) => Image.asset(
+                          'assets/sisa_oyo/sisa.png',
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 4 * scale),
+                    Text(
+                      _finished
+                          ? 'SISA IS READY.\nLET US CONTINUE!'
+                          : 'SISA IS TIRED. GO OUT AND\nHAVE FUN WITH YOUR FRIENDS\nFOR A WHILE!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'SuperCartoon',
+                        fontSize: 12 * scale,
+                        fontWeight: FontWeight.w800,
+                        height: 1.16,
+                        color: Colors.white,
+                        shadows: const [
+                          Shadow(
+                            blurRadius: 2,
+                            color: Colors.black45,
+                            offset: Offset(1, 1),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    SizedBox(
+                      width: 101 * scale,
+                      height: 34 * scale,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: kBreakTimeContinueButtonColor,
+                          foregroundColor: const Color(0xFF2D2D2D),
+                          padding: EdgeInsets.zero,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                          elevation: 4,
+                        ),
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: Text(
+                          _finished ? 'CONTINUE' : 'EXIT',
+                          style: TextStyle(
+                            fontFamily: 'SuperCartoon',
+                            fontSize: 13 * scale,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                onPressed: _finished ? () => Navigator.of(context).pop() : null,
-                child: Text(
-                  _finished ? 'CONTINUE' : 'RESTING',
-                  style: const TextStyle(
-                    fontFamily: 'SuperCartoon',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ),
-          ],
+              );
+            },
+          ),
         ),
       ),
     );
