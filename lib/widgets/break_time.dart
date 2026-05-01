@@ -4,11 +4,20 @@ import 'package:flutter/material.dart';
 
 const Duration kBreakTimeDuration = Duration(minutes: 20);
 const RadialGradient kBreakTimeCardGradient = RadialGradient(
-  center: Alignment.center,
-  radius: 0.9,
-  colors: [Color(0xFF6A9F78), Color(0xFF9BC7A4)],
-  stops: [0.3, 1.0],
+  center: Alignment(0, -0.08),
+  radius: 1.02,
+  colors: [
+    Color(0xFFF8FFF9),
+    Color(0xFFE6F7EA),
+    Color(0xFF8CB195),
+  ],
+  stops: [0.0, 0.52, 1.0],
 );
+const Color kBreakTimeTimerColor = Color(0xFF80BE99);
+const Color kBreakTimeTimerBorderColor = Color(0xBFE8FFF0);
+const Color kBreakTimeRestingButtonColor = Color(0xFF9CB9A1);
+const Color kBreakTimeRestingTextColor = Color(0xFF5E7E68);
+const Color kBreakTimeContinueButtonColor = Color(0xFFFFC86A);
 
 Future<void> showBreakTimePopup(
   BuildContext context, {
@@ -109,11 +118,18 @@ class _BreakTimeDialogState extends State<_BreakTimeDialog> {
             ),
             const SizedBox(height: 8),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
               decoration: BoxDecoration(
-                color: const Color(0xFF70B78C),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: Colors.white24),
+                color: kBreakTimeTimerColor,
+                borderRadius: BorderRadius.circular(7),
+                border: Border.all(color: kBreakTimeTimerBorderColor),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x26000000),
+                    blurRadius: 8,
+                    offset: Offset(0, 3),
+                  ),
+                ],
               ),
               child: Text(
                 _timeLabel,
@@ -126,14 +142,15 @@ class _BreakTimeDialogState extends State<_BreakTimeDialog> {
               ),
             ),
             const SizedBox(height: 16),
-            Image.asset(
-              'assets/sisa_oyo/sisabreaktime.png',
-              height: 130,
-              fit: BoxFit.contain,
-              errorBuilder: (_, _, _) => Image.asset(
-                'assets/sisa_oyo/sisa.png',
-                height: 130,
+            SizedBox.square(
+              dimension: 178,
+              child: Image.asset(
+                'assets/sisa_oyo/sisabreaktime.png',
                 fit: BoxFit.contain,
+                errorBuilder: (_, _, _) => Image.asset(
+                  'assets/sisa_oyo/sisa.png',
+                  fit: BoxFit.contain,
+                ),
               ),
             ),
             const SizedBox(height: 18),
@@ -163,14 +180,16 @@ class _BreakTimeDialogState extends State<_BreakTimeDialog> {
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _finished
-                      ? const Color(0xFFFFCC44)
-                      : const Color(0xFFE8E8E8),
+                      ? kBreakTimeContinueButtonColor
+                      : kBreakTimeRestingButtonColor,
+                  disabledBackgroundColor: kBreakTimeRestingButtonColor,
+                  disabledForegroundColor: kBreakTimeRestingTextColor,
                   foregroundColor: const Color(0xFF2D2D2D),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  elevation: 4,
+                  elevation: _finished ? 4 : 0,
                 ),
                 onPressed: _finished ? () => Navigator.of(context).pop() : null,
                 child: Text(
