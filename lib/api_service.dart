@@ -1820,6 +1820,7 @@ class ApiService {
                         'last_name': lastName,
                         'nickname': nickname.trim(),
                         'birthday': normalizedBirthday,
+                        'sex': sex,
                         'sex_id': _sexIdForLabel(sex),
                       },
                     },
