@@ -10,23 +10,10 @@ import 'screens/start.dart';
 import 'widgets/mock_background.dart';
 import 'writing_activity.dart';
 
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  LAYOUT & SIZE CONSTANTS                                                ║
-// ║  Every value is a fraction of screen width (sw) or height (sh).        ║
-// ║  INCREASE → bigger / further down / more space                         ║
-// ║  DECREASE → smaller / further up / less space                          ║
-// ╚══════════════════════════════════════════════════════════════════════════╝
 
-// ┌─────────────────────────────────────────────────────────────────────────┐
-// │ SCREEN OUTER PADDING                                                    │
-// └─────────────────────────────────────────────────────────────────────────┘
 const double kScreenPadH = 0.090;
 const double kScreenPadV = 0.000;
 
-// ┌─────────────────────────────────────────────────────────────────────────┐
-// │ HEADER BAR — ALL difficulties → #B6D5F0                                │
-// │  EASY → green  AVERAGE → orange  HARD → red                           │
-// └─────────────────────────────────────────────────────────────────────────┘
 const double kHeaderH = 0.063;
 const double kHeaderRadius = 0.00;
 const double kHeaderExitSize = 0.102;
@@ -40,9 +27,6 @@ const double kHeaderScorePadV = 0.020;
 const double kHeaderScoreMarR = 0.020;
 const double kHeaderScoreRad = 0.040;
 
-// ┌─────────────────────────────────────────────────────────────────────────┐
-// │ QUESTION BOX — EASY                                                     │
-// └─────────────────────────────────────────────────────────────────────────┘
 const double kCardW = 0.9;
 const double kCardMinH = 0.000;
 const double kCardPadH = 0.000;
@@ -99,9 +83,6 @@ const double kSkipFs = 0.040;
 const double kSkipsLabelGapT = 0.007;
 const double kSkipsLabelFs = 0.026;
 
-// ┌─────────────────────────────────────────────────────────────────────────┐
-// │ QUESTION BOX — AVERAGE / HARD                                           │
-// │  kCardAvgMinH → INCREASE to make card taller                           │
 const double kResultW = 0.900;
 const double kResultMinH = 0.350;
 const double kResultPadH = 0.060;
@@ -123,119 +104,56 @@ const double kContinueFs = 0.055;
 const double kContinueGapT = 0.036;
 const double kContinueBorderW = 0.5;
 
-// ┌─────────────────────────────────────────────────────────────────────────┐
-// │ LEVEL COMPLETE POP-UP                                                   │
-// │                                                                         │
-// │ Card layout (matches design):                                           │
-// │   • Dark gradient card (#0E0A43 → #2A87B0)                            │
-// │   • Title "LEVEL COMPLETE!" gold outlined                               │
-// │   • Grade "PERFECT!" / "GREAT!" / "GOOD JOB!" below                   │
-// │   • "YOU SCORED  5/5" text row                                          │
-// │   • Characters (owl left, chick right) + medal centered = same row     │
-// │   • "REWARD" label below medal                                          │
-// │   • 4 gradient buttons with SVG icons                                  │
-// │                                                                         │
-// │ kPopCardW        → card width (fraction of sw)   INCREASE → wider      │
-// │ kPopCardRadius   → corner roundness                                     │
-// │ kPopCardPadH     → inner horizontal padding                            │
-// │ kPopCardPadVTop  → inner top padding                                   │
-// │ kPopCardPadVBot  → inner bottom padding                                │
-// │                                                                         │
-// │ kPopTitleFs      → "LEVEL COMPLETE!" font size                         │
-// │ kPopTitleLS      → letter spacing                                       │
-// │ kPopGradeFs      → grade label font size                               │
-// │ kPopGradeLS      → grade letter spacing                                │
-// │ kPopGapTitleGrade → gap between title and grade                        │
-// │                                                                         │
-// │ kPopScoreLabelFs → "YOU SCORED" font size                              │
-// │ kPopScoreNumFs   → "5/5" font size                                     │
-// │ kPopGapGradeScore → gap between grade and score                        │
-// │                                                                         │
-// │ kPopMedalSize    → medal width & height  INCREASE → bigger             │
-// │ kPopCharSize     → oyo / sisa size        INCREASE → bigger chars      │
-// │ kPopCharRowGapT  → gap above char+medal row                            │
-// │ kPopRewardFs     → "REWARD" label size                                 │
-// │                                                                         │
-// │ kPopBtnH         → button height                                       │
-// │ kPopBtnRadius    → button corner roundness                             │
-// │ kPopBtnFs        → label font size                                     │
-// │ kPopBtnLS        → label letter spacing                                │
-// │ kPopBtnIconSz    → SVG icon size                                       │
-// │ kPopBtnGapIcon   → icon-to-label gap                                   │
-// │ kPopBtnGapB      → gap between buttons                                 │
-// │ kPopGapRewardBtns → gap between REWARD and first button                │
-// │                                                                         │
-// │ kPopSlideMs      → slide-in duration ms                                │
-// └─────────────────────────────────────────────────────────────────────────┘
 
-// ── POPUP CARD SHELL ─────────────────────────────────────────────────────────
 const double kPopCardW = 0.90;
 const double kPopCardRadius = 0.055;
 const double kPopCardPadH = 0.044;
 const double kPopCardPadVTop = 0.022;
 const double kPopCardPadVBot = 0.030;
 
-// ── INNER GRADIENT BOX (dark #0E0A43→#2A87B0) ──────────────────────────────
 const double kPopInnerPadH = 0.000;
 const double kPopInnerPadV = 0.039;
 const double kPopInnerRadius = 0.040;
 
-// ── TITLE & GRADE ───────────────────────────────────────────────────────────
 const double kPopTitleFs = 0.056;
 const double kPopTitleLS = 1.5;
 const double kPopGradeFs = 0.046;
 const double kPopGradeLS = 2.5;
 const double kPopGapTG = 0.004;
 
-// ── SCORE ───────────────────────────────────────────────────────────────────
 const double kPopScoreLabelFs = 0.052;
 const double kPopScoreLabelLS = 1.5;
 const double kPopScoreNumFs = 0.068;
 const double kPopGapGS = 0.010;
 
-// ── CHARACTERS + MEDAL — SIZE & POSITION ────────────────────────────────────
-//
-// Each element (owl, medal, chick) has its own LEFT and RIGHT coordinate.
-// They sit inside a Stack, so you can move them freely without affecting others.
-//
-// LEFT  = distance from the left edge of the inner box  → INCREASE moves RIGHT
-// RIGHT = distance from the right edge of the inner box → INCREASE moves LEFT
-//
-// kPopCharStackH  ↕ height of the stack area — INCREASE if chars get clipped
 
 const double kPopCharStackH = 0.320;
 
-// OWL
 const double kPopOwlW = 0.080;
 const double kPopOwlH = 0.370;
 const double kPopOwlL = 0.000;
 const double kPopOwlR = 0.510;
 
-// MEDAL
 const double kPopMedalW = 0.000;
 const double kPopMedalH = 0.300;
 const double kPopMedalL = 0.000;
 const double kPopMedalR = 0.000;
 
-// CHICK
 const double kPopChickW = 0.250;
 const double kPopChickH = 0.300;
 const double kPopChickL = 0.510;
 const double kPopChickR = 0.010;
 
-// REWARD
 const double kPopRewardFs = 0.038;
 const double kPopRewardLS = 3.0;
 
 const double kPopGapSM = 0.006;
 
-// ── POPUP CARD POSITION ──────────────────────────────────────────────────────
 const double kPopCardAlignX = 0.0;
 const double kPopCardAlignY = 0.0;
 const double kPopCardOffX = 0.0;
 const double kPopCardOffY = 0.0;
 
-// ── BUTTONS ─────────────────────────────────────────────────────────────────
 const double kPopBtnH = 0.070;
 const double kPopBtnRadius = 0.028;
 const double kPopBtnFs = 0.056;
@@ -244,31 +162,20 @@ const double kPopBtnIconSz = 0.095;
 const double kPopBtnGapIcon = 0.018;
 const double kPopBtnGapB = 0.010;
 const double kPopGapMB = 0.020;
-// NEXT LEVEL icon position
 const double kPopBtnNextIconL = 0.030;
 const double kPopBtnNextIconR = 0.190;
-// RESTART LEVEL icon position
 const double kPopBtnRestartIconL = 0.030;
 const double kPopBtnRestartIconR = 0.090;
-// RETURN TO MAP icon position
 const double kPopBtnMapIconL = 0.030;
 const double kPopBtnMapIconR = 0.070;
-// RETURN TO HOME icon position
 const double kPopBtnHomeIconL = 0.035;
 const double kPopBtnHomeIconR = 0.050;
 
-// ── ANIMATION ───────────────────────────────────────────────────────────────
 const int kPopSlideMs = 420;
 
-// ┌─────────────────────────────────────────────────────────────────────────┐
-// │ ICON / TAP ANIMATION                                                    │
-// └─────────────────────────────────────────────────────────────────────────┘
 const Duration kTapPressDur = Duration(milliseconds: 90);
 const double kTapPressScale = 0.76;
 
-// ════════════════════════════════════════════════════════════════════════════
-// QUIZ DATA  —  5 questions per difficulty
-// ════════════════════════════════════════════════════════════════════════════
 
 class QuizQuestion {
   final String questionNumber;
@@ -296,15 +203,14 @@ class QuizQuestion {
   });
 }
 
-// ── EASY: 5 image questions ───────────────────────────────────────────────
 final List<QuizQuestion> kEasyQuestions = [
   QuizQuestion(
     questionNumber: 'QUESTION 1',
-    imagePath: '', // <- IMAGE FOR QUESTION
+    imagePath: '',
     prompt: "What's in the picture?",
     choices: ['', '', '', ''],
-    correctIndex: 1, //<- CORRECT BUTTON INDICATOR
-    funFact: '', // <= FUNFACT POP
+    correctIndex: 1,
+    funFact: '',
   ),
   QuizQuestion(
     questionNumber: 'QUESTION 2',
@@ -340,12 +246,11 @@ final List<QuizQuestion> kEasyQuestions = [
   ),
 ];
 
-// ── AVERAGE: 5 definition questions ──────────────────────────────────────
 final List<QuizQuestion> kAverageQuestions = [
   QuizQuestion(
     questionNumber: 'QUESTION 1',
-    prompt: '', //<- TEXT QUESTION
-    wordType: '', //,- TYPE OF WORD
+    prompt: '',
+    wordType: '',
     subPrompt: 'What is the word described\nin the statement?',
     choices: ['', '', '', ''],
     correctIndex: 0,
@@ -389,7 +294,6 @@ final List<QuizQuestion> kAverageQuestions = [
   ),
 ];
 
-// ── HARD: 5 questions ─────────────────────────────────────────────────────
 final List<QuizQuestion> kHardQuestions = [
   QuizQuestion(
     questionNumber: 'QUESTION 1',
@@ -438,10 +342,6 @@ final List<QuizQuestion> kHardQuestions = [
   ),
 ];
 
-// ════════════════════════════════════════════════════════════════════════════
-// ENTRY POINT
-// Change difficulty: 'EASY' | 'AVERAGE' | 'HARD'
-// ════════════════════════════════════════════════════════════════════════════
 void main() => runApp(const QuizApp());
 
 class QuizApp extends StatelessWidget {
@@ -453,14 +353,9 @@ class QuizApp extends StatelessWidget {
   );
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// QUIZ SCREEN
-// ════════════════════════════════════════════════════════════════════════════
 
 class QuizScreen extends StatefulWidget {
   final String difficulty;
-  // ── grade / subject / gradeImg are passed in from LevelMapScreen ─────────
-  // so the RETURN TO MAP button can go back to the exact same map state
   final String grade;
   final String subject;
   final String gradeImg;
@@ -513,7 +408,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
 
   late final AnimationController _fadeCtrl;
 
-  // ── _qs returns API questions when available, otherwise local fallback ────
   List<QuizQuestion> get _qs {
     return _remoteQuestions ?? const <QuizQuestion>[];
   }
@@ -607,7 +501,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
 
       if (!mounted) return;
 
-      // Keep quiz progression stable if user already started interacting.
       if (_hasQuestionInteraction || _qi > 0 || _showResult) {
         return;
       }
@@ -638,8 +531,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
         return;
       }
 
-      // Shuffle the fixed level pool so every learner gets the same level slice
-      // without seeing the same order every time.
       final shuffledRows = List.from(levelRows);
       final seed = Object.hash(
         widget.grade.trim().toUpperCase(),
@@ -762,7 +653,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
         lastPlayedAt: playedAt,
       );
     } catch (_) {
-      // Keep gameplay uninterrupted if score sync fails.
     } finally {
       _isSubmittingScore = false;
     }
@@ -788,7 +678,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ── Game logic ────────────────────────────────────────────────────────────
   void _onAnswer(int idx) {
     if (_selectedIdx != null) return;
     setState(() {
@@ -818,8 +707,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
 
   void _onContinue() => _advance();
 
-  // ── _advance: triggers Level Complete popup when last question is done ────
-  // Works identically for EASY, AVERAGE, and HARD
   void _advance() {
     final next = _qi + 1;
     if (next < _qs.length) {
@@ -833,11 +720,10 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
       _completionPersistFuture ??= _submitFinalScore();
       setState(
         () => _showDonePopup = true,
-      ); // ← popup fires for all difficulties
+      );
     }
   }
 
-  // ── Button colors ─────────────────────────────────────────────────────────
   Color _btnBg(int idx) {
     if (_selectedIdx == null) return Colors.white;
     if (idx == _q.correctIndex) return const Color.fromARGB(255, 155, 231, 150);
@@ -1140,7 +1026,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // ── HEADER ─────────────────────────────────────────────────
                 Container(
                   height: sh * kHeaderH,
                   decoration: BoxDecoration(
@@ -1225,7 +1110,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                   ),
                 ),
 
-                // ── CONTENT ───────────────────────────────────────────────
                 Expanded(
                   child: Padding(
                     padding: EdgeInsets.symmetric(
@@ -1237,7 +1121,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                       children: [
                         SizedBox(height: sh * kGapHeaderCard),
 
-                        // Question card
                         Container(
                           width: sw * cardW,
                           constraints: BoxConstraints(minHeight: sh * cardMinH),
@@ -1264,7 +1147,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                // Grey pill
                                 Container(
                                   margin: EdgeInsets.fromLTRB(
                                     sw * kPillMarL,
@@ -1374,7 +1256,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                           ),
                         ),
 
-                        // Outside prompt
                         if (_outsidePrompt != null && !_showResult) ...[
                           SizedBox(height: sh * kGapCardPrompt),
                           Padding(
@@ -1421,8 +1302,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
             ),
           ),
 
-          // ── LEVEL COMPLETE OVERLAY ─────────────────────────────────────
-          // Fires for EASY, AVERAGE, and HARD — same popup for all
           if (_showDonePopup)
             _LevelCompletePopup(
               score: _score,
@@ -1462,8 +1341,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                 });
                 _fadeCtrl.reset();
               },
-              // ── RETURN TO MAP ──────────────────────────────────────────
-              // Returns the completion payload so the map can animate Sisa.
               onReturnMap: () async {
                 final navigator = Navigator.of(context);
                 await _ensureCompletionPersisted();
@@ -1487,7 +1364,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ── Buttons section ───────────────────────────────────────────────────────
   Widget _buildButtonsSection(double sw, double sh) {
     return Column(
       key: const ValueKey('buttons'),
@@ -1554,7 +1430,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ── In-quiz result card ───────────────────────────────────────────────────
   Widget _buildResultCard(double sw, double sh) {
     final correctWord = _q.choices[_q.correctIndex].trim().isEmpty
         ? 'Option ${String.fromCharCode(65 + _q.correctIndex)}'
@@ -1704,9 +1579,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
   }
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// LEVEL COMPLETE POP-UP
-// ════════════════════════════════════════════════════════════════════════════
 
 class _LevelCompletePopup extends StatefulWidget {
   final int score, total;
@@ -1943,7 +1815,6 @@ class _LevelCompletePopupState extends State<_LevelCompletePopup>
                                   child: Stack(
                                     clipBehavior: Clip.none,
                                     children: [
-                                      // OWL — oyo.png
                                       Positioned(
                                         left: sw * kPopOwlL,
                                         right: sw * kPopOwlR,
@@ -1960,7 +1831,6 @@ class _LevelCompletePopupState extends State<_LevelCompletePopup>
                                         ),
                                       ),
 
-                                      // MEDAL + REWARD label
                                       Positioned(
                                         left: sw * kPopMedalL,
                                         right: sw * kPopMedalR,
@@ -1993,7 +1863,6 @@ class _LevelCompletePopupState extends State<_LevelCompletePopup>
                                         ),
                                       ),
 
-                                      // CHICK — sisa.png
                                       Positioned(
                                         left: sw * kPopChickL,
                                         right: sw * kPopChickR,
@@ -2107,9 +1976,6 @@ class _LevelCompletePopupState extends State<_LevelCompletePopup>
   }
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// _PopButton
-// ════════════════════════════════════════════════════════════════════════════
 
 class _PopButton extends StatefulWidget {
   final String label;
@@ -2248,9 +2114,6 @@ class _PopButtonState extends State<_PopButton>
   }
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// _SkipButton
-// ════════════════════════════════════════════════════════════════════════════
 
 class _SkipButton extends StatefulWidget {
   final int skipsLeft;
@@ -2335,7 +2198,7 @@ class _SkipButtonState extends State<_SkipButton>
             ],
           ),
           child: Text(
-            'Skip Question ▶',
+            'Skip Question ÃƒÂ¢Ã¢â‚¬â€œÃ‚Â¶',
             style: TextStyle(
               fontFamily: 'SuperCartoon',
               fontSize: widget.fontSize,
@@ -2349,9 +2212,6 @@ class _SkipButtonState extends State<_SkipButton>
   );
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// _ContinueButton
-// ════════════════════════════════════════════════════════════════════════════
 
 class _ContinueButton extends StatefulWidget {
   final double padH, padV, radius, fontSize, borderWidth;
@@ -2441,9 +2301,6 @@ class _ContinueButtonState extends State<_ContinueButton>
   );
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// _TapIcon
-// ════════════════════════════════════════════════════════════════════════════
 
 class _TapIcon extends StatefulWidget {
   final Widget child;

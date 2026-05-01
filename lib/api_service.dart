@@ -10,7 +10,7 @@ import 'local_sync_store.dart';
 import 'seeded_question_store.dart';
 import 'student_model.dart';
 
-/// Thin HTTP client for the KOW Node.js / Oracle backend.
+/// API client.
 class ApiService {
   ApiService._();
 
@@ -67,7 +67,7 @@ class ApiService {
           return name;
         }
       } catch (_) {
-        // Fall through to the generic name below.
+        // Fallback.
       }
 
       return 'KOW Device';
@@ -176,7 +176,7 @@ class ApiService {
 
   // ── Auth ──────────────────────────────────────────────────────────────
 
-  /// Register a new student. Returns the created student's nickname on success.
+  /// Register a learner.
   static Future<void> register({
     required String firstName,
     required String lastName,

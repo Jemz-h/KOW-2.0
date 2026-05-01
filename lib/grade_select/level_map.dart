@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../break_time_policy.dart';
-import '../screens/settings.dart'; // ← adjust path to match where settings.dart lives
+import '../screens/settings.dart';
 import '../quiz_screen.dart';
 import '../api_service.dart';
 import '../level_progression.dart';
@@ -15,7 +15,6 @@ import '../writing_activity.dart';
 
 const bool _debugShowBreakTimeOnEveryNextLevel = true;
 
-// ── Grade → planet image paths ────────────────────────────────
 const _gradePlanets = {
   'PUNLA': [
     'assets/themes/earth.png',
@@ -34,7 +33,6 @@ const _gradePlanets = {
   ],
 };
 
-// ── Subject → accent colour for label pill ────────────────────
 const _subjectColors = {
   'MATH': Color(0xFF4FC3F7),
   'SCIENCE': Color(0xFF81C784),
@@ -44,7 +42,6 @@ const _subjectColors = {
 
 const _difficultyOrder = LevelProgression.nodeDifficultyOrder;
 
-// ── Theme-aware grade SVG — mirrors grade.dart's _gradeAsset() ─
 String _gradeAsset(int gradeIndex, String theme) {
   const Map<String, List<String>> themeAssets = {
     'sauyo': [
@@ -67,7 +64,6 @@ String _gradeAsset(int gradeIndex, String theme) {
   return assets[gradeIndex.clamp(0, assets.length - 1)];
 }
 
-// Maps grade name → carousel slot index (must stay in sync with _kGrades in grade.dart)
 int _gradeIndexFromName(String grade) {
   switch (grade.toUpperCase()) {
     case 'PUNLA':
@@ -81,18 +77,10 @@ int _gradeIndexFromName(String grade) {
   }
 }
 
-// ════════════════════════════════════════════════════
-// COORDINATES — tweak these to reposition anything
-// All values are fractions of screen width (sw) or height (sh)
-// ════════════════════════════════════════════════════
 
-// ── Planets (center x, center y, radius) ─────────────────────
-// CX: decrease = move LEFT,  increase = move RIGHT
-// CY: decrease = move UP,    increase = move DOWN
-// R:  decrease = smaller,    increase = bigger
 const kEarthCX = 0.77;
 const kEarthCY = 0.695;
-const kEarthR = 0.195; // fraction of sw
+const kEarthR = 0.195;
 
 const kMarsCX = 0.28;
 const kMarsCY = 0.455;
@@ -102,92 +90,76 @@ const kNeptuneCX = 0.66;
 const kNeptuneCY = 0.170;
 const kNeptuneR = 0.185;
 
-// ── Nodes (x, y as fraction of sw/sh) ────────────────────────
-// X: decrease = move LEFT,  increase = move RIGHT
-// Y: decrease = move UP,    increase = move DOWN
 
-// Top segment (above neptune): red, orange, green
 const kN1X = 0.190;
-const kN1Y = 0.040; // red
+const kN1Y = 0.040;
 const kN2X = 0.490;
-const kN2Y = 0.070; // orange
+const kN2Y = 0.070;
 const kN3X = 0.775;
-const kN3Y = 0.062; // green
+const kN3Y = 0.062;
 
-// Middle segment (neptune → mars): red, orange, green
 const kN4X = 0.835;
-const kN4Y = 0.290; // red
+const kN4Y = 0.290;
 const kN5X = 0.505;
-const kN5Y = 0.323; // orange
+const kN5Y = 0.323;
 const kN6X = 0.140;
-const kN6Y = 0.340; // green
+const kN6Y = 0.340;
 
-// Bottom segment (mars → earth): red, orange, green
 const kN7X = 0.205;
-const kN7Y = 0.548; // red
+const kN7Y = 0.548;
 const kN8X = 0.315;
-const kN8Y = 0.615; // orange
+const kN8Y = 0.615;
 const kN9X = 0.590;
-const kN9Y = 0.608; // green
+const kN9Y = 0.608;
 
-// ── Gojo / sisa character ─────────────────────────────────────
-const kGojoX = 0.510; // left edge — decrease = LEFT, increase = RIGHT
-const kGojoY = 0.520; // top edge  — decrease = UP,   increase = DOWN
-const kGojoSize = 0.18; // fraction of sw
+const kGojoX = 0.510; ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â decrease = LEFT, increase = RIGHT
+const kGojoY = 0.520;  ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â decrease = UP,   increase = DOWN
+const kGojoSize = 0.18;
 
-// ── Grade island (moon / sun / star) ─────────────────────────
-const kIslandX = 0.0; // left edge
-const kIslandY = 0.680; // top edge
-const kIslandSize = 0.50; // fraction of sw
+const kIslandX = 0.0;
+const kIslandY = 0.680;
+const kIslandSize = 0.50;
 
-// ── Label pill (PUNLA / MATH box) ────────────────────────────
 const kLabelLeft =
-    0.30; // fraction of sw from left  — decrease = pill starts more LEFT
+    0.30; from left  ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â decrease = pill starts more LEFT
 const kLabelRight =
-    0.14; // fraction of sw from right — decrease = pill stretches more RIGHT
+    0.14; from right ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â decrease = pill stretches more RIGHT
 const kLabelBottom =
-    0.05; // increase = move UP, decrease = move DOWN (added on top of bar height)
+    0.05;
 
-// ── Bottom bar button sizes (pixels) ─────────────────────────
 const kBackSize = 50.0;
-const kPlaySize = 62.0; // keep this the biggest
+const kPlaySize = 62.0;
 const kSettingsSize = 48.0;
 
-// ── Dashed path waypoints ─────────────────────────────────────
-// Points connect: top-left → neptune → mars → earth
-// X: increase = move RIGHT, decrease = move LEFT
-// Y: increase = move DOWN,  decrease = move UP
-// Change in steps of 0.01–0.05 for fine-tuning
 const kP1X = 0.14;
-const kP1Y = 0.010; // top-left start
+const kP1Y = 0.010;
 const kP2X = 0.28;
-const kP2Y = 0.100; // curve right
+const kP2Y = 0.100;
 const kP3X = 0.88;
-const kP3Y = 0.040; // toward neptune
+const kP3Y = 0.040;
 const kP4X = 0.58;
-const kP4Y = 0.130; // enter neptune
+const kP4Y = 0.130;
 const kP5X = 0.97;
-const kP5Y = 0.375; // exit neptune bottom
+const kP5Y = 0.375;
 const kP6X = 0.35;
-const kP6Y = 0.305; // swing right
+const kP6Y = 0.305;
 const kP7X = 0.32;
-const kP7Y = 0.300; // back left
+const kP7Y = 0.300;
 const kP8X = 0.20;
-const kP8Y = 0.300; // heading to mars
+const kP8Y = 0.300;
 const kP9X = 0.10;
-const kP9Y = 0.360; // enter mars
+const kP9Y = 0.360;
 const kP10X = 0.25;
-const kP10Y = 0.500; // exit mars bottom
+const kP10Y = 0.500;
 const kP11X = 0.10;
-const kP11Y = 0.660; // small right
+const kP11Y = 0.660;
 const kP12X = 0.40;
-const kP12Y = 0.605; // curve toward earth
+const kP12Y = 0.605;
 const kP13X = 0.55;
-const kP13Y = 0.605; // approach earth
+const kP13Y = 0.605;
 const kP14X = 0.75;
-const kP14Y = 0.655; // enter earth
+const kP14Y = 0.655;
 
-// ════════════════════════════════════════════════════
 
 class LevelMapScreen extends StatefulWidget {
   final String grade;
@@ -221,16 +193,13 @@ class _LevelMapScreenState extends State<LevelMapScreen>
   bool _didShowNoContentDialog = false;
   static const double _swipeVelocityThreshold = 180.0;
 
-  // Inline init guarantees fields are ready before build() is ever called
 
-  // ── Gojo float animation ──────────────────────────────────
   late final AnimationController _gojoCtrl;
   late final Animation<double> _gojoAnim = Tween<double>(
     begin: -6,
     end: 6,
   ).animate(CurvedAnimation(parent: _gojoCtrl, curve: Curves.easeInOut));
 
-  // ── Island float animation ────────────────────────────────
   late final AnimationController _islandCtrl;
   late final Animation<double> _islandAnim = Tween<double>(
     begin: -5,
@@ -257,7 +226,6 @@ class _LevelMapScreenState extends State<LevelMapScreen>
     )..repeat(reverse: true);
 
     if (!isWritingSubject(widget.subject)) {
-      // Warm the first question payload while user is on the map.
       unawaited(
         ApiService.getQuestions(
           grade: widget.grade,
@@ -280,7 +248,6 @@ class _LevelMapScreenState extends State<LevelMapScreen>
     super.dispose();
   }
 
-  // ── Navigate to settings ──────────────────────────────────
   void _goToSettings() {
     Navigator.of(context).push(
       PageRouteBuilder(
@@ -543,7 +510,6 @@ class _LevelMapScreenState extends State<LevelMapScreen>
           }
         }
       } catch (_) {
-        // Fallback to highest difficulty when score history is unavailable.
       }
 
       int maxUnlockedNode = completedAttempts.clamp(
@@ -585,7 +551,6 @@ class _LevelMapScreenState extends State<LevelMapScreen>
         _selectedDifficultyIndex = _difficultyIndexFromNode(_selectedNodeIndex);
       });
     } catch (_) {
-      // Keep default unlocks when progress lookup fails.
     } finally {
       if (mounted) {
         setState(() {
@@ -750,7 +715,6 @@ class _LevelMapScreenState extends State<LevelMapScreen>
     final accent = _subjectColors[widget.subject] ?? const Color(0xFF4FC3F7);
     final barH = sh * 0.09;
 
-    // ── Apply coordinate constants → pixel values ─────────────
     final earthC = Offset(sw * kEarthCX, sh * kEarthCY);
     final marsC = Offset(sw * kMarsCX, sh * kMarsCY);
     final neptuneC = Offset(sw * kNeptuneCX, sh * kNeptuneCY);
@@ -758,7 +722,6 @@ class _LevelMapScreenState extends State<LevelMapScreen>
     final marsR = sw * kMarsR;
     final neptuneR = sw * kNeptuneR;
 
-    // ── Path waypoints ────────────────────────────────────────
     final pathPts = <Offset>[
       Offset(sw * kP1X, sh * kP1Y),
       Offset(sw * kP2X, sh * kP2Y),
@@ -776,21 +739,17 @@ class _LevelMapScreenState extends State<LevelMapScreen>
       Offset(sw * kP14X, sh * kP14Y),
     ];
 
-    // ── Node colours ──────────────────────────────────────────
-    const r = Color(0xFFE53935); // red
-    const g = Color(0xFF43A047); // green
-    const o = Color(0xFFFF8C00); // orange
+    const r = Color(0xFFE53935);
+    const g = Color(0xFF43A047);
+    const o = Color(0xFFFF8C00);
 
     final nodes = <_Node>[
-      // Top segment
       _Node(sw * kN1X, sh * kN1Y, r),
       _Node(sw * kN2X, sh * kN2Y, o),
       _Node(sw * kN3X, sh * kN3Y, g),
-      // Middle segment
       _Node(sw * kN4X, sh * kN4Y, r),
       _Node(sw * kN5X, sh * kN5Y, o),
       _Node(sw * kN6X, sh * kN6Y, g),
-      // Bottom segment
       _Node(sw * kN7X, sh * kN7Y, r),
       _Node(sw * kN8X, sh * kN8Y, o),
       _Node(sw * kN9X, sh * kN9Y, g),
@@ -811,7 +770,6 @@ class _LevelMapScreenState extends State<LevelMapScreen>
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. Background
             ValueListenableBuilder<String>(
               valueListenable: selectedThemeNotifier,
               builder: (context, theme, _) {
@@ -826,13 +784,11 @@ class _LevelMapScreenState extends State<LevelMapScreen>
               },
             ),
 
-            // 2. Dashed path — behind everything
             CustomPaint(
               size: size,
               painter: _PathPainter(points: pathPts),
             ),
 
-            // 3. Nodes — behind planets
             ...nodes.map(
               (n) => Positioned(
                 left: n.x - 15,
@@ -841,11 +797,9 @@ class _LevelMapScreenState extends State<LevelMapScreen>
               ),
             ),
 
-            // 4. Planets — on top of path & nodes
-            _planetWidget(planets[2], neptuneC, neptuneR), // neptune — top
-            _planetWidget(planets[1], marsC, marsR), // mars    — middle
-            _planetWidget(planets[0], earthC, earthR), // earth   — bottom
-            // 5. Gojo / sisa character — floats between mars and earth
+            _planetWidget(planets[2], neptuneC, neptuneR),
+            _planetWidget(planets[1], marsC, marsR),
+            _planetWidget(planets[0], earthC, earthR),
             AnimatedBuilder(
               animation: Listenable.merge([_nodeSlideCtrl, _gojoAnim]),
               builder: (_, child) {
@@ -891,7 +845,6 @@ class _LevelMapScreenState extends State<LevelMapScreen>
               ),
             ),
 
-            // 6. Label pill — drawn FIRST so island overlaps it
             Positioned(
               bottom: barH + sh * kLabelBottom,
               left: sw * kLabelLeft,
@@ -937,7 +890,6 @@ class _LevelMapScreenState extends State<LevelMapScreen>
               ),
             ),
 
-            // 7. Grade island — uses the same theme-aware SVG the carousel showed
             AnimatedBuilder(
               animation: _islandAnim,
               builder: (_, child) => Positioned(
@@ -966,7 +918,6 @@ class _LevelMapScreenState extends State<LevelMapScreen>
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    // ← Back
                     _TapIcon(
                       onTap: () => Navigator.of(context).pop(),
                       child: SvgPicture.asset(
@@ -976,7 +927,6 @@ class _LevelMapScreenState extends State<LevelMapScreen>
                       ),
                     ),
 
-                    // ▶ Play
                     IgnorePointer(
                       ignoring: isPlayDisabled,
                       child: Opacity(
@@ -992,9 +942,8 @@ class _LevelMapScreenState extends State<LevelMapScreen>
                       ),
                     ),
 
-                    // ⚙ Settings
                     _TapIcon(
-                      onTap: _goToSettings, // ← navigates to SettingsScreen
+                      onTap: _goToSettings,
                       child: SvgPicture.asset(
                         'assets/icons/setting.svg',
                         width: kSettingsSize,
@@ -1011,7 +960,6 @@ class _LevelMapScreenState extends State<LevelMapScreen>
     );
   }
 
-  // ── Planet widget helper ──────────────────────────────────
   Widget _planetWidget(String img, Offset center, double r) {
     return Positioned(
       left: center.dx - r,
@@ -1021,14 +969,12 @@ class _LevelMapScreenState extends State<LevelMapScreen>
   }
 }
 
-// ── Node data model ───────────────────────────────────────────
 class _Node {
   final double x, y;
   final Color color;
   const _Node(this.x, this.y, this.color);
 }
 
-// ── Node chip widget (coloured pill on the path) ──────────────
 class _NodeChip extends StatelessWidget {
   final Color color;
   const _NodeChip({required this.color});
@@ -1053,8 +999,6 @@ class _NodeChip extends StatelessWidget {
   }
 }
 
-// ── Dashed path painter ───────────────────────────────────────
-// Draws a smooth bezier curve through all pathPts as a dashed line
 class _PathPainter extends CustomPainter {
   final List<Offset> points;
   const _PathPainter({required this.points});
@@ -1068,7 +1012,6 @@ class _PathPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
 
-    // Build smooth bezier curve through all points
     final path = Path()..moveTo(points[0].dx, points[0].dy);
     for (int i = 0; i < points.length - 1; i++) {
       final c = points[i];
@@ -1077,7 +1020,6 @@ class _PathPainter extends CustomPainter {
     }
     path.lineTo(points.last.dx, points.last.dy);
 
-    // Draw as dashes
     const dash = 13.0, gap = 9.0;
     for (final m in path.computeMetrics()) {
       double d = 0;
@@ -1095,7 +1037,6 @@ class _PathPainter extends CustomPainter {
   bool shouldRepaint(_PathPainter o) => false;
 }
 
-// ── Tap icon — press-to-scale feedback wrapper ────────────────
 class _TapIcon extends StatefulWidget {
   final Widget child;
   final VoidCallback onTap;
