@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'dart:async';
 import 'dart:math';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -609,6 +610,15 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
       final playedAt = DateTime.now().toIso8601String();
       final maxScore = _qs.isNotEmpty ? _qs.length : 1;
       final passed = (_score / maxScore) >= 0.7;
+      final diffId = switch (widget.difficulty) {
+        'EASY' => 1,
+        'AVERAGE' => 2,
+        'HARD' => 3,
+        _ => null,
+      };
+      final timeSpentSeconds = DateTime.now()
+          .difference(_sessionStartedAt)
+          .inSeconds;
 
       if (passed) {
         await LocalSyncStore.instance.saveLocalLevelProgress(
@@ -620,7 +630,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
         );
       }
 
-      await ApiService.submitScore(
+      await LocalSyncStore.instance.queueOfflineScore(
         studentId: studentId,
         grade: widget.grade,
         subject: widget.subject,
@@ -630,18 +640,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
         playedAt: playedAt,
       );
 
-      final diffId = switch (widget.difficulty) {
-        'EASY' => 1,
-        'AVERAGE' => 2,
-        'HARD' => 3,
-        _ => null,
-      };
-
-      final timeSpentSeconds = DateTime.now()
-          .difference(_sessionStartedAt)
-          .inSeconds;
-
-      await ApiService.saveProgress(
+      await LocalSyncStore.instance.queueOfflineProgress(
         studentId: studentId,
         grade: widget.grade,
         subject: widget.subject,
@@ -649,6 +648,8 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
         totalTimePlayed: timeSpentSeconds < 0 ? 0 : timeSpentSeconds,
         lastPlayedAt: playedAt,
       );
+
+      unawaited(ApiService.syncPending());
     } catch (_) {
     } finally {
       _isSubmittingScore = false;
@@ -2204,12 +2205,6 @@ class _SkipButtonState extends State<_SkipButton>
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.skip_next_rounded,
-                size: widget.fontSize * 1.25,
-                color: const Color.fromARGB(255, 26, 35, 64),
-              ),
-              SizedBox(width: widget.fontSize * 0.25),
               Text(
                 'Skip Question',
                 style: TextStyle(

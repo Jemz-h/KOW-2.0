@@ -23,7 +23,6 @@ class MenuButton extends StatefulWidget {
   final Color? hoverColor;
   final Color? pressedColor;
   final VoidCallback? onTap;
-
   final List<Color>? gradientColors;
   final List<Color>? pressedGradientColors;
   final Alignment gradientCenter;
@@ -70,20 +69,25 @@ class _MenuButtonState extends State<MenuButton>
     _scaleCtrl.reverse();
   }
 
-  /// Smoothly darkens colors
   Color _pressedColor(Color c) => Color.lerp(c, Colors.black, 0.25)!;
   Color _hoverColor(Color c) => Color.lerp(c, Colors.white, 0.08)!;
 
   @override
   Widget build(BuildContext context) {
     final baseColor = widget.color ?? const Color(0xFFE5E5E5);
+    final activeGradientColors =
+        _isPressed && widget.pressedGradientColors != null
+        ? widget.pressedGradientColors
+        : widget.gradientColors;
 
-    final gradient = widget.gradientColors != null
+    final gradient = activeGradientColors != null
         ? RadialGradient(
-            colors: widget.gradientColors!.map((c) {
-              if (_isPressed) return _pressedColor(c); // 🔥 FULL button darkens
-              if (_isHovered) return _hoverColor(c);
-              return c;
+            colors: activeGradientColors.map((color) {
+              if (_isPressed && widget.pressedGradientColors == null) {
+                return _pressedColor(color);
+              }
+              if (_isHovered) return _hoverColor(color);
+              return color;
             }).toList(),
             center: widget.gradientCenter,
             radius: widget.gradientRadius,
@@ -91,7 +95,7 @@ class _MenuButtonState extends State<MenuButton>
         : null;
 
     final flatColor = _isPressed
-        ? _pressedColor(baseColor)
+        ? (widget.pressedColor ?? _pressedColor(baseColor))
         : (_isHovered && widget.hoverColor != null
               ? widget.hoverColor!
               : baseColor);
@@ -106,7 +110,7 @@ class _MenuButtonState extends State<MenuButton>
         child: ScaleTransition(
           scale: _scale,
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160), // 🔥 smoother
+            duration: const Duration(milliseconds: 160),
             curve: Curves.easeOutCubic,
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 10),
@@ -129,7 +133,11 @@ class _MenuButtonState extends State<MenuButton>
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 18,
-                color: widget.textColor ?? Colors.black,
+                color: _isPressed
+                    ? (widget.pressedTextColor ??
+                          widget.textColor ??
+                          Colors.black)
+                    : (widget.textColor ?? Colors.black),
                 letterSpacing: 1,
               ),
             ),

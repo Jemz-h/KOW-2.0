@@ -3,6 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 const Duration kBreakTimeDuration = Duration(minutes: 20);
+const RadialGradient kBreakTimeCardGradient = RadialGradient(
+  center: Alignment.center,
+  radius: 0.9,
+  colors: [Color(0xFF6A9F78), Color(0xFF9BC7A4)],
+  stops: [0.3, 1.0],
+);
 
 Future<void> showBreakTimePopup(
   BuildContext context, {
@@ -71,7 +77,7 @@ class _BreakTimeDialogState extends State<_BreakTimeDialog> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
         decoration: BoxDecoration(
-          color: const Color(0xFF9BC7A4),
+          gradient: kBreakTimeCardGradient,
           borderRadius: BorderRadius.circular(10),
           boxShadow: const [
             BoxShadow(
@@ -121,7 +127,7 @@ class _BreakTimeDialogState extends State<_BreakTimeDialog> {
             ),
             const SizedBox(height: 16),
             Image.asset(
-              'assets/sisa_oyo/sisaGOD.png',
+              'assets/sisa_oyo/sisabreaktime.png',
               height: 130,
               fit: BoxFit.contain,
               errorBuilder: (_, _, _) => Image.asset(

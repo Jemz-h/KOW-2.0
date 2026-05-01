@@ -78,17 +78,32 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   Future<void> _watchConnectivity() async {
     final connectivity = Connectivity();
-    _wasOnline = _isOnline(await connectivity.checkConnectivity());
+    _wasOnline = await ApiService.canReachServer(
+      timeout: const Duration(seconds: 3),
+    );
     _connectivitySubscription = connectivity.onConnectivityChanged.listen((
       results,
     ) {
-      final isOnline = _isOnline(results);
-      final cameBackOnline = !_wasOnline && isOnline;
-      _wasOnline = isOnline;
-      if (cameBackOnline && mounted) {
-        unawaited(_syncPendingWithFeedback(showWhenIdle: true));
-      }
+      unawaited(_handleConnectivityChange(results));
     });
+  }
+
+  Future<void> _handleConnectivityChange(
+    List<ConnectivityResult> results,
+  ) async {
+    if (!_isOnline(results)) {
+      _wasOnline = false;
+      return;
+    }
+
+    final isReachable = await ApiService.canReachServer(
+      timeout: const Duration(seconds: 3),
+    );
+    final cameBackOnline = !_wasOnline && isReachable;
+    _wasOnline = isReachable;
+    if (cameBackOnline && mounted) {
+      unawaited(_syncPendingWithFeedback(showWhenIdle: true));
+    }
   }
 
   bool _isOnline(List<ConnectivityResult> results) {
@@ -130,6 +145,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       return;
     }
 
+    final serverReachable = await ApiService.canReachServer();
+    if (!serverReachable) {
+      return;
+    }
+
     final feedbackContext = _navigatorKey.currentContext;
     if (feedbackContext == null) {
       await ApiService.syncPending();
@@ -145,6 +165,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       return;
     }
 
+    if (!hasPendingWork && !needsBootstrap && showWhenIdle) {
+      await ApiService.checkContentVersion();
+      return;
+    }
+
     _showingSyncFeedback = true;
     try {
       await BackendFeedbackOverlay.runWithLoading<void>(
@@ -157,6 +182,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           'Downloading questions',
           'Saving image cache',
         ],
+        hideButtonLabel: needsBootstrap ? null : 'Hide',
         task: needsBootstrap
             ? ApiService.bootstrapOfflineData
             : () async {
@@ -172,6 +198,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           tone: BackendFeedbackTone.success,
           message:
               'This device has the latest question cache and can keep working offline. It will sync again when internet returns.',
+        );
+      }
+    } catch (_) {
+      if (feedbackContext.mounted) {
+        await BackendFeedbackOverlay.showMessage(
+          context: feedbackContext,
+          title: 'Sync Paused',
+          tone: BackendFeedbackTone.warning,
+          message:
+              'The connection was interrupted. KOW will continue syncing when internet is stable again.',
         );
       }
     } finally {
@@ -252,66 +288,65 @@ class _SessionGateState extends State<_SessionGate> {
       return;
     }
 
-    final isOnline = _isOnline(await Connectivity().checkConnectivity());
-    if (!mounted) return;
+    var showedReady = false;
 
-    final shouldSync = await BackendFeedbackOverlay.showChoice(
+    while (mounted && !await ApiService.isOfflineBootstrapComplete()) {
+      final canReachServer = await ApiService.canReachServer();
+      if (!mounted) return;
+
+      if (!canReachServer) {
+        await BackendFeedbackOverlay.showChoice(
+          context: context,
+          title: 'Connect First',
+          tone: BackendFeedbackTone.error,
+          message:
+              'Open WiFi or mobile data, then tap Sync Now. This first sync downloads learners, questions, images, and progress for offline play.',
+          primaryLabel: 'Sync Now',
+          secondaryLabel: null,
+          barrierDismissible: false,
+          showCloseButton: false,
+        );
+        continue;
+      }
+
+      try {
+        await BackendFeedbackOverlay.runWithLoading<void>(
+          context: context,
+          title: 'First Sync',
+          message: 'Preparing this device for offline play.',
+          loadingMessages: const [
+            'Connecting to KOW',
+            'Downloading learner logins',
+            'Downloading questions',
+            'Saving image cache',
+            'Preparing offline mode',
+          ],
+          task: ApiService.bootstrapOfflineData,
+        );
+        showedReady = true;
+      } catch (_) {
+        if (!mounted) return;
+        await BackendFeedbackOverlay.showChoice(
+          context: context,
+          title: 'Sync Paused',
+          tone: BackendFeedbackTone.warning,
+          message:
+              'The download was interrupted. Reconnect to stable internet and tap Sync Now to continue.',
+          primaryLabel: 'Sync Now',
+          secondaryLabel: null,
+          barrierDismissible: false,
+          showCloseButton: false,
+        );
+      }
+    }
+
+    if (!mounted || !showedReady) return;
+    await BackendFeedbackOverlay.showMessage(
       context: context,
-      title: 'Sync First',
-      tone: isOnline ? BackendFeedbackTone.warning : BackendFeedbackTone.error,
-      message: isOnline
-          ? 'Download the latest KOW questions and image cache before using this device offline.'
-          : 'Connect to internet once so this device can download questions, image cache, and saved learner data from future logins.',
-      primaryLabel: 'Sync Now',
-      secondaryLabel: 'Later',
-      barrierDismissible: true,
-    );
-
-    if (shouldSync != true || !mounted) {
-      return;
-    }
-
-    try {
-      await BackendFeedbackOverlay.runWithLoading<void>(
-        context: context,
-        title: 'First Sync',
-        message: 'Preparing this device for offline play.',
-        loadingMessages: const [
-          'Connecting to KOW',
-          'Downloading questions',
-          'Saving image cache',
-          'Preparing offline mode',
-        ],
-        task: ApiService.bootstrapOfflineData,
-      );
-
-      if (!mounted) return;
-      await BackendFeedbackOverlay.showMessage(
-        context: context,
-        title: 'Ready Offline',
-        tone: BackendFeedbackTone.success,
-        message:
-            'This device can now play with saved content and will auto-sync when internet returns.',
-      );
-    } catch (_) {
-      if (!mounted) return;
-      await BackendFeedbackOverlay.showMessage(
-        context: context,
-        title: 'Sync Needed',
-        tone: BackendFeedbackTone.warning,
-        message:
-            'The first sync did not finish. Connect to stable internet and tap Sync Now again before offline use.',
-      );
-    }
-  }
-
-  bool _isOnline(List<ConnectivityResult> results) {
-    return results.any(
-      (result) =>
-          result == ConnectivityResult.mobile ||
-          result == ConnectivityResult.wifi ||
-          result == ConnectivityResult.ethernet ||
-          result == ConnectivityResult.vpn,
+      title: 'Ready Offline',
+      tone: BackendFeedbackTone.success,
+      message:
+          'This device can now play with saved content and will auto-sync when internet returns.',
     );
   }
 }

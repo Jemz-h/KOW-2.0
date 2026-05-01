@@ -18,6 +18,9 @@ class BackendFeedbackOverlay extends StatefulWidget {
     this.onButtonPressed,
     this.onSecondaryPressed,
     this.loadingMessages = const <String>[],
+    this.hideButtonLabel,
+    this.onHidePressed,
+    this.showCloseButton = true,
   });
 
   final String title;
@@ -29,6 +32,9 @@ class BackendFeedbackOverlay extends StatefulWidget {
   final VoidCallback? onButtonPressed;
   final VoidCallback? onSecondaryPressed;
   final List<String> loadingMessages;
+  final String? hideButtonLabel;
+  final VoidCallback? onHidePressed;
+  final bool showCloseButton;
 
   static Future<void> showMessage({
     required BuildContext context,
@@ -36,16 +42,19 @@ class BackendFeedbackOverlay extends StatefulWidget {
     required String message,
     BackendFeedbackTone tone = BackendFeedbackTone.warning,
     String buttonLabel = 'OK',
+    bool barrierDismissible = true,
+    bool showCloseButton = true,
   }) {
     return showDialog<void>(
       context: context,
-      barrierDismissible: true,
+      barrierDismissible: barrierDismissible,
       barrierColor: Colors.black.withValues(alpha: 0.48),
       builder: (dialogContext) => BackendFeedbackOverlay(
         title: title,
         message: message,
         tone: tone,
         buttonLabel: buttonLabel,
+        showCloseButton: showCloseButton,
         onButtonPressed: () => Navigator.of(dialogContext).pop(),
       ),
     );
@@ -57,8 +66,9 @@ class BackendFeedbackOverlay extends StatefulWidget {
     required String message,
     BackendFeedbackTone tone = BackendFeedbackTone.success,
     String primaryLabel = 'OK',
-    String secondaryLabel = 'Stay Here',
+    String? secondaryLabel = 'Stay Here',
     bool barrierDismissible = true,
+    bool showCloseButton = true,
   }) {
     return showDialog<bool>(
       context: context,
@@ -70,6 +80,7 @@ class BackendFeedbackOverlay extends StatefulWidget {
         tone: tone,
         buttonLabel: primaryLabel,
         secondaryButtonLabel: secondaryLabel,
+        showCloseButton: showCloseButton,
         onButtonPressed: () => Navigator.of(dialogContext).pop(true),
         onSecondaryPressed: () => Navigator.of(dialogContext).pop(false),
       ),
@@ -86,6 +97,7 @@ class BackendFeedbackOverlay extends StatefulWidget {
       'Syncing questions',
       'Updating learner records',
     ],
+    String? hideButtonLabel,
   }) async {
     var closed = false;
     unawaited(
@@ -93,12 +105,14 @@ class BackendFeedbackOverlay extends StatefulWidget {
         context: context,
         barrierDismissible: false,
         barrierColor: Colors.black.withValues(alpha: 0.55),
-        builder: (_) => BackendFeedbackOverlay(
+        builder: (dialogContext) => BackendFeedbackOverlay(
           title: title,
           message: message,
           tone: BackendFeedbackTone.loading,
           showSpinner: true,
           loadingMessages: loadingMessages,
+          hideButtonLabel: hideButtonLabel,
+          onHidePressed: () => Navigator.of(dialogContext).pop(),
         ),
       ).whenComplete(() => closed = true),
     );
@@ -321,6 +335,16 @@ class _BackendFeedbackOverlayState extends State<BackendFeedbackOverlay> {
                           ).withValues(alpha: 0.12),
                         ),
                       ),
+                      if (widget.hideButtonLabel != null) ...[
+                        SizedBox(height: 14 * scale),
+                        _DialogButton(
+                          label: widget.hideButtonLabel!,
+                          scale: scale,
+                          color: const Color(0xFFFFFFFF),
+                          foreground: const Color(0xFF17172E),
+                          onPressed: widget.onHidePressed,
+                        ),
+                      ],
                     ] else
                       Wrap(
                         alignment: WrapAlignment.center,
@@ -349,6 +373,7 @@ class _BackendFeedbackOverlayState extends State<BackendFeedbackOverlay> {
               ),
             ),
             if (!widget.showSpinner &&
+                widget.showCloseButton &&
                 (widget.onButtonPressed != null ||
                     widget.onSecondaryPressed != null))
               Positioned(

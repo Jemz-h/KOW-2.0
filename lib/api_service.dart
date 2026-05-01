@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 
 import 'api_config.dart';
+import 'level_progression.dart';
 import 'local_sync_store.dart';
 import 'seeded_question_store.dart';
 import 'student_model.dart';
@@ -581,9 +582,29 @@ class ApiService {
     return LocalSyncStore.instance.isOfflineBootstrapComplete();
   }
 
+  static Future<bool> canReachServer({
+    Duration timeout = const Duration(seconds: 4),
+  }) async {
+    if (!await _hasNetworkTransport()) {
+      return false;
+    }
+
+    try {
+      final res = await _client
+          .get(Uri.parse('$_base/health'))
+          .timeout(timeout);
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<void> bootstrapOfflineData() async {
     await _ensureDeviceAuth();
     await syncPending();
+
+    final bootstrapPayload = await _fetchOfflineBootstrap();
+    await _cacheOfflineBootstrap(bootstrapPayload);
 
     final remoteResult = await _fetchAllRemoteQuestions();
     await _cacheQuestionGroups(
@@ -591,6 +612,94 @@ class ApiService {
       contentVersion: remoteResult.versionTag,
     );
     await LocalSyncStore.instance.setOfflineBootstrapComplete(true);
+  }
+
+  static Future<Map<String, dynamic>> _fetchOfflineBootstrap() async {
+    final res = await _runWithRetry(
+      () => _sendWithTimeout(
+        _client.get(
+          Uri.parse('$_base/api/bootstrap/offline'),
+          headers: _headers,
+        ),
+      ),
+      shouldRetry: _isRetryableSyncError,
+    );
+    _checkStatus(res);
+
+    final decoded = jsonDecode(res.body);
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+
+    return const <String, dynamic>{};
+  }
+
+  static Future<void> _cacheOfflineBootstrap(
+    Map<String, dynamic> payload,
+  ) async {
+    final learners = payload['learners'];
+    if (learners is List) {
+      for (final rawLearner in learners) {
+        if (rawLearner is! Map) {
+          continue;
+        }
+
+        final learner = Map<String, dynamic>.from(rawLearner);
+        final birthday = _normalizeBirthday(
+          _asString(learner['birthday']) ?? '',
+        );
+        final student = Student.fromJson(learner);
+
+        if (student.studentId <= 0 ||
+            student.nickname.trim().isEmpty ||
+            birthday.isEmpty) {
+          continue;
+        }
+
+        await LocalSyncStore.instance.saveSyncedStudent(
+          student: student,
+          birthday: birthday,
+        );
+      }
+    }
+
+    final progressRows = payload['progress'];
+    if (progressRows is List) {
+      for (final rawProgress in progressRows) {
+        if (rawProgress is! Map) {
+          continue;
+        }
+
+        final progress = Map<String, dynamic>.from(rawProgress);
+        final studentId =
+            _parseStudentId(progress['student_id']) ??
+            _parseStudentId(progress['stud_id']);
+        if (studentId == null || studentId <= 0) {
+          continue;
+        }
+
+        final grade =
+            _gradeNameForId(_asInt(progress['gradelvl_id'])) ??
+            _asString(progress['gradelvl']) ??
+            'PUNLA';
+        final subject =
+            _subjectNameForId(_asInt(progress['subject_id'])) ??
+            _asString(progress['subject']) ??
+            'English';
+        final highestDiffPassed = _asInt(progress['highest_diff_passed']) ?? 0;
+        final highestNodeIndex = highestDiffPassed
+            .clamp(0, LevelProgression.totalNodes - 1)
+            .toInt();
+
+        await LocalSyncStore.instance.saveLocalLevelProgress(
+          studentId: studentId,
+          grade: grade,
+          subject: subject,
+          highestNodeIndex: highestNodeIndex,
+          currentNodeIndex: highestNodeIndex,
+        );
+      }
+    }
   }
 
   /// Update student profile information.
@@ -712,6 +821,17 @@ class ApiService {
       if (localRows.isNotEmpty) {
         return localRows;
       }
+    } else if (!await canReachServer(timeout: const Duration(seconds: 2))) {
+      final localRows = await _loadLocalQuestionRows(
+        cacheKey: cacheKey,
+        grade: grade,
+        subject: normalizedSubject,
+        difficulty: normalizedDifficulty,
+      );
+      if (localRows.isNotEmpty) {
+        return localRows;
+      }
+      return const <Map<String, dynamic>>[];
     }
 
     return _refreshQuestionsCache(
@@ -2292,6 +2412,17 @@ class ApiService {
     }
   }
 
+  static String? _gradeNameForId(int? gradeLevelId) {
+    switch (gradeLevelId) {
+      case 1:
+        return 'PUNLA';
+      case 2:
+        return 'BINHI';
+      default:
+        return null;
+    }
+  }
+
   static int _subjectIdFor(String subject) {
     switch (_normalizeSubject(subject).trim().toUpperCase()) {
       case 'MATHEMATICS':
@@ -2309,6 +2440,23 @@ class ApiService {
           400,
           'Unsupported subject for remote content: $subject',
         );
+    }
+  }
+
+  static String? _subjectNameForId(int? subjectId) {
+    switch (subjectId) {
+      case 1:
+        return 'Mathematics';
+      case 2:
+        return 'Science';
+      case 3:
+        return 'Filipino';
+      case 4:
+        return 'English';
+      case 5:
+        return 'Writing';
+      default:
+        return null;
     }
   }
 

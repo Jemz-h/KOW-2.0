@@ -185,6 +185,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
   bool _checkingCategoryContent = false;
   bool _categoryHasContent = true;
   bool _didShowNoContentDialog = false;
+  bool _isMovingSisa = false;
   static const double _swipeVelocityThreshold = 180.0;
 
   late final AnimationController _gojoCtrl;
@@ -520,12 +521,21 @@ class _LevelMapScreenState extends State<LevelMapScreen>
   }
 
   Future<void> _updateSelectedNode(int nextNodeIndex) async {
+    if (_isMovingSisa || _nodeSlideCtrl.isAnimating) {
+      return;
+    }
+
     if (nextNodeIndex < 0 || nextNodeIndex >= _nodeTravelOrder.length) {
       return;
     }
 
     if (nextNodeIndex > _maxUnlockedNodeIndex()) {
       await _showLevelLockedDialog();
+      return;
+    }
+
+    if (nextNodeIndex == _selectedNodeIndex) {
+      await _persistCurrentNode(nextNodeIndex);
       return;
     }
 
@@ -552,6 +562,22 @@ class _LevelMapScreenState extends State<LevelMapScreen>
           CurvedAnimation(parent: _nodeSlideCtrl, curve: Curves.easeOutCubic),
         );
 
+    _isMovingSisa = true;
+    unawaited(_persistCurrentNode(nextNodeIndex));
+    await _nodeSlideCtrl.forward(from: 0);
+    if (!mounted) {
+      _isMovingSisa = false;
+      return;
+    }
+
+    setState(() {
+      _selectedNodeIndex = nextNodeIndex;
+      _selectedDifficultyIndex = _difficultyIndexFromNode(nextNodeIndex);
+    });
+    _isMovingSisa = false;
+  }
+
+  Future<void> _persistCurrentNode(int nodeIndex) async {
     int? studentId = ApiService.currentStudentId;
     if (studentId == null) {
       final profile = await ApiService.getCurrentProfile();
@@ -565,21 +591,13 @@ class _LevelMapScreenState extends State<LevelMapScreen>
         studentId: studentId,
         grade: widget.grade,
         subject: widget.subject,
-        currentNodeIndex: nextNodeIndex,
+        currentNodeIndex: nodeIndex,
       );
     }
-
-    await _nodeSlideCtrl.forward(from: 0);
-    if (!mounted) return;
-
-    setState(() {
-      _selectedNodeIndex = nextNodeIndex;
-      _selectedDifficultyIndex = _difficultyIndexFromNode(nextNodeIndex);
-    });
   }
 
   Future<void> _handleDifficultySwipe(double velocity) async {
-    if (_loadingProgress) return;
+    if (_loadingProgress || _isMovingSisa) return;
     if (velocity.abs() < _swipeVelocityThreshold) return;
 
     if (velocity > 0) {
@@ -639,7 +657,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
     );
 
     if (!mounted) return;
-    await _loadProgressUnlocks();
+    unawaited(_loadProgressUnlocks());
 
     if (result == null || !result.passed) {
       return;
@@ -758,13 +776,29 @@ class _LevelMapScreenState extends State<LevelMapScreen>
               painter: _PathPainter(points: pathPts),
             ),
 
-            ...nodes.map(
-              (n) => Positioned(
-                left: n.x - 15,
-                top: n.y - 9,
-                child: _NodeChip(color: n.color),
-              ),
-            ),
+            ...nodes.asMap().entries.map((entry) {
+              final physicalIndex = entry.key;
+              final node = entry.value;
+              final travelIndex = _nodeTravelOrder.indexOf(physicalIndex);
+              final isUnlocked =
+                  !isComingSoonWorld &&
+                  _categoryHasContent &&
+                  !_checkingCategoryContent &&
+                  travelIndex <= _maxUnlockedNodeIndex();
+
+              return Positioned(
+                left: node.x - 15,
+                top: node.y - 9,
+                child: _NodeChip(
+                  color: node.color,
+                  enabled: isUnlocked,
+                  selected: travelIndex == _selectedNodeIndex,
+                  onTap: isUnlocked
+                      ? () => unawaited(_updateSelectedNode(travelIndex))
+                      : null,
+                ),
+              );
+            }),
 
             _planetWidget(planets[2], neptuneC, neptuneR),
             _planetWidget(planets[1], marsC, marsR),
@@ -944,25 +978,82 @@ class _Node {
   const _Node(this.x, this.y, this.color);
 }
 
-class _NodeChip extends StatelessWidget {
+class _NodeChip extends StatefulWidget {
   final Color color;
-  const _NodeChip({required this.color});
+  final bool enabled;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  const _NodeChip({
+    required this.color,
+    required this.enabled,
+    required this.selected,
+    this.onTap,
+  });
+
+  @override
+  State<_NodeChip> createState() => _NodeChipState();
+}
+
+class _NodeChipState extends State<_NodeChip>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 100),
+    );
+    _scale = Tween<double>(
+      begin: 1.0,
+      end: 0.82,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 30,
-      height: 18,
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(9),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.7),
-            blurRadius: 7,
-            offset: const Offset(0, 3),
+    return GestureDetector(
+      onTapDown: widget.onTap == null ? null : (_) => _ctrl.forward(),
+      onTapUp: widget.onTap == null
+          ? null
+          : (_) {
+              _ctrl.reverse();
+              widget.onTap?.call();
+            },
+      onTapCancel: () => _ctrl.reverse(),
+      child: ScaleTransition(
+        scale: _scale,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 140),
+          opacity: widget.enabled ? 1 : 0.38,
+          child: Container(
+            width: widget.selected ? 36 : 30,
+            height: widget.selected ? 22 : 18,
+            decoration: BoxDecoration(
+              color: widget.color,
+              borderRadius: BorderRadius.circular(11),
+              border: widget.selected
+                  ? Border.all(color: Colors.white, width: 2)
+                  : null,
+              boxShadow: [
+                BoxShadow(
+                  color: widget.color.withValues(alpha: 0.7),
+                  blurRadius: widget.selected ? 11 : 7,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
           ),
-        ],
+        ),
       ),
     );
   }
