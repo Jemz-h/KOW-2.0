@@ -48,6 +48,16 @@ typedef UpdateProfileRemoteFn =
       String? area,
     });
 
+class LocalLevelProgressSnapshot {
+  const LocalLevelProgressSnapshot({
+    required this.highestNodeIndex,
+    required this.currentNodeIndex,
+  });
+
+  final int highestNodeIndex;
+  final int currentNodeIndex;
+}
+
 class LocalSyncStore {
   LocalSyncStore._();
 
@@ -200,7 +210,7 @@ class LocalSyncStore {
 
     _db = await openDatabase(
       dbPath,
-      version: 9,
+      version: 10,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE students_local (
@@ -320,6 +330,7 @@ class LocalSyncStore {
             grade TEXT NOT NULL,
             subject TEXT NOT NULL,
             highest_node_index INTEGER NOT NULL,
+            current_node_index INTEGER NOT NULL DEFAULT 0,
             updated_at TEXT NOT NULL,
             PRIMARY KEY (student_id, grade, subject)
           )
@@ -429,9 +440,17 @@ class LocalSyncStore {
               grade TEXT NOT NULL,
               subject TEXT NOT NULL,
               highest_node_index INTEGER NOT NULL,
+              current_node_index INTEGER NOT NULL DEFAULT 0,
               updated_at TEXT NOT NULL,
               PRIMARY KEY (student_id, grade, subject)
             )
+          ''');
+        }
+
+        if (oldVersion < 10) {
+          await db.execute('''
+            ALTER TABLE level_progress_local
+            ADD COLUMN current_node_index INTEGER NOT NULL DEFAULT 0
           ''');
         }
       },
@@ -453,6 +472,7 @@ class LocalSyncStore {
     required String grade,
     required String subject,
     required int highestNodeIndex,
+    int? currentNodeIndex,
   }) async {
     final normalizedGrade = grade.trim().toUpperCase();
     final normalizedSubject = _normalizeProgressSubject(subject);
@@ -464,15 +484,21 @@ class LocalSyncStore {
         grade: normalizedGrade,
         subject: normalizedSubject,
       );
-      final current =
+      final currentHighest =
           (_webLevelProgress[key]?['highest_node_index'] as num?)?.toInt() ?? 0;
+      final nextHighest = highestNodeIndex > currentHighest
+          ? highestNodeIndex
+          : currentHighest;
+      final nextCurrent = (currentNodeIndex ?? nextHighest).clamp(
+        0,
+        nextHighest,
+      );
       _webLevelProgress[key] = {
         'student_id': studentId,
         'grade': normalizedGrade,
         'subject': normalizedSubject,
-        'highest_node_index': highestNodeIndex > current
-            ? highestNodeIndex
-            : current,
+        'highest_node_index': nextHighest,
+        'current_node_index': nextCurrent,
         'updated_at': now,
       };
       return;
@@ -481,27 +507,55 @@ class LocalSyncStore {
     final db = await _database();
     final rows = await db.query(
       'level_progress_local',
-      columns: ['highest_node_index'],
+      columns: ['highest_node_index', 'current_node_index'],
       where: 'student_id = ? AND grade = ? AND subject = ?',
       whereArgs: [studentId, normalizedGrade, normalizedSubject],
       limit: 1,
     );
 
-    final current = rows.isEmpty
+    final currentHighest = rows.isEmpty
         ? 0
         : ((rows.first['highest_node_index'] as num?)?.toInt() ?? 0);
-    final nextHighest = highestNodeIndex > current ? highestNodeIndex : current;
+    final nextHighest = highestNodeIndex > currentHighest
+        ? highestNodeIndex
+        : currentHighest;
+    final nextCurrent = (currentNodeIndex ?? nextHighest).clamp(
+      0,
+      nextHighest,
+    );
 
     await db.insert('level_progress_local', {
       'student_id': studentId,
       'grade': normalizedGrade,
       'subject': normalizedSubject,
       'highest_node_index': nextHighest,
+      'current_node_index': nextCurrent,
       'updated_at': now,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  Future<int?> getLocalLevelProgress({
+  Future<void> saveCurrentLevelProgress({
+    required int studentId,
+    required String grade,
+    required String subject,
+    required int currentNodeIndex,
+  }) async {
+    final snapshot = await getLocalLevelProgressSnapshot(
+      studentId: studentId,
+      grade: grade,
+      subject: subject,
+    );
+    final highestNodeIndex = snapshot?.highestNodeIndex ?? currentNodeIndex;
+    await saveLocalLevelProgress(
+      studentId: studentId,
+      grade: grade,
+      subject: subject,
+      highestNodeIndex: highestNodeIndex,
+      currentNodeIndex: currentNodeIndex,
+    );
+  }
+
+  Future<LocalLevelProgressSnapshot?> getLocalLevelProgressSnapshot({
     required int studentId,
     required String grade,
     required String subject,
@@ -515,13 +569,22 @@ class LocalSyncStore {
         grade: normalizedGrade,
         subject: normalizedSubject,
       );
-      return (_webLevelProgress[key]?['highest_node_index'] as num?)?.toInt();
+      final row = _webLevelProgress[key];
+      if (row == null) {
+        return null;
+      }
+      final highest = (row['highest_node_index'] as num?)?.toInt() ?? 0;
+      final current = (row['current_node_index'] as num?)?.toInt() ?? highest;
+      return LocalLevelProgressSnapshot(
+        highestNodeIndex: highest,
+        currentNodeIndex: current > highest ? highest : current,
+      );
     }
 
     final db = await _database();
     final rows = await db.query(
       'level_progress_local',
-      columns: ['highest_node_index'],
+      columns: ['highest_node_index', 'current_node_index'],
       where: 'student_id = ? AND grade = ? AND subject = ?',
       whereArgs: [studentId, normalizedGrade, normalizedSubject],
       limit: 1,
@@ -530,7 +593,27 @@ class LocalSyncStore {
     if (rows.isEmpty) {
       return null;
     }
-    return (rows.first['highest_node_index'] as num?)?.toInt();
+
+    final highest = (rows.first['highest_node_index'] as num?)?.toInt() ?? 0;
+    final current =
+        (rows.first['current_node_index'] as num?)?.toInt() ?? highest;
+    return LocalLevelProgressSnapshot(
+      highestNodeIndex: highest,
+      currentNodeIndex: current > highest ? highest : current,
+    );
+  }
+
+  Future<int?> getLocalLevelProgress({
+    required int studentId,
+    required String grade,
+    required String subject,
+  }) async {
+    final snapshot = await getLocalLevelProgressSnapshot(
+      studentId: studentId,
+      grade: grade,
+      subject: subject,
+    );
+    return snapshot?.highestNodeIndex;
   }
 
   Future<void> saveSyncedStudent({

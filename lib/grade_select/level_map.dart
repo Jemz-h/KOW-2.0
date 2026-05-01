@@ -112,8 +112,8 @@ const kN8Y = 0.615;
 const kN9X = 0.590;
 const kN9Y = 0.608;
 
-const kGojoX = 0.510; ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â decrease = LEFT, increase = RIGHT
-const kGojoY = 0.520;  ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â decrease = UP,   increase = DOWN
+const kGojoX = 0.510;
+const kGojoY = 0.520;
 const kGojoSize = 0.18;
 
 const kIslandX = 0.0;
@@ -121,9 +121,9 @@ const kIslandY = 0.680;
 const kIslandSize = 0.50;
 
 const kLabelLeft =
-    0.30; from left  ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â decrease = pill starts more LEFT
+    0.30;
 const kLabelRight =
-    0.14; from right ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â decrease = pill stretches more RIGHT
+    0.14;
 const kLabelBottom =
     0.05;
 
@@ -486,60 +486,17 @@ class _LevelMapScreenState extends State<LevelMapScreen>
           break;
         }
       }
-
-      int completedAttempts = 0;
-      bool scoreRowsLoaded = false;
-      try {
-        final scoreRows = await ApiService.getScores(studentId);
-        scoreRowsLoaded = true;
-
-        for (final row in scoreRows) {
-          final gradeName = (row['gradelvl'] ?? row['GRADELVL'] ?? '')
-              .toString()
-              .trim()
-              .toUpperCase();
-          final subjectName = _normalizeSubjectName(
-            (row['subject'] ?? row['SUBJECT'] ?? '').toString(),
-          );
-
-          final passed = _toInt(row['passed'] ?? row['PASSED']) == 1;
-          if (gradeName == targetGrade &&
-              subjectName == targetSubject &&
-              passed) {
-            completedAttempts++;
-          }
-        }
-      } catch (_) {
-      }
-
-      int maxUnlockedNode = completedAttempts.clamp(
-        0,
-        _nodeTravelOrder.length - 1,
-      );
-
-      final localHighestNode = await LocalSyncStore.instance
-          .getLocalLevelProgress(
+      final localSnapshot = await LocalSyncStore.instance
+          .getLocalLevelProgressSnapshot(
             studentId: studentId,
             grade: targetGrade,
             subject: targetSubject,
           );
-      if (localHighestNode != null && localHighestNode > maxUnlockedNode) {
-        maxUnlockedNode = localHighestNode.clamp(
-          0,
-          _nodeTravelOrder.length - 1,
-        );
-      }
-
-      if (!scoreRowsLoaded ||
-          (completedAttempts == 0 && highestDiffPassed > 0)) {
-        final fromDiff = highestDiffPassed.clamp(
-          0,
-          _nodeTravelOrder.length - 1,
-        );
-        if (fromDiff > maxUnlockedNode) {
-          maxUnlockedNode = fromDiff;
-        }
-      }
+      final maxUnlockedNode = LevelProgression.maxUnlockedNodeForLearner(
+        highestDiffPassed: highestDiffPassed,
+        savedHighestNodeIndex: localSnapshot?.highestNodeIndex,
+      );
+      final savedCurrentNodeIndex = localSnapshot?.currentNodeIndex;
 
       setState(() {
         _maxUnlockedTravelNodeIndex = maxUnlockedNode;
@@ -547,6 +504,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
         _selectedNodeIndex = LevelProgression.currentNodeForLearner(
           selectedNodeIndex: _selectedNodeIndex,
           maxUnlockedNodeIndex: maxNode,
+          savedCurrentNodeIndex: savedCurrentNodeIndex,
         );
         _selectedDifficultyIndex = _difficultyIndexFromNode(_selectedNodeIndex);
       });
@@ -605,6 +563,23 @@ class _LevelMapScreenState extends State<LevelMapScreen>
       _selectedNodeIndex = nextNodeIndex;
       _selectedDifficultyIndex = _difficultyIndexFromNode(nextNodeIndex);
     });
+
+    int? studentId = ApiService.currentStudentId;
+    if (studentId == null) {
+      final profile = await ApiService.getCurrentProfile();
+      final profileId = profile?['student_id'];
+      if (profileId is num) {
+        studentId = profileId.toInt();
+      }
+    }
+    if (studentId != null) {
+      await LocalSyncStore.instance.saveCurrentLevelProgress(
+        studentId: studentId,
+        grade: widget.grade,
+        subject: widget.subject,
+        currentNodeIndex: nextNodeIndex,
+      );
+    }
 
     await _nodeSlideCtrl.forward(from: 0);
   }

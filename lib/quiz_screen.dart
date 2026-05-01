@@ -620,6 +620,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
           grade: widget.grade,
           subject: widget.subject,
           highestNodeIndex: widget.nodeIndex + 1,
+          currentNodeIndex: widget.nodeIndex + 1,
         );
       }
 

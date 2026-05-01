@@ -31,9 +31,15 @@ class LevelProgression {
   static int currentNodeForLearner({
     required int selectedNodeIndex,
     required int maxUnlockedNodeIndex,
+    int? savedCurrentNodeIndex,
   }) {
     final maxUnlocked = maxUnlockedNodeIndex.clamp(0, totalNodes - 1).toInt();
     final selected = selectedNodeIndex.clamp(0, totalNodes - 1).toInt();
+    final savedCurrent = savedCurrentNodeIndex?.clamp(0, totalNodes - 1).toInt();
+
+    if (savedCurrent != null) {
+      return savedCurrent > maxUnlocked ? maxUnlocked : savedCurrent;
+    }
 
     if (selected == 0 && maxUnlocked > 0) {
       return maxUnlocked;
@@ -44,6 +50,19 @@ class LevelProgression {
     }
 
     return selected;
+  }
+
+  static int maxUnlockedNodeForLearner({
+    required int highestDiffPassed,
+    int? savedHighestNodeIndex,
+  }) {
+    final fallback = highestDiffPassed.clamp(0, totalNodes - 1).toInt();
+    if (savedHighestNodeIndex == null) {
+      return fallback;
+    }
+
+    final saved = savedHighestNodeIndex.clamp(0, totalNodes - 1).toInt();
+    return saved > fallback ? saved : fallback;
   }
 
   static List<Map<String, dynamic>> questionsForNode({
