@@ -13,7 +13,7 @@ import '../widgets/break_time.dart';
 import '../widgets/mock_background.dart';
 import '../writing_activity.dart';
 
-const bool _debugShowBreakTimeOnEveryNextLevel = true;
+const bool _debugShowBreakTimeOnEveryNextLevel = false;
 
 const _gradePlanets = {
   'PUNLA': [
@@ -77,7 +77,6 @@ int _gradeIndexFromName(String grade) {
   }
 }
 
-
 const kEarthCX = 0.77;
 const kEarthCY = 0.695;
 const kEarthR = 0.195;
@@ -89,7 +88,6 @@ const kMarsR = 0.200;
 const kNeptuneCX = 0.66;
 const kNeptuneCY = 0.170;
 const kNeptuneR = 0.185;
-
 
 const kN1X = 0.190;
 const kN1Y = 0.040;
@@ -120,12 +118,9 @@ const kIslandX = 0.0;
 const kIslandY = 0.680;
 const kIslandSize = 0.50;
 
-const kLabelLeft =
-    0.30;
-const kLabelRight =
-    0.14;
-const kLabelBottom =
-    0.05;
+const kLabelLeft = 0.30;
+const kLabelRight = 0.14;
+const kLabelBottom = 0.05;
 
 const kBackSize = 50.0;
 const kPlaySize = 62.0;
@@ -160,7 +155,6 @@ const kP13Y = 0.605;
 const kP14X = 0.75;
 const kP14Y = 0.655;
 
-
 class LevelMapScreen extends StatefulWidget {
   final String grade;
   final String subject;
@@ -193,7 +187,6 @@ class _LevelMapScreenState extends State<LevelMapScreen>
   bool _didShowNoContentDialog = false;
   static const double _swipeVelocityThreshold = 180.0;
 
-
   late final AnimationController _gojoCtrl;
   late final Animation<double> _gojoAnim = Tween<double>(
     begin: -6,
@@ -212,7 +205,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
 
     _nodeSlideCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 420),
+      duration: const Duration(milliseconds: 950),
     );
 
     _gojoCtrl = AnimationController(
@@ -559,11 +552,6 @@ class _LevelMapScreenState extends State<LevelMapScreen>
           CurvedAnimation(parent: _nodeSlideCtrl, curve: Curves.easeOutCubic),
         );
 
-    setState(() {
-      _selectedNodeIndex = nextNodeIndex;
-      _selectedDifficultyIndex = _difficultyIndexFromNode(nextNodeIndex);
-    });
-
     int? studentId = ApiService.currentStudentId;
     if (studentId == null) {
       final profile = await ApiService.getCurrentProfile();
@@ -582,6 +570,12 @@ class _LevelMapScreenState extends State<LevelMapScreen>
     }
 
     await _nodeSlideCtrl.forward(from: 0);
+    if (!mounted) return;
+
+    setState(() {
+      _selectedNodeIndex = nextNodeIndex;
+      _selectedDifficultyIndex = _difficultyIndexFromNode(nextNodeIndex);
+    });
   }
 
   Future<void> _handleDifficultySwipe(double velocity) async {
@@ -669,7 +663,7 @@ class _LevelMapScreenState extends State<LevelMapScreen>
     await _updateSelectedNode(nextNodeIndex);
     if (!mounted) return;
 
-    await Future.delayed(const Duration(milliseconds: 420));
+    await Future.delayed(const Duration(milliseconds: 260));
     if (!mounted) return;
 
     if (_debugShowBreakTimeOnEveryNextLevel ||

@@ -1080,6 +1080,37 @@ class LocalSyncStore {
     return rows.first['value'] as String?;
   }
 
+  Future<void> setOfflineBootstrapComplete(bool complete) async {
+    final value = complete ? '1' : '0';
+    if (_useWebMemoryStore) {
+      _webSettings['offline_bootstrap_complete'] = value;
+      return;
+    }
+
+    final db = await _database();
+    await db.insert('app_settings', {
+      'key': 'offline_bootstrap_complete',
+      'value': value,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<bool> isOfflineBootstrapComplete() async {
+    if (_useWebMemoryStore) {
+      return _webSettings['offline_bootstrap_complete'] == '1';
+    }
+
+    final db = await _database();
+    final rows = await db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: ['offline_bootstrap_complete'],
+      limit: 1,
+    );
+
+    return rows.isNotEmpty && rows.first['value'] == '1';
+  }
+
   Future<void> saveMusicEnabled(bool enabled) async {
     if (_useWebMemoryStore) {
       _webSettings['music_enabled'] = enabled ? '1' : '0';

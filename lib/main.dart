@@ -63,8 +63,10 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   bool _wasOnline = false;
+  bool _showingSyncFeedback = false;
 
   @override
   void initState() {
@@ -84,7 +86,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       final cameBackOnline = !_wasOnline && isOnline;
       _wasOnline = isOnline;
       if (cameBackOnline && mounted) {
-        unawaited(_syncPendingWithFeedback());
+        unawaited(_syncPendingWithFeedback(showWhenIdle: true));
       }
     });
   }
@@ -123,27 +125,58 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _syncPendingWithFeedback() async {
-    final hasPendingWork = await LocalSyncStore.instance.hasPendingSyncWork();
-    if (!mounted) return;
+  Future<void> _syncPendingWithFeedback({bool showWhenIdle = false}) async {
+    if (_showingSyncFeedback) {
+      return;
+    }
 
-    if (!hasPendingWork) {
+    final feedbackContext = _navigatorKey.currentContext;
+    if (feedbackContext == null) {
       await ApiService.syncPending();
       return;
     }
 
-    await BackendFeedbackOverlay.runWithLoading<void>(
-      context: context,
-      title: 'Syncing Online',
-      message: 'Sending saved adventure progress to KOW.',
-      loadingMessages: const [
-        'Syncing learner profile',
-        'Uploading scores',
-        'Refreshing questions',
-        'Saving progress online',
-      ],
-      task: ApiService.syncPending,
-    );
+    final hasPendingWork = await LocalSyncStore.instance.hasPendingSyncWork();
+    final needsBootstrap = !await ApiService.isOfflineBootstrapComplete();
+    if (!mounted || !feedbackContext.mounted) return;
+
+    if (!hasPendingWork && !needsBootstrap && !showWhenIdle) {
+      await ApiService.syncPending();
+      return;
+    }
+
+    _showingSyncFeedback = true;
+    try {
+      await BackendFeedbackOverlay.runWithLoading<void>(
+        context: feedbackContext,
+        title: 'Syncing Online',
+        message: 'Updating this device for online and offline play.',
+        loadingMessages: const [
+          'Uploading local data',
+          'Syncing learner progress',
+          'Downloading questions',
+          'Saving image cache',
+        ],
+        task: needsBootstrap
+            ? ApiService.bootstrapOfflineData
+            : () async {
+                await ApiService.syncPending();
+                await ApiService.checkContentVersion();
+              },
+      );
+
+      if (needsBootstrap && feedbackContext.mounted) {
+        await BackendFeedbackOverlay.showMessage(
+          context: feedbackContext,
+          title: 'Ready Offline',
+          tone: BackendFeedbackTone.success,
+          message:
+              'This device has the latest question cache and can keep working offline. It will sync again when internet returns.',
+        );
+      }
+    } finally {
+      _showingSyncFeedback = false;
+    }
   }
 
   @override
@@ -159,6 +192,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
     return MaterialApp(
       // debugShowCheckedModeBanner: false,
+      navigatorKey: _navigatorKey,
       theme: ThemeData(
         fontFamily: 'SuperCartoon',
         useMaterial3: true,
@@ -179,6 +213,7 @@ class _SessionGate extends StatefulWidget {
 
 class _SessionGateState extends State<_SessionGate> {
   late final Future<bool> _restoreFuture;
+  bool _checkedOfflineReadiness = false;
 
   @override
   void initState() {
@@ -197,9 +232,86 @@ class _SessionGateState extends State<_SessionGate> {
           );
         }
 
+        if (!_checkedOfflineReadiness) {
+          _checkedOfflineReadiness = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              unawaited(_checkOfflineReadiness());
+            }
+          });
+        }
+
         // Always land on title first; StartScreen decides where to go on tap.
         return const StartScreen();
       },
+    );
+  }
+
+  Future<void> _checkOfflineReadiness() async {
+    if (await ApiService.isOfflineBootstrapComplete()) {
+      return;
+    }
+
+    final isOnline = _isOnline(await Connectivity().checkConnectivity());
+    if (!mounted) return;
+
+    final shouldSync = await BackendFeedbackOverlay.showChoice(
+      context: context,
+      title: 'Sync First',
+      tone: isOnline ? BackendFeedbackTone.warning : BackendFeedbackTone.error,
+      message: isOnline
+          ? 'Download the latest KOW questions and image cache before using this device offline.'
+          : 'Connect to internet once so this device can download questions, image cache, and saved learner data from future logins.',
+      primaryLabel: 'Sync Now',
+      secondaryLabel: 'Later',
+      barrierDismissible: true,
+    );
+
+    if (shouldSync != true || !mounted) {
+      return;
+    }
+
+    try {
+      await BackendFeedbackOverlay.runWithLoading<void>(
+        context: context,
+        title: 'First Sync',
+        message: 'Preparing this device for offline play.',
+        loadingMessages: const [
+          'Connecting to KOW',
+          'Downloading questions',
+          'Saving image cache',
+          'Preparing offline mode',
+        ],
+        task: ApiService.bootstrapOfflineData,
+      );
+
+      if (!mounted) return;
+      await BackendFeedbackOverlay.showMessage(
+        context: context,
+        title: 'Ready Offline',
+        tone: BackendFeedbackTone.success,
+        message:
+            'This device can now play with saved content and will auto-sync when internet returns.',
+      );
+    } catch (_) {
+      if (!mounted) return;
+      await BackendFeedbackOverlay.showMessage(
+        context: context,
+        title: 'Sync Needed',
+        tone: BackendFeedbackTone.warning,
+        message:
+            'The first sync did not finish. Connect to stable internet and tap Sync Now again before offline use.',
+      );
+    }
+  }
+
+  bool _isOnline(List<ConnectivityResult> results) {
+    return results.any(
+      (result) =>
+          result == ConnectivityResult.mobile ||
+          result == ConnectivityResult.wifi ||
+          result == ConnectivityResult.ethernet ||
+          result == ConnectivityResult.vpn,
     );
   }
 }

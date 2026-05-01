@@ -42,19 +42,16 @@ void main() {
     },
   );
 
-  test(
-    'currentNodeForLearner clamps saved current slab to unlocked range',
-    () {
-      expect(
-        LevelProgression.currentNodeForLearner(
-          selectedNodeIndex: 0,
-          maxUnlockedNodeIndex: 3,
-          savedCurrentNodeIndex: 8,
-        ),
-        3,
-      );
-    },
-  );
+  test('currentNodeForLearner clamps saved current slab to unlocked range', () {
+    expect(
+      LevelProgression.currentNodeForLearner(
+        selectedNodeIndex: 0,
+        maxUnlockedNodeIndex: 3,
+        savedCurrentNodeIndex: 8,
+      ),
+      3,
+    );
+  });
 
   test(
     'maxUnlockedNodeForLearner prefers saved slab progress over difficulty fallback',
@@ -68,4 +65,25 @@ void main() {
       );
     },
   );
+
+  test('questionsForNode uses the next slice for repeated difficulties', () {
+    final rows = List.generate(
+      12,
+      (index) => <String, dynamic>{'id': index + 1},
+    );
+
+    final firstEasy = LevelProgression.questionsForNode(
+      rows: rows,
+      nodeIndex: 0,
+      difficulty: 'EASY',
+    );
+    final secondEasy = LevelProgression.questionsForNode(
+      rows: rows,
+      nodeIndex: 3,
+      difficulty: 'EASY',
+    );
+
+    expect(firstEasy.map((row) => row['id']), [1, 2, 3, 4, 5]);
+    expect(secondEasy.map((row) => row['id']), [6, 7, 8, 9, 10]);
+  });
 }

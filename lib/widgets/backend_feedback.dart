@@ -348,14 +348,16 @@ class _BackendFeedbackOverlayState extends State<BackendFeedbackOverlay> {
                 ),
               ),
             ),
-            if (!widget.showSpinner && widget.onButtonPressed != null)
+            if (!widget.showSpinner &&
+                (widget.onButtonPressed != null ||
+                    widget.onSecondaryPressed != null))
               Positioned(
                 top: -10,
                 right: -10,
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
-                    onTap: widget.onButtonPressed,
+                    onTap: widget.onSecondaryPressed ?? widget.onButtonPressed,
                     borderRadius: BorderRadius.circular(999),
                     child: Ink(
                       width: 40,

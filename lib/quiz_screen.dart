@@ -7,9 +7,9 @@ import 'api_service.dart';
 import 'level_progression.dart';
 import 'local_sync_store.dart';
 import 'screens/start.dart';
+import 'widgets/backend_feedback.dart';
 import 'widgets/mock_background.dart';
 import 'writing_activity.dart';
-
 
 const double kScreenPadH = 0.090;
 const double kScreenPadV = 0.000;
@@ -104,7 +104,6 @@ const double kContinueFs = 0.055;
 const double kContinueGapT = 0.036;
 const double kContinueBorderW = 0.5;
 
-
 const double kPopCardW = 0.90;
 const double kPopCardRadius = 0.055;
 const double kPopCardPadH = 0.044;
@@ -125,7 +124,6 @@ const double kPopScoreLabelFs = 0.052;
 const double kPopScoreLabelLS = 1.5;
 const double kPopScoreNumFs = 0.068;
 const double kPopGapGS = 0.010;
-
 
 const double kPopCharStackH = 0.320;
 
@@ -175,7 +173,6 @@ const int kPopSlideMs = 420;
 
 const Duration kTapPressDur = Duration(milliseconds: 90);
 const double kTapPressScale = 0.76;
-
 
 class QuizQuestion {
   final String questionNumber;
@@ -352,7 +349,6 @@ class QuizApp extends StatelessWidget {
     home: const QuizScreen(difficulty: 'EASY'),
   );
 }
-
 
 class QuizScreen extends StatefulWidget {
   final String difficulty;
@@ -719,9 +715,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
       _fadeCtrl.reset();
     } else {
       _completionPersistFuture ??= _submitFinalScore();
-      setState(
-        () => _showDonePopup = true,
-      );
+      setState(() => _showDonePopup = true);
     }
   }
 
@@ -992,7 +986,19 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                 );
               },
             ),
-            const Center(child: CircularProgressIndicator()),
+            Center(
+              child: BackendFeedbackOverlay(
+                title: 'Loading Questions',
+                message: 'Preparing this level...',
+                tone: BackendFeedbackTone.loading,
+                showSpinner: true,
+                loadingMessages: const [
+                  'Checking saved questions',
+                  'Loading local images',
+                  'Preparing choices',
+                ],
+              ),
+            ),
           ],
         ),
       );
@@ -1580,7 +1586,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
   }
 }
 
-
 class _LevelCompletePopup extends StatefulWidget {
   final int score, total;
   final String difficulty;
@@ -1977,7 +1982,6 @@ class _LevelCompletePopupState extends State<_LevelCompletePopup>
   }
 }
 
-
 class _PopButton extends StatefulWidget {
   final String label;
   final String iconPath;
@@ -2115,7 +2119,6 @@ class _PopButtonState extends State<_PopButton>
   }
 }
 
-
 class _SkipButton extends StatefulWidget {
   final int skipsLeft;
   final bool disabled;
@@ -2198,21 +2201,31 @@ class _SkipButtonState extends State<_SkipButton>
               ),
             ],
           ),
-          child: Text(
-            'Skip Question ÃƒÂ¢Ã¢â‚¬â€œÃ‚Â¶',
-            style: TextStyle(
-              fontFamily: 'SuperCartoon',
-              fontSize: widget.fontSize,
-              fontWeight: FontWeight.bold,
-              color: const Color.fromARGB(255, 26, 35, 64),
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.skip_next_rounded,
+                size: widget.fontSize * 1.25,
+                color: const Color.fromARGB(255, 26, 35, 64),
+              ),
+              SizedBox(width: widget.fontSize * 0.25),
+              Text(
+                'Skip Question',
+                style: TextStyle(
+                  fontFamily: 'SuperCartoon',
+                  fontSize: widget.fontSize,
+                  fontWeight: FontWeight.bold,
+                  color: const Color.fromARGB(255, 26, 35, 64),
+                ),
+              ),
+            ],
           ),
         ),
       ),
     ),
   );
 }
-
 
 class _ContinueButton extends StatefulWidget {
   final double padH, padV, radius, fontSize, borderWidth;
@@ -2301,7 +2314,6 @@ class _ContinueButtonState extends State<_ContinueButton>
     ),
   );
 }
-
 
 class _TapIcon extends StatefulWidget {
   final Widget child;

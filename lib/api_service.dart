@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 
@@ -35,6 +37,18 @@ class ApiService {
   static Future<void>? _oracleReconciliationTask;
   static String? _oracleReconciliationIdentity;
   static final Map<String, List<Map<String, dynamic>>> _questionCache = {};
+  static const List<String> _bootstrapGrades = ['PUNLA', 'BINHI'];
+  static const List<String> _bootstrapSubjects = [
+    'MATHEMATICS',
+    'SCIENCE',
+    'FILIPINO',
+    'ENGLISH',
+  ];
+  static const List<String> _bootstrapDifficulties = [
+    'EASY',
+    'AVERAGE',
+    'HARD',
+  ];
 
   static Map<String, String> get _headers => {
     'Content-Type': 'application/json',
@@ -563,6 +577,22 @@ class ApiService {
     }
   }
 
+  static Future<bool> isOfflineBootstrapComplete() {
+    return LocalSyncStore.instance.isOfflineBootstrapComplete();
+  }
+
+  static Future<void> bootstrapOfflineData() async {
+    await _ensureDeviceAuth();
+    await syncPending();
+
+    final remoteResult = await _fetchAllRemoteQuestions();
+    await _cacheQuestionGroups(
+      rows: remoteResult.rows,
+      contentVersion: remoteResult.versionTag,
+    );
+    await LocalSyncStore.instance.setOfflineBootstrapComplete(true);
+  }
+
   /// Update student profile information.
   static Future<void> updateProfile({
     required String firstName,
@@ -653,12 +683,80 @@ class ApiService {
       difficulty: normalizedDifficulty,
     );
 
+    final cachedRows = await _loadLocalQuestionRows(
+      cacheKey: cacheKey,
+      grade: grade,
+      subject: normalizedSubject,
+      difficulty: normalizedDifficulty,
+      includeSeed: false,
+    );
+    if (cachedRows.isNotEmpty) {
+      unawaited(
+        _refreshQuestionsCache(
+          cacheKey: cacheKey,
+          grade: grade,
+          subject: normalizedSubject,
+          difficulty: normalizedDifficulty,
+        ),
+      );
+      return cachedRows;
+    }
+
+    if (!await _hasNetworkTransport()) {
+      final localRows = await _loadLocalQuestionRows(
+        cacheKey: cacheKey,
+        grade: grade,
+        subject: normalizedSubject,
+        difficulty: normalizedDifficulty,
+      );
+      if (localRows.isNotEmpty) {
+        return localRows;
+      }
+    }
+
     return _refreshQuestionsCache(
       cacheKey: cacheKey,
       grade: grade,
       subject: normalizedSubject,
       difficulty: normalizedDifficulty,
     );
+  }
+
+  static Future<List<Map<String, dynamic>>> _loadLocalQuestionRows({
+    required String cacheKey,
+    required String grade,
+    required String subject,
+    String? difficulty,
+    bool includeSeed = true,
+  }) async {
+    final previousRows = _questionCache[cacheKey];
+    if (previousRows != null && previousRows.isNotEmpty) {
+      return previousRows;
+    }
+
+    final persistedRows = await LocalSyncStore.instance.getCachedQuestionRows(
+      cacheKey,
+    );
+    if (persistedRows.isNotEmpty) {
+      _questionCache[cacheKey] = persistedRows;
+      return persistedRows;
+    }
+
+    if (!includeSeed) {
+      return const <Map<String, dynamic>>[];
+    }
+
+    final localRows = await SeededQuestionStore.instance.getQuestions(
+      grade: grade,
+      subject: subject,
+      difficulty: difficulty,
+    );
+    if (localRows.isNotEmpty) {
+      _questionCache[cacheKey] = localRows;
+      return localRows;
+    }
+
+    return const <Map<String, dynamic>>[];
   }
 
   static Future<List<Map<String, dynamic>>> _refreshQuestionsCache({
@@ -684,27 +782,14 @@ class ApiService {
       // Fall back to the last successful remote payload, then bundled seed.
     }
 
-    final persistedRows = await LocalSyncStore.instance.getCachedQuestionRows(
-      cacheKey,
-    );
-    if (persistedRows.isNotEmpty) {
-      _questionCache[cacheKey] = persistedRows;
-      return persistedRows;
-    }
-
-    final localRows = await SeededQuestionStore.instance.getQuestions(
+    final localRows = await _loadLocalQuestionRows(
+      cacheKey: cacheKey,
       grade: grade,
       subject: subject,
       difficulty: difficulty,
     );
     if (localRows.isNotEmpty) {
-      _questionCache[cacheKey] = localRows;
       return localRows;
-    }
-
-    final previousRows = _questionCache[cacheKey];
-    if (previousRows != null && previousRows.isNotEmpty) {
-      return previousRows;
     }
 
     _questionCache.remove(cacheKey);
@@ -785,9 +870,133 @@ class ApiService {
     );
   }
 
+  static Future<_RemoteQuestionResult> _fetchAllRemoteQuestions() async {
+    await _ensureDeviceAuth();
+
+    final res = await _runWithRetry(
+      () => _sendWithTimeout(
+        _client.get(Uri.parse('$_base/api/content'), headers: _headers),
+      ),
+      shouldRetry: _isRetryableSyncError,
+    );
+    _checkStatus(res);
+
+    final decoded = jsonDecode(res.body);
+    if (decoded is! Map<String, dynamic>) {
+      return _RemoteQuestionResult(
+        rows: const <Map<String, dynamic>>[],
+        versionTag: _lastContentVersionTag,
+      );
+    }
+
+    final versionTag =
+        _asString(decoded['version_tag']) ?? _asString(decoded['versionTag']);
+    if (versionTag != null) {
+      _lastContentVersionTag = versionTag;
+    }
+
+    final rawQuestions = _extractQuestionsFromContentPayload(decoded);
+    if (rawQuestions == null || rawQuestions.isEmpty) {
+      return _RemoteQuestionResult(
+        rows: const <Map<String, dynamic>>[],
+        versionTag: _lastContentVersionTag,
+      );
+    }
+
+    final rows = rawQuestions
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .map(_mapContentQuestionToQuizRow)
+        .where((row) => row.isNotEmpty)
+        .toList(growable: false);
+
+    return _RemoteQuestionResult(
+      rows: await _hydrateQuestionImages(rows, awaitDownloads: true),
+      versionTag: _lastContentVersionTag,
+    );
+  }
+
+  static Future<void> _cacheQuestionGroups({
+    required List<Map<String, dynamic>> rows,
+    String? contentVersion,
+  }) async {
+    _questionCache.clear();
+
+    for (final grade in _bootstrapGrades) {
+      for (final subject in _bootstrapSubjects) {
+        final allRows = _filterQuestionRows(
+          rows: rows,
+          grade: grade,
+          subject: subject,
+        );
+        final allKey = _questionCacheKey(grade: grade, subject: subject);
+        if (allRows.isNotEmpty) {
+          _questionCache[allKey] = allRows;
+          await LocalSyncStore.instance.saveCachedQuestionRows(
+            cacheKey: allKey,
+            rows: allRows,
+            contentVersion: contentVersion,
+          );
+        }
+
+        for (final difficulty in _bootstrapDifficulties) {
+          final difficultyRows = _filterQuestionRows(
+            rows: rows,
+            grade: grade,
+            subject: subject,
+            difficulty: difficulty,
+          );
+          final key = _questionCacheKey(
+            grade: grade,
+            subject: subject,
+            difficulty: difficulty,
+          );
+          if (difficultyRows.isNotEmpty) {
+            _questionCache[key] = difficultyRows;
+            await LocalSyncStore.instance.saveCachedQuestionRows(
+              cacheKey: key,
+              rows: difficultyRows,
+              contentVersion: contentVersion,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  static List<Map<String, dynamic>> _filterQuestionRows({
+    required List<Map<String, dynamic>> rows,
+    required String grade,
+    required String subject,
+    String? difficulty,
+  }) {
+    final gradeLevelId = _gradeLevelIdFor(grade);
+    final subjectId = _subjectIdFor(subject);
+    final diffId = _difficultyIdFor(difficulty);
+
+    return rows
+        .where((row) {
+          final rowGradeLevelId =
+              _asInt(row['gradelvl_id']) ??
+              _safeGradeLevelIdFor(_asString(row['gradelvl']));
+          final rowSubjectId =
+              _asInt(row['subject_id']) ??
+              _safeSubjectIdFor(_asString(row['subject']));
+          final rowDiffId =
+              _asInt(row['diff_id']) ??
+              _safeDifficultyIdFor(_asString(row['difficulty']));
+
+          return rowGradeLevelId == gradeLevelId &&
+              rowSubjectId == subjectId &&
+              (diffId == null || rowDiffId == diffId);
+        })
+        .toList(growable: false);
+  }
+
   static Future<List<Map<String, dynamic>>> _hydrateQuestionImages(
-    List<Map<String, dynamic>> rows,
-  ) async {
+    List<Map<String, dynamic>> rows, {
+    bool awaitDownloads = false,
+  }) async {
     if (rows.isEmpty) {
       return rows;
     }
@@ -807,6 +1016,14 @@ class ApiService {
 
         if (cachedBytes != null && cachedBytes.isNotEmpty) {
           copy['imageBlob'] = base64Encode(cachedBytes);
+        } else if (awaitDownloads) {
+          final downloadedBytes = await _downloadAndCacheQuestionImage(
+            questionId: questionId,
+            imageUrl: imageUrl,
+          );
+          if (downloadedBytes != null && downloadedBytes.isNotEmpty) {
+            copy['imageBlob'] = base64Encode(downloadedBytes);
+          }
         } else {
           unawaited(
             _downloadAndCacheQuestionImage(
@@ -828,7 +1045,7 @@ class ApiService {
     return uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
   }
 
-  static Future<void> _downloadAndCacheQuestionImage({
+  static Future<Uint8List?> _downloadAndCacheQuestionImage({
     required int questionId,
     required String imageUrl,
   }) async {
@@ -839,7 +1056,7 @@ class ApiService {
       if (res.statusCode < 200 ||
           res.statusCode >= 300 ||
           res.bodyBytes.isEmpty) {
-        return;
+        return null;
       }
 
       await LocalSyncStore.instance.saveCachedQuestionImage(
@@ -848,8 +1065,10 @@ class ApiService {
         imageBytes: res.bodyBytes,
         mimeType: res.headers['content-type'],
       );
+      return res.bodyBytes;
     } catch (_) {
       // Image cache warming is best-effort; gameplay can still use the CDN URL.
+      return null;
     }
   }
 
@@ -1286,6 +1505,17 @@ class ApiService {
     } on http.ClientException {
       throw ApiException(503, 'Cannot reach backend server at $_base.');
     }
+  }
+
+  static Future<bool> _hasNetworkTransport() async {
+    final results = await Connectivity().checkConnectivity();
+    return results.any(
+      (result) =>
+          result == ConnectivityResult.mobile ||
+          result == ConnectivityResult.wifi ||
+          result == ConnectivityResult.ethernet ||
+          result == ConnectivityResult.vpn,
+    );
   }
 
   static bool _isConnectivityException(ApiException e) {
