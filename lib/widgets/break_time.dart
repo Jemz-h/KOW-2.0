@@ -4,20 +4,16 @@ import 'package:flutter/material.dart';
 
 const Duration kBreakTimeDuration = Duration(minutes: 20);
 const RadialGradient kBreakTimeCardGradient = RadialGradient(
-  center: Alignment(0, -0.08),
-  radius: 1.02,
-  colors: [
-    Color(0xFFF8FFF9),
-    Color(0xFFE6F7EA),
-    Color(0xFF8CB195),
-  ],
-  stops: [0.0, 0.52, 1.0],
+  center: Alignment.center,
+  radius: 0.92,
+  colors: [Color(0xFFD4EBD9), Color(0xFF8FBA98), Color(0xFF6FA178)],
+  stops: [0.16, 0.62, 1.0],
 );
-const Color kBreakTimeTimerColor = Color(0xFF80BE99);
+const Color kBreakTimeTimerColor = Color(0xFF62B985);
 const Color kBreakTimeTimerBorderColor = Color(0xBFE8FFF0);
-const Color kBreakTimeRestingButtonColor = Color(0xFF9CB9A1);
+const Color kBreakTimeRestingButtonColor = Color(0xFF96B79C);
 const Color kBreakTimeRestingTextColor = Color(0xFF5E7E68);
-const Color kBreakTimeContinueButtonColor = Color(0xFFFFC86A);
+const Color kBreakTimeContinueButtonColor = Color(0xFFFFC96B);
 
 Future<void> showBreakTimePopup(
   BuildContext context, {
@@ -80,19 +76,23 @@ class _BreakTimeDialogState extends State<_BreakTimeDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final cardWidth = screenWidth < 390 ? 214.0 : 232.0;
+
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 42, vertical: 80),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 72),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+        width: cardWidth,
+        padding: const EdgeInsets.fromLTRB(15, 9, 15, 13),
         decoration: BoxDecoration(
           gradient: kBreakTimeCardGradient,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(7),
           boxShadow: const [
             BoxShadow(
               color: Colors.black26,
-              blurRadius: 12,
-              offset: Offset(0, 6),
+              blurRadius: 8,
+              offset: Offset(0, 4),
             ),
           ],
         ),
@@ -104,7 +104,7 @@ class _BreakTimeDialogState extends State<_BreakTimeDialog> {
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontFamily: 'SuperCartoon',
-                fontSize: 32,
+                fontSize: 19,
                 fontWeight: FontWeight.w900,
                 color: Colors.white,
                 shadows: [
@@ -116,12 +116,12 @@ class _BreakTimeDialogState extends State<_BreakTimeDialog> {
                 ],
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
+              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 2),
               decoration: BoxDecoration(
                 color: kBreakTimeTimerColor,
-                borderRadius: BorderRadius.circular(7),
+                borderRadius: BorderRadius.circular(4),
                 border: Border.all(color: kBreakTimeTimerBorderColor),
                 boxShadow: const [
                   BoxShadow(
@@ -135,15 +135,15 @@ class _BreakTimeDialogState extends State<_BreakTimeDialog> {
                 _timeLabel,
                 style: const TextStyle(
                   fontFamily: 'SuperCartoon',
-                  fontSize: 28,
+                  fontSize: 21,
                   fontWeight: FontWeight.w900,
                   color: Colors.white,
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 6),
             SizedBox.square(
-              dimension: 178,
+              dimension: 132,
               child: Image.asset(
                 'assets/sisa_oyo/sisabreaktime.png',
                 fit: BoxFit.contain,
@@ -153,17 +153,17 @@ class _BreakTimeDialogState extends State<_BreakTimeDialog> {
                 ),
               ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 7),
             Text(
               _finished
                   ? 'SISA IS READY.\nLET US CONTINUE!'
-                  : 'REST YOUR EYES.\nLOOK FAR AWAY AND\nMOVE AROUND FOR A WHILE!',
+                  : 'SISA IS TIRED. GO OUT AND\nHAVE FUN WITH YOUR FRIENDS\nFOR A WHILE!',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontFamily: 'SuperCartoon',
-                fontSize: 17,
+                fontSize: 10.5,
                 fontWeight: FontWeight.w800,
-                height: 1.3,
+                height: 1.18,
                 color: Colors.white,
                 shadows: [
                   Shadow(
@@ -174,9 +174,10 @@ class _BreakTimeDialogState extends State<_BreakTimeDialog> {
                 ],
               ),
             ),
-            const SizedBox(height: 22),
+            const SizedBox(height: 8),
             SizedBox(
-              width: 170,
+              width: 90,
+              height: 28,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _finished
@@ -185,9 +186,9 @@ class _BreakTimeDialogState extends State<_BreakTimeDialog> {
                   disabledBackgroundColor: kBreakTimeRestingButtonColor,
                   disabledForegroundColor: kBreakTimeRestingTextColor,
                   foregroundColor: const Color(0xFF2D2D2D),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  padding: EdgeInsets.zero,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(5),
                   ),
                   elevation: _finished ? 4 : 0,
                 ),
@@ -196,9 +197,8 @@ class _BreakTimeDialogState extends State<_BreakTimeDialog> {
                   _finished ? 'CONTINUE' : 'RESTING',
                   style: const TextStyle(
                     fontFamily: 'SuperCartoon',
-                    fontSize: 16,
+                    fontSize: 13,
                     fontWeight: FontWeight.w800,
-                    letterSpacing: 1,
                   ),
                 ),
               ),
