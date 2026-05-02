@@ -603,14 +603,42 @@ class ApiService {
     await _ensureDeviceAuth();
     await syncPending();
 
-    final bootstrapPayload = await _fetchOfflineBootstrap();
-    await _cacheOfflineBootstrap(bootstrapPayload);
+    try {
+      final bootstrapPayload = await _fetchOfflineBootstrap();
+      await _cacheOfflineBootstrap(bootstrapPayload);
+    } on ApiException catch (e) {
+      if (!_isLegacyEndpointFallbackError(e)) {
+        rethrow;
+      }
+    }
 
-    final remoteResult = await _fetchAllRemoteQuestions();
-    await _cacheQuestionGroups(
-      rows: remoteResult.rows,
-      contentVersion: remoteResult.versionTag,
-    );
+    var hasPlayableQuestions = false;
+    try {
+      final remoteResult = await _fetchAllRemoteQuestions();
+      if (remoteResult.rows.isNotEmpty) {
+        await _cacheQuestionGroups(
+          rows: remoteResult.rows,
+          contentVersion: remoteResult.versionTag,
+        );
+        hasPlayableQuestions = true;
+      }
+    } on ApiException catch (e) {
+      if (!_isLegacyEndpointFallbackError(e) && !_isConnectivityException(e)) {
+        rethrow;
+      }
+    }
+
+    if (!hasPlayableQuestions) {
+      hasPlayableQuestions = await _cacheBundledSeedQuestions();
+    }
+
+    if (!hasPlayableQuestions) {
+      throw const ApiException(
+        503,
+        'No playable question content is available on this device.',
+      );
+    }
+
     await LocalSyncStore.instance.setOfflineBootstrapComplete(true);
   }
 
@@ -1082,6 +1110,74 @@ class ApiService {
         }
       }
     }
+  }
+
+  static Future<bool> _cacheBundledSeedQuestions() async {
+    var cachedAny = false;
+
+    for (final grade in _bootstrapGrades) {
+      for (final subject in _bootstrapSubjects) {
+        for (final difficulty in _bootstrapDifficulties) {
+          final rows = await SeededQuestionStore.instance.getQuestions(
+            grade: grade,
+            subject: subject,
+            difficulty: difficulty,
+          );
+          if (rows.isEmpty) {
+            continue;
+          }
+
+          final key = _questionCacheKey(
+            grade: grade,
+            subject: subject,
+            difficulty: difficulty,
+          );
+          _questionCache[key] = rows;
+          await LocalSyncStore.instance.saveCachedQuestionRows(
+            cacheKey: key,
+            rows: rows,
+            contentVersion: 'bundled-seed',
+          );
+          cachedAny = true;
+        }
+
+        final allRows = await SeededQuestionStore.instance.getQuestions(
+          grade: grade,
+          subject: subject,
+        );
+        if (allRows.isEmpty) {
+          continue;
+        }
+
+        final allKey = _questionCacheKey(grade: grade, subject: subject);
+        _questionCache[allKey] = allRows;
+        await LocalSyncStore.instance.saveCachedQuestionRows(
+          cacheKey: allKey,
+          rows: allRows,
+          contentVersion: 'bundled-seed',
+        );
+        cachedAny = true;
+      }
+    }
+
+    return cachedAny && await _hasBundledSeedQuestions();
+  }
+
+  static Future<bool> _hasBundledSeedQuestions() async {
+    for (final grade in _bootstrapGrades) {
+      for (final subject in _bootstrapSubjects) {
+        final rows = await SeededQuestionStore.instance.getQuestions(
+          grade: grade,
+          subject: subject,
+          difficulty: 'EASY',
+        );
+        if (rows.isNotEmpty) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   static List<Map<String, dynamic>> _filterQuestionRows({
