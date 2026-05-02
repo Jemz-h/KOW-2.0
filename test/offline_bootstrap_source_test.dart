@@ -13,6 +13,8 @@ void main() {
       expect(source, contains('_hasBundledSeedQuestions'));
       expect(source, contains('saveSyncedStudent'));
       expect(source, contains('saveLocalLevelProgress'));
+      expect(source, contains('_cacheLearnerProgressSnapshots'));
+      expect(source, contains('requireDownloads: true'));
     },
   );
 
@@ -39,6 +41,26 @@ void main() {
       expect(source, contains('/api/users'));
       expect(source, contains('_cacheUserListLearners'));
       expect(source, contains('Student.fromJson'));
+    },
+  );
+
+  test(
+    'remote progress and image downloads are persisted for offline play',
+    () {
+      final apiSource = File('lib/api_service.dart').readAsStringSync();
+      final mainSource = File('lib/main.dart').readAsStringSync();
+
+      expect(apiSource, contains('_cacheProgressRows(remoteRows'));
+      expect(apiSource, contains('_fetchStudentDetailProgress'));
+      expect(apiSource, contains('getCachedQuestionImage'));
+      expect(apiSource, contains('saveCachedQuestionImage'));
+      expect(
+        apiSource,
+        contains('awaitDownloads: await _hasNetworkTransport()'),
+      );
+      expect(mainSource, contains('Downloading learner progress'));
+      expect(mainSource, contains('Downloading question images'));
+      expect(mainSource, contains('Saving Sisa position'));
     },
   );
 }

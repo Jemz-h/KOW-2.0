@@ -171,7 +171,35 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
 
     if (!hasPendingWork && !needsBootstrap && showWhenIdle) {
-      await ApiService.checkContentVersion();
+      _showingSyncFeedback = true;
+      try {
+        await BackendFeedbackOverlay.runWithLoading<void>(
+          context: feedbackContext,
+          title: 'Syncing Online',
+          message: 'Refreshing offline play data.',
+          loadingMessages: const [
+            'Checking learner logins',
+            'Downloading progress',
+            'Saving Sisa position',
+            'Downloading questions',
+            'Downloading question images',
+          ],
+          hideButtonLabel: 'Hide',
+          task: ApiService.bootstrapOfflineData,
+        );
+      } catch (_) {
+        if (feedbackContext.mounted) {
+          await BackendFeedbackOverlay.showMessage(
+            context: feedbackContext,
+            title: 'Sync Paused',
+            tone: BackendFeedbackTone.warning,
+            message:
+                'Some offline files are still downloading. Keep internet on and KOW will continue syncing.',
+          );
+        }
+      } finally {
+        _showingSyncFeedback = false;
+      }
       return;
     }
 
@@ -184,8 +212,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         loadingMessages: const [
           'Uploading local data',
           'Syncing learner progress',
+          'Saving Sisa position',
           'Downloading questions',
-          'Saving image cache',
+          'Downloading question images',
         ],
         hideButtonLabel: needsBootstrap ? null : 'Hide',
         task: needsBootstrap
@@ -323,8 +352,10 @@ class _SessionGateState extends State<_SessionGate> {
           loadingMessages: const [
             'Connecting to KOW',
             'Downloading learner logins',
+            'Downloading learner progress',
+            'Saving Sisa position',
             'Downloading questions',
-            'Saving image cache',
+            'Downloading question images',
             'Preparing offline mode',
           ],
           task: ApiService.bootstrapOfflineData,
