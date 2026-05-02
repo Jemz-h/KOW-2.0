@@ -15,4 +15,30 @@ void main() {
       expect(source, contains('saveLocalLevelProgress'));
     },
   );
+
+  test('new builds reset stale versioned cache before startup sync', () {
+    final mainSource = File('lib/main.dart').readAsStringSync();
+    final apiSource = File('lib/api_service.dart').readAsStringSync();
+    final storeSource = File('lib/local_sync_store.dart').readAsStringSync();
+
+    expect(mainSource, contains('prepareInstallStateForCurrentBuild'));
+    expect(apiSource, contains('KOW_INSTALL_STATE_VERSION'));
+    expect(apiSource, contains('resetVersionedInstallState'));
+    expect(storeSource, contains('question_cache'));
+    expect(storeSource, contains('question_image_cache'));
+    expect(storeSource, contains('offline_bootstrap_complete'));
+    expect(storeSource, contains('selected_theme'));
+  });
+
+  test(
+    'login falls back to user list when lookup route misses live learners',
+    () {
+      final source = File('lib/api_service.dart').readAsStringSync();
+
+      expect(source, contains('_findStudentFromUserList'));
+      expect(source, contains('/api/users'));
+      expect(source, contains('_cacheUserListLearners'));
+      expect(source, contains('Student.fromJson'));
+    },
+  );
 }

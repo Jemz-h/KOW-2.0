@@ -21,6 +21,10 @@ class ApiService {
   static String get _base => ApiConfig.baseUrl;
   static const _requestTimeout = Duration(seconds: 12);
   static const _interactiveAuthTimeout = Duration(seconds: 5);
+  static const _installStateVersion = String.fromEnvironment(
+    'KOW_INSTALL_STATE_VERSION',
+    defaultValue: '0.0.8+8-cache-v2',
+  );
   static const _maxRetryAttempts = 3;
   static const _retryBaseDelay = Duration(milliseconds: 450);
   static final _uuid = Uuid();
@@ -93,6 +97,20 @@ class ApiService {
   static bool get hasActiveSession {
     final nickname = _currentNickname?.trim();
     return nickname != null && nickname.isNotEmpty;
+  }
+
+  static Future<void> prepareInstallStateForCurrentBuild() async {
+    final storedVersion = await LocalSyncStore.instance
+        .getInstallStateVersion();
+    if (storedVersion == _installStateVersion) {
+      return;
+    }
+
+    await LocalSyncStore.instance.resetVersionedInstallState();
+    await LocalSyncStore.instance.setInstallStateVersion(_installStateVersion);
+    _lastContentVersionTag = null;
+    _hasDeferredContentRefresh = false;
+    _questionCache.clear();
   }
 
   static Future<bool> restoreSession() async {
@@ -443,6 +461,44 @@ class ApiService {
       }
     }
 
+    try {
+      final userListStudent = await _findStudentFromUserList(
+        nickname: normalizedNickname,
+        birthday: normalizedBirthday,
+      );
+      if (userListStudent != null) {
+        final resolvedBirthday = _normalizeBirthday(
+          userListStudent.birthday ?? normalizedBirthday,
+        );
+        _currentStudentId = userListStudent.studentId;
+        _currentNickname = userListStudent.nickname.isEmpty
+            ? normalizedNickname
+            : userListStudent.nickname;
+        _currentBirthday = resolvedBirthday;
+
+        await LocalSyncStore.instance.saveSyncedStudent(
+          student: userListStudent,
+          birthday: resolvedBirthday,
+        );
+        await LocalSyncStore.instance.saveActiveSession(
+          studentId: userListStudent.studentId,
+          nickname: _currentNickname!,
+          birthday: resolvedBirthday,
+        );
+
+        startContentVersionPolling();
+        unawaited(syncPending());
+        _scheduleOracleReconciliation(
+          nickname: _currentNickname!,
+          birthday: resolvedBirthday,
+        );
+
+        return userListStudent;
+      }
+    } on ApiException catch (e) {
+      lookupError ??= e;
+    }
+
     final offlineStudent = await LocalSyncStore.instance.findOfflineStudent(
       nickname: normalizedNickname,
       birthday: normalizedBirthday,
@@ -603,13 +659,18 @@ class ApiService {
     await _ensureDeviceAuth();
     await syncPending();
 
+    var hasCachedLearners = false;
     try {
       final bootstrapPayload = await _fetchOfflineBootstrap();
-      await _cacheOfflineBootstrap(bootstrapPayload);
+      hasCachedLearners = await _cacheOfflineBootstrap(bootstrapPayload);
     } on ApiException catch (e) {
       if (!_isLegacyEndpointFallbackError(e)) {
         rethrow;
       }
+    }
+
+    if (!hasCachedLearners) {
+      hasCachedLearners = await _cacheUserListLearners();
     }
 
     var hasPlayableQuestions = false;
@@ -639,6 +700,13 @@ class ApiService {
       );
     }
 
+    if (!hasCachedLearners) {
+      throw const ApiException(
+        503,
+        'No learner login cache is available on this device.',
+      );
+    }
+
     await LocalSyncStore.instance.setOfflineBootstrapComplete(true);
   }
 
@@ -662,9 +730,10 @@ class ApiService {
     return const <String, dynamic>{};
   }
 
-  static Future<void> _cacheOfflineBootstrap(
+  static Future<bool> _cacheOfflineBootstrap(
     Map<String, dynamic> payload,
   ) async {
+    var cachedLearners = false;
     final learners = payload['learners'];
     if (learners is List) {
       for (final rawLearner in learners) {
@@ -688,6 +757,7 @@ class ApiService {
           student: student,
           birthday: birthday,
         );
+        cachedLearners = true;
       }
     }
 
@@ -728,6 +798,86 @@ class ApiService {
         );
       }
     }
+
+    return cachedLearners;
+  }
+
+  static Future<bool> _cacheUserListLearners() async {
+    final learners = await _fetchUserListLearners();
+    var cachedAny = false;
+
+    for (final learner in learners) {
+      final birthday = _normalizeBirthday(_asString(learner['birthday']) ?? '');
+      final student = Student.fromJson(learner);
+      if (student.studentId <= 0 ||
+          student.nickname.trim().isEmpty ||
+          birthday.isEmpty) {
+        continue;
+      }
+
+      await LocalSyncStore.instance.saveSyncedStudent(
+        student: student,
+        birthday: birthday,
+      );
+      cachedAny = true;
+    }
+
+    return cachedAny;
+  }
+
+  static Future<Student?> _findStudentFromUserList({
+    required String nickname,
+    required String birthday,
+  }) async {
+    final normalizedNickname = nickname.trim().toLowerCase();
+    final normalizedBirthday = _normalizeBirthday(birthday);
+    final learners = await _fetchUserListLearners();
+
+    for (final learner in learners) {
+      final learnerNickname = (_asString(learner['nickname']) ?? '')
+          .trim()
+          .toLowerCase();
+      final learnerBirthday = _normalizeBirthday(
+        _asString(learner['birthday']) ?? '',
+      );
+      if (learnerNickname != normalizedNickname ||
+          learnerBirthday != normalizedBirthday) {
+        continue;
+      }
+
+      final student = Student.fromJson(learner);
+      if (student.studentId > 0 && student.nickname.trim().isNotEmpty) {
+        return student;
+      }
+    }
+
+    return null;
+  }
+
+  static Future<List<Map<String, dynamic>>> _fetchUserListLearners() async {
+    final res = await _runWithRetry(
+      () => _sendWithTimeout(
+        _client.get(Uri.parse('$_base/api/users'), headers: _headers),
+      ),
+      shouldRetry: _isRetryableSyncError,
+    );
+    _checkStatus(res);
+
+    final decoded = jsonDecode(res.body);
+    final rawUsers = decoded is Map<String, dynamic>
+        ? decoded['users']
+        : decoded is List
+        ? decoded
+        : null;
+
+    if (rawUsers is! List) {
+      return const <Map<String, dynamic>>[];
+    }
+
+    return rawUsers
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
   }
 
   /// Update student profile information.
@@ -1791,6 +1941,21 @@ class ApiService {
 
   static String _normalizeBirthday(String value) {
     final raw = value.trim();
+    final iso = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})[T\s]').firstMatch(raw);
+    if (iso != null) {
+      final month = int.tryParse(iso.group(2) ?? '');
+      final day = int.tryParse(iso.group(3) ?? '');
+      if (month == null ||
+          day == null ||
+          month < 1 ||
+          month > 12 ||
+          day < 1 ||
+          day > 31) {
+        return raw;
+      }
+      return '${iso.group(1)}-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+    }
+
     final ymd = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})$').firstMatch(raw);
     if (ymd != null) {
       final month = int.tryParse(ymd.group(2) ?? '');

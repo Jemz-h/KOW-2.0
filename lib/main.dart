@@ -18,6 +18,7 @@ void main() async {
     () async {
       WidgetsFlutterBinding.ensureInitialized();
 
+      await ApiService.prepareInstallStateForCurrentBuild();
       unawaited(ApiService.syncPending());
 
       // Start background music
