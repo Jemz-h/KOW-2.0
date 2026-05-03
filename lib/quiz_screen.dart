@@ -170,7 +170,7 @@ const double kPopBtnMapIconR = 0.070;
 const double kPopBtnHomeIconL = 0.035;
 const double kPopBtnHomeIconR = 0.050;
 
-const int kPopSlideMs = 420;
+const int kPopSlideMs = 300;
 
 const Duration kTapPressDur = Duration(milliseconds: 90);
 const double kTapPressScale = 0.76;
@@ -379,6 +379,7 @@ class QuizCompletionResult {
     required this.score,
     required this.total,
     required this.difficulty,
+    this.shouldAutoPlayNext = false,
   });
 
   final int completedNodeIndex;
@@ -386,6 +387,7 @@ class QuizCompletionResult {
   final int score;
   final int total;
   final String difficulty;
+  final bool shouldAutoPlayNext;
 }
 
 class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
@@ -428,11 +430,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
       default:
         return const Color(0xFF22BB22);
     }
-  }
-
-  String? get _outsidePrompt {
-    if (_isEasy) return _q.prompt;
-    return _q.subPrompt;
   }
 
   @override
@@ -666,13 +663,14 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
     await _submitFinalScore();
   }
 
-  QuizCompletionResult _completionResult() {
+  QuizCompletionResult _completionResult({bool shouldAutoPlayNext = false}) {
     return QuizCompletionResult(
       completedNodeIndex: widget.nodeIndex,
       passed: _passedCurrentLevel,
       score: _score,
       total: _qs.length,
       difficulty: widget.difficulty,
+      shouldAutoPlayNext: shouldAutoPlayNext,
     );
   }
 
@@ -1206,25 +1204,20 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                                   ),
                                 ),
 
-                                if (_isEasy) ...[
-                                  () {
-                                    final questionImage = _buildQuestionImage(
-                                      sw,
-                                    );
-                                    if (questionImage == null) {
-                                      return const SizedBox.shrink();
-                                    }
-
-                                    return Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        SizedBox(height: sh * kImagePadT),
-                                        questionImage,
-                                        SizedBox(height: sh * kImagePadB),
-                                      ],
-                                    );
-                                  }(),
-                                ],
+                                () {
+                                  final questionImage = _buildQuestionImage(sw);
+                                  if (questionImage == null) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SizedBox(height: sh * kImagePadT),
+                                      questionImage,
+                                      SizedBox(height: sh * kImagePadB),
+                                    ],
+                                  );
+                                }(),
 
                                 if (!_isEasy && _q.prompt != null) ...[
                                   SizedBox(height: sh * kDefPadT),
@@ -1264,33 +1257,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                           ),
                         ),
 
-                        if (_outsidePrompt != null && !_showResult) ...[
-                          SizedBox(height: sh * kGapCardPrompt),
-                          Padding(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: sw * kPromptOutPadH,
-                            ),
-                            child: Text(
-                              _outsidePrompt!,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontFamily: 'SuperCartoon',
-                                fontSize: sw * kPromptOutFs,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                                shadows: const [
-                                  Shadow(
-                                    color: Colors.black38,
-                                    blurRadius: 3,
-                                    offset: Offset(1, 1),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          SizedBox(height: sh * kGapPromptBtns),
-                        ] else
-                          SizedBox(height: sh * kGapCardBtns),
+                        SizedBox(height: sh * kGapCardBtns),
 
                         Expanded(
                           child: AnimatedSwitcher(
@@ -1335,7 +1302,11 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                 await _ensureCompletionPersisted();
                 if (!mounted) return;
 
-                navigator.pop(_completionResult());
+                // Brief delay to let device settle after animation before navigating
+                await Future.delayed(const Duration(milliseconds: 100));
+                if (!mounted) return;
+
+                navigator.pop(_completionResult(shouldAutoPlayNext: true));
               },
               onRestart: () {
                 setState(() {

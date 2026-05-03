@@ -23,7 +23,7 @@ class ApiService {
   static const _interactiveAuthTimeout = Duration(seconds: 5);
   static const _installStateVersion = String.fromEnvironment(
     'KOW_INSTALL_STATE_VERSION',
-    defaultValue: '0.0.8+8-cache-v2',
+    defaultValue: '0.0.9+9-cache-v3',
   );
   static const _maxRetryAttempts = 3;
   static const _retryBaseDelay = Duration(milliseconds: 450);
@@ -38,6 +38,7 @@ class ApiService {
   static String? _lastContentVersionTag;
   static bool _hasDeferredContentRefresh = false;
   static int _activeLearningSessions = 0;
+  static bool _lastLoginWasOffline = false;
   static Timer? _contentPoller;
   static Future<void>? _oracleReconciliationTask;
   static String? _oracleReconciliationIdentity;
@@ -98,6 +99,10 @@ class ApiService {
     final nickname = _currentNickname?.trim();
     return nickname != null && nickname.isNotEmpty;
   }
+
+  static String? get currentBirthday => _currentBirthday;
+
+  static bool get lastLoginWasOffline => _lastLoginWasOffline;
 
   static Future<void> prepareInstallStateForCurrentBuild() async {
     final storedVersion = await LocalSyncStore.instance
@@ -218,6 +223,38 @@ class ApiService {
     required String sex,
     String? area,
   }) async {
+    final hasOnlineLogin = await LocalSyncStore.instance.hasOnlineLogin();
+    final canReach = await canReachServer();
+    if (!hasOnlineLogin && !canReach) {
+      throw const ApiException(
+        503,
+        'Please connect to the internet before signing up on this device.',
+      );
+    }
+
+    if (!canReach && hasOnlineLogin) {
+      await LocalSyncStore.instance.queueOfflineRegistration(
+        firstName: firstName,
+        lastName: lastName,
+        nickname: nickname,
+        birthday: birthday,
+        sex: sex,
+        area: area,
+      );
+
+      _currentStudentId = null;
+      _currentNickname = nickname;
+      _currentBirthday = birthday;
+      await LocalSyncStore.instance.saveActiveSession(
+        studentId: null,
+        nickname: nickname,
+        birthday: birthday,
+      );
+
+      unawaited(syncPending());
+      return;
+    }
+
     try {
       final studentId = await _registerRemote(
         firstName: firstName,
@@ -255,11 +292,20 @@ class ApiService {
         birthday: birthday,
       );
 
+      await LocalSyncStore.instance.setHasOnlineLogin(true);
+
       startContentVersionPolling();
       unawaited(syncPending());
     } on ApiException catch (e) {
       if (!_isConnectivityException(e)) {
         rethrow;
+      }
+
+      if (!hasOnlineLogin) {
+        throw const ApiException(
+          503,
+          'Please connect to the internet before signing up on this device.',
+        );
       }
 
       await LocalSyncStore.instance.queueOfflineRegistration(
@@ -295,6 +341,43 @@ class ApiService {
   }) async {
     final normalizedNickname = nickname.trim();
     final normalizedBirthday = _normalizeBirthday(birthday);
+    _lastLoginWasOffline = false;
+
+    final hasOnlineLogin = await LocalSyncStore.instance.hasOnlineLogin();
+    final canReach = await canReachServer(timeout: const Duration(seconds: 4));
+    if (!canReach && !hasOnlineLogin) {
+      throw const ApiException(
+        503,
+        'Please connect to the internet before signing in on this device.',
+      );
+    }
+
+    if (!canReach && hasOnlineLogin) {
+      final offlineStudent = await LocalSyncStore.instance.findOfflineStudent(
+        nickname: normalizedNickname,
+        birthday: normalizedBirthday,
+      );
+
+      if (offlineStudent != null) {
+        _currentStudentId = offlineStudent.studentId;
+        _currentNickname = offlineStudent.nickname;
+        _currentBirthday = _normalizeBirthday(normalizedBirthday);
+        await LocalSyncStore.instance.saveActiveSession(
+          studentId: offlineStudent.studentId,
+          nickname: offlineStudent.nickname,
+          birthday: _currentBirthday!,
+        );
+        startContentVersionPolling();
+        unawaited(syncPending());
+        _lastLoginWasOffline = true;
+        return offlineStudent;
+      }
+
+      throw const ApiException(
+        401,
+        'No offline login data found. Connect to the internet to sign in.',
+      );
+    }
 
     // Ensure lookup-capable backends receive a device token before login attempts.
     await _tryEnsureDeviceAuth();
@@ -345,6 +428,9 @@ class ApiService {
           student: student,
           birthday: resolvedBirthday,
         );
+
+        await LocalSyncStore.instance.setHasOnlineLogin(true);
+        unawaited(getProgress(student.studentId));
 
         _scheduleOracleReconciliation(
           nickname: _currentNickname!,
@@ -447,6 +533,9 @@ class ApiService {
             student: fallbackStudent,
             birthday: resolvedBirthday,
           );
+
+          await LocalSyncStore.instance.setHasOnlineLogin(true);
+          unawaited(getProgress(resolvedStudentId));
 
           _scheduleOracleReconciliation(
             nickname: resolvedNickname,
@@ -714,6 +803,8 @@ class ApiService {
     }
 
     await LocalSyncStore.instance.setOfflineBootstrapComplete(true);
+    await LocalSyncStore.instance.setHasOnlineLogin(true);
+    await LocalSyncStore.instance.setAutoSyncListenerEnabled(true);
   }
 
   static Future<Map<String, dynamic>> _fetchOfflineBootstrap() async {
@@ -1928,6 +2019,7 @@ class ApiService {
     required String grade,
     required String subject,
     int? highestDiffPassed,
+    int? currentNodeIndex,
     required int totalTimePlayed,
     required String lastPlayedAt,
   }) async {
@@ -1954,6 +2046,8 @@ class ApiService {
                         'subject_id': subjectId,
                         'gradelvl_id': gradeLevelId,
                         'highest_diff_passed': highestDiffPassed ?? 0,
+                        if (currentNodeIndex != null)
+                          'current_node_index': currentNodeIndex,
                         'total_time_played': totalTimePlayed,
                         'last_played_at': lastPlayedAt,
                       },
@@ -1984,6 +2078,8 @@ class ApiService {
             'grade': grade,
             'subject': normalizedSubject,
             'highest_diff_passed': highestDiffPassed,
+            if (currentNodeIndex != null)
+              'current_node_index': currentNodeIndex,
             'total_time_played': totalTimePlayed,
             'last_played_at': lastPlayedAt,
           }),

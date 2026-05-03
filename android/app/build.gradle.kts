@@ -37,6 +37,35 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    // ─── PACKAGE CLEANUP & MANIFEST MERGE ──────────────────────────────
+    packagingOptions {
+        // Exclude duplicate manifest and resource files
+        exclude("META-INF/LICENSE")
+        exclude("META-INF/LICENSE.txt")
+        exclude("META-INF/NOTICE")
+        exclude("META-INF/NOTICE.txt")
+        exclude("META-INF/MANIFEST.MF")
+        exclude("META-INF/android.arch_core_runtime.version")
+        exclude("META-INF/androidx.**.version")
+        exclude("META-INF/proguard/androidx-**.pro")
+    }
+
+    // ─── BUILD OUTPUT CLEANUP ─────────────────────────────────────────
+    tasks.register("cleanBuildCache") {
+        doLast {
+            delete("build", ".gradle")
+            println("✓ Build cache and temporary files cleaned")
+        }
+    }
+
+    tasks.register("fullClean") {
+        dependsOn("clean", "cleanBuildCache")
+        doLast {
+            delete("build", ".gradle", ".idea")
+            println("✓ Full clean completed - ready for fresh build")
+        }
+    }
 }
 
 flutter {

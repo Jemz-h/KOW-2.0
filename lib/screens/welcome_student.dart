@@ -265,10 +265,13 @@ class _WelcomeStudentFormCardState extends State<WelcomeStudentFormCard>
         return;
       }
 
+      final savedOnline = ApiService.currentStudentId != null;
       await BackendFeedbackOverlay.showMessage(
         context: context,
-        title: 'Saved Online',
-        message: 'Your learner profile is ready. Welcome to KOW!',
+        title: savedOnline ? 'Saved Online' : 'Saved on Device',
+        message: savedOnline
+            ? 'Your learner profile is ready. Welcome to KOW!'
+            : 'Your learner profile is saved on this device and will sync when internet is available.',
         tone: BackendFeedbackTone.success,
       );
       if (!mounted) {
