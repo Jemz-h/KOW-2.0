@@ -448,17 +448,41 @@ class _LevelMapScreenState extends State<LevelMapScreen>
       return;
     }
 
-    setState(() {
-      _loadingProgress = true;
-    });
-
     try {
+      final targetGrade = widget.grade.trim().toUpperCase();
+      final targetSubject = _normalizeSubjectName(widget.subject);
+      final localSnapshot = await LocalSyncStore.instance
+          .getLocalLevelProgressSnapshot(
+            studentId: studentId,
+            grade: targetGrade,
+            subject: targetSubject,
+          );
+
+      if (mounted && localSnapshot != null) {
+        setState(() {
+          _maxUnlockedTravelNodeIndex = localSnapshot.highestNodeIndex.clamp(
+            0,
+            _nodeTravelOrder.length - 1,
+          );
+          _selectedNodeIndex = localSnapshot.currentNodeIndex.clamp(
+            0,
+            _maxUnlockedNodeIndex(),
+          );
+          _selectedDifficultyIndex = _difficultyIndexFromNode(
+            _selectedNodeIndex,
+          );
+        });
+      }
+
+      setState(() {
+        _loadingProgress = true;
+      });
+
       final progressRows = await ApiService.getProgress(studentId);
       if (!mounted) return;
 
-      final targetGrade = widget.grade.trim().toUpperCase();
-      final targetSubject = _normalizeSubjectName(widget.subject);
       int highestDiffPassed = 0;
+      int? serverCurrentNodeIndex;
 
       for (final row in progressRows) {
         final gradeName = (row['gradelvl'] ?? row['GRADELVL'] ?? '')
@@ -473,20 +497,18 @@ class _LevelMapScreenState extends State<LevelMapScreen>
           highestDiffPassed = _toInt(
             row['highest_diff_passed'] ?? row['HIGHEST_DIFF_PASSED'],
           );
+          serverCurrentNodeIndex = (row['current_node_index'] as num?)
+              ?.toInt()
+              .clamp(0, _nodeTravelOrder.length - 1);
           break;
         }
       }
-      final localSnapshot = await LocalSyncStore.instance
-          .getLocalLevelProgressSnapshot(
-            studentId: studentId,
-            grade: targetGrade,
-            subject: targetSubject,
-          );
       final maxUnlockedNode = LevelProgression.maxUnlockedNodeForLearner(
         highestDiffPassed: highestDiffPassed,
         savedHighestNodeIndex: localSnapshot?.highestNodeIndex,
       );
-      final savedCurrentNodeIndex = localSnapshot?.currentNodeIndex;
+      final savedCurrentNodeIndex =
+          localSnapshot?.currentNodeIndex ?? serverCurrentNodeIndex;
 
       setState(() {
         _maxUnlockedTravelNodeIndex = maxUnlockedNode;
@@ -679,6 +701,12 @@ class _LevelMapScreenState extends State<LevelMapScreen>
 
     await Future.delayed(const Duration(milliseconds: 260));
     if (!mounted) return;
+
+    final shouldAutoPlayNext = result.shouldAutoPlayNext;
+    if (shouldAutoPlayNext) {
+      await _launchQuizForSelectedLevel();
+      return;
+    }
 
     await _showNextLevelDialog(nextNodeIndex);
   }
@@ -957,7 +985,15 @@ class _LevelMapScreenState extends State<LevelMapScreen>
     return Positioned(
       left: center.dx - r,
       top: center.dy - r,
-      child: Image.asset(img, width: r * 2, height: r * 2, fit: BoxFit.contain),
+      child: IgnorePointer(
+        ignoring: true,
+        child: Image.asset(
+          img,
+          width: r * 2,
+          height: r * 2,
+          fit: BoxFit.contain,
+        ),
+      ),
     );
   }
 }
@@ -1025,22 +1061,28 @@ class _NodeChipState extends State<_NodeChip>
         child: AnimatedOpacity(
           duration: const Duration(milliseconds: 140),
           opacity: widget.enabled ? 1 : 0.38,
-          child: Container(
-            width: widget.selected ? 36 : 30,
-            height: widget.selected ? 22 : 18,
-            decoration: BoxDecoration(
-              color: widget.color,
-              borderRadius: BorderRadius.circular(11),
-              border: widget.selected
-                  ? Border.all(color: Colors.white, width: 2)
-                  : null,
-              boxShadow: [
-                BoxShadow(
-                  color: widget.color.withValues(alpha: 0.7),
-                  blurRadius: widget.selected ? 11 : 7,
-                  offset: const Offset(0, 3),
+          child: SizedBox(
+            width: 48,
+            height: 32,
+            child: Center(
+              child: Container(
+                width: widget.selected ? 36 : 30,
+                height: widget.selected ? 22 : 18,
+                decoration: BoxDecoration(
+                  color: widget.color,
+                  borderRadius: BorderRadius.circular(11),
+                  border: widget.selected
+                      ? Border.all(color: Colors.white, width: 2)
+                      : null,
+                  boxShadow: [
+                    BoxShadow(
+                      color: widget.color.withValues(alpha: 0.7),
+                      blurRadius: widget.selected ? 11 : 7,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),

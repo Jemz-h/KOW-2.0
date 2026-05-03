@@ -170,7 +170,7 @@ const double kPopBtnMapIconR = 0.070;
 const double kPopBtnHomeIconL = 0.035;
 const double kPopBtnHomeIconR = 0.050;
 
-const int kPopSlideMs = 420;
+const int kPopSlideMs = 300;
 
 const Duration kTapPressDur = Duration(milliseconds: 90);
 const double kTapPressScale = 0.76;
@@ -379,6 +379,7 @@ class QuizCompletionResult {
     required this.score,
     required this.total,
     required this.difficulty,
+    this.shouldAutoPlayNext = false,
   });
 
   final int completedNodeIndex;
@@ -386,6 +387,7 @@ class QuizCompletionResult {
   final int score;
   final int total;
   final String difficulty;
+  final bool shouldAutoPlayNext;
 }
 
 class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
@@ -666,13 +668,14 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
     await _submitFinalScore();
   }
 
-  QuizCompletionResult _completionResult() {
+  QuizCompletionResult _completionResult({bool shouldAutoPlayNext = false}) {
     return QuizCompletionResult(
       completedNodeIndex: widget.nodeIndex,
       passed: _passedCurrentLevel,
       score: _score,
       total: _qs.length,
       difficulty: widget.difficulty,
+      shouldAutoPlayNext: shouldAutoPlayNext,
     );
   }
 
@@ -1335,7 +1338,11 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                 await _ensureCompletionPersisted();
                 if (!mounted) return;
 
-                navigator.pop(_completionResult());
+                // Brief delay to let device settle after animation before navigating
+                await Future.delayed(const Duration(milliseconds: 100));
+                if (!mounted) return;
+
+                navigator.pop(_completionResult(shouldAutoPlayNext: true));
               },
               onRestart: () {
                 setState(() {

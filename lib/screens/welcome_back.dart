@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../api_service.dart';
+import '../local_sync_store.dart';
 import '../navigation/route_transitions.dart';
 import '../widgets/backend_feedback.dart';
 import '../widgets/form.dart';
@@ -142,6 +143,57 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen>
       if (!context.mounted) {
         return;
       }
+      if (e.message.contains('connect to the internet before signing in')) {
+        final connectNow = await BackendFeedbackOverlay.showChoice(
+          context: context,
+          title: 'Connect First',
+          message:
+              'This device has not been synced online yet. Connect to the internet, then tap Connect to arm auto-sync.',
+          tone: BackendFeedbackTone.warning,
+          primaryLabel: 'Connect',
+          secondaryLabel: 'Cancel',
+        );
+
+        if (connectNow == true) {
+          await LocalSyncStore.instance.setAutoSyncListenerEnabled(true);
+          try {
+            await BackendFeedbackOverlay.runWithLoading<void>(
+              context: context,
+              title: 'First Sync',
+              message: 'Downloading learner data for offline sign-in.',
+              loadingMessages: const [
+                'Connecting to KOW server',
+                'Downloading learner login cache',
+                'Downloading learner progress',
+                'Downloading questions and images',
+                'Finalizing offline-ready data',
+              ],
+              task: ApiService.bootstrapOfflineData,
+            );
+            if (!context.mounted) return;
+            await BackendFeedbackOverlay.showMessage(
+              context: context,
+              title: 'Ready Offline',
+              tone: BackendFeedbackTone.success,
+              message:
+                  'Sync complete. This device can now sign in learners offline.',
+              barrierDismissible: false,
+              showCloseButton: false,
+            );
+          } on ApiException {
+            if (!context.mounted) return;
+            await BackendFeedbackOverlay.showMessage(
+              context: context,
+              title: 'Sync Paused',
+              tone: BackendFeedbackTone.warning,
+              message:
+                  'Stable internet is needed to finish first sync. Please reconnect and tap Connect again.',
+            );
+          }
+        }
+        return;
+      }
+
       await BackendFeedbackOverlay.showMessage(
         context: context,
         title: 'Login Failed',

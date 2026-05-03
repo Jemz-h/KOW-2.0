@@ -126,6 +126,86 @@ class BackendFeedbackOverlay extends StatefulWidget {
     }
   }
 
+  /// Show non-blocking sync notification (no barrier, no buttons)
+  /// Prevents user interaction during sync
+  static Future<void> showNonBlockingSync({
+    required BuildContext context,
+    String message = 'Syncing your progress now...',
+    Future<void> Function()? onComplete,
+  }) async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.transparent, // Transparent barrier prevents interaction
+      builder: (dialogContext) => WillPopScope(
+        onWillPop: () async => false, // Prevent back button
+        child: Stack(
+          children: [
+            // Barrier that blocks interaction
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () {}, // Consume taps
+                child: Container(
+                  color: Colors.transparent,
+                ),
+              ),
+            ),
+            // Centered sync indicator
+            Center(
+              child: Transform.translate(
+                offset: const Offset(0, -80),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 60,
+                      height: 60,
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Color(0xFF45D9FF),
+                        ),
+                        strokeWidth: 5,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        message,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'SuperCartoon',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ).then((_) async {
+      // Auto-dismiss after a brief moment and trigger callback
+      if (context.mounted) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (context.mounted) {
+          Navigator.of(context, rootNavigator: true).pop();
+        }
+      }
+      await onComplete?.call();
+    });
+  }
+
   @override
   State<BackendFeedbackOverlay> createState() => _BackendFeedbackOverlayState();
 }
@@ -139,11 +219,11 @@ class _BackendFeedbackOverlayState extends State<BackendFeedbackOverlay> {
   void initState() {
     super.initState();
     if (widget.showSpinner && widget.loadingMessages.isNotEmpty) {
-      _timer = Timer.periodic(const Duration(milliseconds: 950), (_) {
+      _timer = Timer.periodic(const Duration(milliseconds: 1450), (_) {
         if (!mounted) return;
         setState(() {
           _messageIndex = (_messageIndex + 1) % widget.loadingMessages.length;
-          _progress = (_progress + 0.17).clamp(0.18, 0.94);
+          _progress = (_progress + 0.11).clamp(0.18, 0.94);
           if (_progress >= 0.94) {
             _progress = 0.32;
           }
@@ -333,6 +413,16 @@ class _BackendFeedbackOverlayState extends State<BackendFeedbackOverlay> {
                           backgroundColor: const Color(
                             0xFF17172E,
                           ).withValues(alpha: 0.12),
+                        ),
+                      ),
+                      SizedBox(height: 8 * scale),
+                      Text(
+                        '${(_progress * 100).round()}%',
+                        style: TextStyle(
+                          fontFamily: 'SuperCartoon',
+                          fontSize: 13 * scale,
+                          fontWeight: FontWeight.w900,
+                          color: const Color(0xFF17172E),
                         ),
                       ),
                       if (widget.hideButtonLabel != null) ...[

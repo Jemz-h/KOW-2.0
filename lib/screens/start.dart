@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 
 import '../api_service.dart';
+import '../local_sync_store.dart';
+import '../main.dart';
 import '../navigation/route_transitions.dart';
+import '../widgets/backend_feedback.dart';
 import '../widgets/mock_background.dart';
 import 'menu.dart';
 import 'welcome_back.dart';
@@ -154,6 +159,16 @@ class _StartScreenState extends State<StartScreen>
 
     if (!mounted) return;
 
+    final autoSyncEnabled = await LocalSyncStore.instance
+        .isAutoSyncListenerEnabled();
+
+    // Start the background listener only after the device has been bootstrapped
+    // or the user explicitly armed auto-sync from the login error flow.
+    if (autoSyncEnabled &&
+        !stableConnectionListener.hasDetectedStableConnection) {
+      unawaited(_waitForStableConnectionAndSync());
+    }
+
     if (ApiService.hasActiveSession) {
       pushFadeReplacement(context, const MenuScreen());
     } else {
@@ -161,6 +176,189 @@ class _StartScreenState extends State<StartScreen>
     }
 
     _tapController.reset();
+  }
+
+  /// Wait for stable connection and show non-blocking sync prompt
+  Future<void> _waitForStableConnectionAndSync() async {
+    stableConnectionListener.startListening(
+      onStableConnection: () async {
+        if (!mounted) return;
+        await _syncSilentlyWhenStable();
+      },
+      triggerImmediatelyIfOnline: false,
+    );
+  }
+
+  /// Sync in the background after stable connection is detected.
+  Future<void> _syncSilentlyWhenStable() async {
+    if (!mounted) return;
+
+    final hasPendingWork = await LocalSyncStore.instance.hasPendingSyncWork();
+    final needsBootstrap = !await ApiService.isOfflineBootstrapComplete();
+    final hasOnlineLogin = await LocalSyncStore.instance.hasOnlineLogin();
+
+    if (!mounted || (!hasPendingWork && !needsBootstrap)) {
+      return;
+    }
+
+    if (hasOnlineLogin) {
+      try {
+        if (needsBootstrap) {
+          await ApiService.bootstrapOfflineData();
+        } else {
+          await ApiService.syncPending();
+          await ApiService.checkContentVersion();
+        }
+      } catch (_) {
+        // Silent by design for normal online mode.
+      }
+      return;
+    }
+
+    await _runBlockingFirstSyncWithProgress(
+      needsBootstrap: needsBootstrap,
+      hasPendingWork: hasPendingWork,
+    );
+  }
+
+  Future<void> _runBlockingFirstSyncWithProgress({
+    required bool needsBootstrap,
+    required bool hasPendingWork,
+  }) async {
+    final progress = ValueNotifier<double>(0.0);
+    final percent = ValueNotifier<int>(0);
+    final status = ValueNotifier<String>('Checking stable connection');
+    var closed = false;
+
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        barrierColor: Colors.black.withValues(alpha: 0.55),
+        builder: (dialogContext) {
+          return PopScope(
+            canPop: false,
+            child: Dialog(
+              backgroundColor: const Color(0xFF101327),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: const BorderSide(color: Color(0xFF45D9FF), width: 2),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: ValueListenableBuilder<String>(
+                  valueListenable: status,
+                  builder: (_, statusText, __) {
+                    return ValueListenableBuilder<double>(
+                      valueListenable: progress,
+                      builder: (_, progressValue, __) {
+                        return ValueListenableBuilder<int>(
+                          valueListenable: percent,
+                          builder: (_, percentValue, __) {
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const SizedBox(
+                                  width: 42,
+                                  height: 42,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 4,
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                const Text(
+                                  'Syncing Online',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontFamily: 'SuperCartoon',
+                                    fontSize: 20,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  statusText,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontFamily: 'SuperCartoon',
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                LinearProgressIndicator(
+                                  value: progressValue,
+                                  minHeight: 8,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '$percentValue%',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontFamily: 'SuperCartoon',
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ),
+          );
+        },
+      ).whenComplete(() => closed = true),
+    );
+
+    Future<void> tick(
+      double p,
+      int pc,
+      String text, {
+      int delayMs = 900,
+    }) async {
+      if (!mounted || closed) return;
+      progress.value = p.clamp(0.0, 1.0);
+      percent.value = pc.clamp(0, 100);
+      status.value = text;
+      await Future.delayed(Duration(milliseconds: delayMs));
+    }
+
+    try {
+      await tick(0.10, 10, 'Checking stable connection');
+      if (hasPendingWork) {
+        await tick(0.35, 35, 'Uploading offline progress');
+        await ApiService.syncPending();
+      }
+      await tick(0.70, 70, 'Downloading server updates');
+      if (needsBootstrap) {
+        await ApiService.bootstrapOfflineData();
+      } else {
+        await ApiService.checkContentVersion();
+      }
+      await tick(0.92, 92, 'Saving Sisa position');
+      await tick(1.00, 100, 'Offline-ready setup complete', delayMs: 600);
+    } catch (_) {
+      rethrow;
+    } finally {
+      progress.dispose();
+      percent.dispose();
+      status.dispose();
+      if (mounted && !closed) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+
+    if (!mounted) return;
+    await BackendFeedbackOverlay.showMessage(
+      context: context,
+      title: 'Ready Offline',
+      tone: BackendFeedbackTone.success,
+      message:
+          'Sync completed. Connect to internet every once in a while so progress and new data stay updated.',
+    );
   }
 
   @override

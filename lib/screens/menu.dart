@@ -1,11 +1,13 @@
 // ignore_for_file: no_leading_underscores_for_local_identifiers, unnecessary_underscores
 
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:kow/grade_select/grade.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 
+import '../api_service.dart';
 import '../widgets/menu_button.dart';
 import '../widgets/mock_background.dart';
 import 'tutorial.dart';
@@ -189,7 +191,15 @@ class _MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin {
                         child: Column(
                           children: [
                             _btn('START', () {
-                              pushFadeFast(context, const GradeApp());
+                              unawaited(() async {
+                                final defaultGrade =
+                                    await _resolveDefaultGradeLabel();
+                                if (!mounted) return;
+                                pushFadeFast(
+                                  context,
+                                  GradeApp(initialGradeLabel: defaultGrade),
+                                );
+                              }());
                             }, sy),
 
                             SizedBox(height: sy(12)),
@@ -253,4 +263,31 @@ void pushFadeFast(BuildContext context, Widget page) {
       },
     ),
   );
+}
+
+Future<String?> _resolveDefaultGradeLabel() async {
+  final birthdayRaw = ApiService.currentBirthday;
+  if (birthdayRaw == null || birthdayRaw.trim().isEmpty) {
+    return null;
+  }
+  final birthday = DateTime.tryParse(birthdayRaw.trim());
+  if (birthday == null) {
+    return null;
+  }
+  final now = DateTime.now();
+  var age = now.year - birthday.year;
+  final hadBirthday =
+      (now.month > birthday.month) ||
+      (now.month == birthday.month && now.day >= birthday.day);
+  if (!hadBirthday) {
+    age--;
+  }
+
+  if (age >= 4 && age <= 5) {
+    return 'PUNLA';
+  }
+  if (age >= 6 && age <= 7) {
+    return 'BINHI';
+  }
+  return null;
 }

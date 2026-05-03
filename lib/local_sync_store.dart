@@ -33,6 +33,7 @@ typedef SubmitProgressRemoteFn =
       required String grade,
       required String subject,
       int? highestDiffPassed,
+      int? currentNodeIndex,
       required int totalTimePlayed,
       required String lastPlayedAt,
     });
@@ -77,6 +78,8 @@ class LocalSyncStore {
   final Map<int, Map<String, dynamic>> _webQuestionImageCache =
       <int, Map<String, dynamic>>{};
   final Map<String, Map<String, dynamic>> _webLevelProgress =
+      <String, Map<String, dynamic>>{};
+  final Map<String, Map<String, dynamic>> _webProgressCache =
       <String, Map<String, dynamic>>{};
   final Map<String, String> _webSettings = <String, String>{};
   Map<String, dynamic>? _webSession;
@@ -230,7 +233,7 @@ class LocalSyncStore {
 
     _db = await openDatabase(
       dbPath,
-      version: 10,
+      version: 12,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE students_local (
@@ -284,6 +287,7 @@ class LocalSyncStore {
             grade TEXT NOT NULL,
             subject TEXT NOT NULL,
             highest_diff_passed INTEGER,
+            current_node_index INTEGER NOT NULL DEFAULT 0,
             total_time_played INTEGER NOT NULL,
             last_played_at TEXT NOT NULL,
             created_at TEXT NOT NULL,
@@ -355,6 +359,24 @@ class LocalSyncStore {
             PRIMARY KEY (student_id, grade, subject)
           )
         ''');
+
+        await db.execute('''
+          CREATE TABLE progress_cache (
+            student_id INTEGER NOT NULL,
+            grade TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            highest_diff_passed INTEGER,
+            highest_node_index INTEGER,
+            current_node_index INTEGER,
+            total_time_played INTEGER,
+            last_played_at TEXT,
+            total_sessions INTEGER,
+            average_score REAL,
+            total_attempts INTEGER,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (student_id, grade, subject)
+          )
+        ''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -382,6 +404,7 @@ class LocalSyncStore {
               grade TEXT NOT NULL,
               subject TEXT NOT NULL,
               highest_diff_passed INTEGER,
+              current_node_index INTEGER NOT NULL DEFAULT 0,
               total_time_played INTEGER NOT NULL,
               last_played_at TEXT NOT NULL,
               created_at TEXT NOT NULL,
@@ -468,9 +491,35 @@ class LocalSyncStore {
         }
 
         if (oldVersion < 10) {
+          await db.execute(
+            'ALTER TABLE pending_progress ADD COLUMN current_node_index INTEGER NOT NULL DEFAULT 0',
+          );
+        }
+
+        if (oldVersion < 12) {
           await db.execute('''
             ALTER TABLE level_progress_local
             ADD COLUMN current_node_index INTEGER NOT NULL DEFAULT 0
+          ''');
+        }
+
+        if (oldVersion < 11) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS progress_cache (
+              student_id INTEGER NOT NULL,
+              grade TEXT NOT NULL,
+              subject TEXT NOT NULL,
+              highest_diff_passed INTEGER,
+              highest_node_index INTEGER,
+              current_node_index INTEGER,
+              total_time_played INTEGER,
+              last_played_at TEXT,
+              total_sessions INTEGER,
+              average_score REAL,
+              total_attempts INTEGER,
+              updated_at TEXT NOT NULL,
+              PRIMARY KEY (student_id, grade, subject)
+            )
           ''');
         }
       },
@@ -480,6 +529,14 @@ class LocalSyncStore {
   }
 
   String _levelProgressKey({
+    required int studentId,
+    required String grade,
+    required String subject,
+  }) {
+    return '$studentId|${grade.trim().toUpperCase()}|${_normalizeProgressSubject(subject)}';
+  }
+
+  String _progressCacheKey({
     required int studentId,
     required String grade,
     required String subject,
@@ -521,6 +578,13 @@ class LocalSyncStore {
         'current_node_index': nextCurrent,
         'updated_at': now,
       };
+      await saveProgressCache(
+        studentId: studentId,
+        grade: normalizedGrade,
+        subject: normalizedSubject,
+        highestNodeIndex: nextHighest,
+        currentNodeIndex: nextCurrent,
+      );
       return;
     }
 
@@ -549,6 +613,172 @@ class LocalSyncStore {
       'current_node_index': nextCurrent,
       'updated_at': now,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+    await saveProgressCache(
+      studentId: studentId,
+      grade: normalizedGrade,
+      subject: normalizedSubject,
+      highestNodeIndex: nextHighest,
+      currentNodeIndex: nextCurrent,
+    );
+  }
+
+  Future<void> saveProgressCache({
+    required int studentId,
+    required String grade,
+    required String subject,
+    int? highestDiffPassed,
+    int? highestNodeIndex,
+    int? currentNodeIndex,
+    int? totalTimePlayed,
+    String? lastPlayedAt,
+    int? totalSessions,
+    double? averageScore,
+    int? totalAttempts,
+  }) async {
+    int? clampNodeIndex(int? value, int? maxIndex) {
+      if (value == null) return null;
+      if (maxIndex == null) return value;
+      final clamped = value.clamp(0, maxIndex);
+      return clamped is int ? clamped : clamped.toInt();
+    }
+
+    final normalizedGrade = grade.trim().toUpperCase();
+    final normalizedSubject = _normalizeProgressSubject(subject);
+    final now = DateTime.now().toIso8601String();
+
+    if (_useWebMemoryStore) {
+      final key = _progressCacheKey(
+        studentId: studentId,
+        grade: normalizedGrade,
+        subject: normalizedSubject,
+      );
+      final existing = _webProgressCache[key];
+      final resolvedHighest =
+          highestNodeIndex ??
+          (existing?['highest_node_index'] as num?)?.toInt();
+      final resolvedCurrent = clampNodeIndex(
+        currentNodeIndex ?? (existing?['current_node_index'] as num?)?.toInt(),
+        resolvedHighest,
+      );
+      final resolvedHighestDiff =
+          highestDiffPassed ??
+          (existing?['highest_diff_passed'] as num?)?.toInt();
+      final resolvedTotalTime =
+          totalTimePlayed ?? (existing?['total_time_played'] as num?)?.toInt();
+      final resolvedLastPlayed =
+          lastPlayedAt ?? (existing?['last_played_at'] as String?);
+      final resolvedTotalSessions =
+          totalSessions ?? (existing?['total_sessions'] as num?)?.toInt();
+      final resolvedAverageScore =
+          averageScore ?? (existing?['average_score'] as num?)?.toDouble();
+      final resolvedTotalAttempts =
+          totalAttempts ?? (existing?['total_attempts'] as num?)?.toInt();
+
+      _webProgressCache[key] = {
+        'student_id': studentId,
+        'grade': normalizedGrade,
+        'subject': normalizedSubject,
+        'highest_diff_passed': resolvedHighestDiff,
+        'highest_node_index': resolvedHighest,
+        'current_node_index': resolvedCurrent,
+        'total_time_played': resolvedTotalTime,
+        'last_played_at': resolvedLastPlayed,
+        'total_sessions': resolvedTotalSessions,
+        'average_score': resolvedAverageScore,
+        'total_attempts': resolvedTotalAttempts,
+        'updated_at': now,
+      };
+      return;
+    }
+
+    final db = await _database();
+    final rows = await db.query(
+      'progress_cache',
+      where: 'student_id = ? AND grade = ? AND subject = ?',
+      whereArgs: [studentId, normalizedGrade, normalizedSubject],
+      limit: 1,
+    );
+    final existing = rows.isEmpty ? null : rows.first;
+
+    final resolvedHighest =
+        highestNodeIndex ?? (existing?['highest_node_index'] as num?)?.toInt();
+    final resolvedCurrent = clampNodeIndex(
+      currentNodeIndex ?? (existing?['current_node_index'] as num?)?.toInt(),
+      resolvedHighest,
+    );
+    final resolvedHighestDiff =
+        highestDiffPassed ??
+        (existing?['highest_diff_passed'] as num?)?.toInt();
+    final resolvedTotalTime =
+        totalTimePlayed ?? (existing?['total_time_played'] as num?)?.toInt();
+    final resolvedLastPlayed =
+        lastPlayedAt ?? (existing?['last_played_at'] as String?);
+    final resolvedTotalSessions =
+        totalSessions ?? (existing?['total_sessions'] as num?)?.toInt();
+    final resolvedAverageScore =
+        averageScore ?? (existing?['average_score'] as num?)?.toDouble();
+    final resolvedTotalAttempts =
+        totalAttempts ?? (existing?['total_attempts'] as num?)?.toInt();
+
+    await db.insert('progress_cache', {
+      'student_id': studentId,
+      'grade': normalizedGrade,
+      'subject': normalizedSubject,
+      'highest_diff_passed': resolvedHighestDiff,
+      'highest_node_index': resolvedHighest,
+      'current_node_index': resolvedCurrent,
+      'total_time_played': resolvedTotalTime,
+      'last_played_at': resolvedLastPlayed,
+      'total_sessions': resolvedTotalSessions,
+      'average_score': resolvedAverageScore,
+      'total_attempts': resolvedTotalAttempts,
+      'updated_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<List<Map<String, dynamic>>> getProgressCacheForStudent(
+    int studentId,
+  ) async {
+    List<Map<String, dynamic>> mapRows(Iterable<Map<String, dynamic>> rows) {
+      return rows
+          .map((row) {
+            final grade = row['grade'] as String?;
+            final subject = row['subject'] as String?;
+            return <String, dynamic>{
+              'student_id': row['student_id'],
+              'gradelvl': grade,
+              'grade': grade,
+              'subject': subject,
+              'highest_diff_passed': row['highest_diff_passed'],
+              'highest_node_index': row['highest_node_index'],
+              'current_node_index': row['current_node_index'],
+              'total_time_played': row['total_time_played'],
+              'last_played_at': row['last_played_at'],
+              'total_sessions': row['total_sessions'],
+              'average_score': row['average_score'],
+              'total_attempts': row['total_attempts'],
+            };
+          })
+          .toList(growable: false);
+    }
+
+    if (_useWebMemoryStore) {
+      final rows = _webProgressCache.values
+          .where((row) => (row['student_id'] as num?)?.toInt() == studentId)
+          .map(Map<String, dynamic>.from)
+          .toList();
+      return mapRows(rows);
+    }
+
+    final db = await _database();
+    final rows = await db.query(
+      'progress_cache',
+      where: 'student_id = ?',
+      whereArgs: [studentId],
+      orderBy: 'grade ASC, subject ASC',
+    );
+    return mapRows(rows);
   }
 
   Future<void> saveCurrentLevelProgress({
@@ -813,6 +1043,7 @@ class LocalSyncStore {
     required String grade,
     required String subject,
     int? highestDiffPassed,
+    int? currentNodeIndex,
     required int totalTimePlayed,
     String? lastPlayedAt,
   }) async {
@@ -834,6 +1065,7 @@ class LocalSyncStore {
           'grade': grade,
           'subject': subject,
           'highest_diff_passed': highestDiffPassed,
+          'current_node_index': currentNodeIndex,
           'total_time_played': totalTimePlayed,
           'last_played_at': playedAtValue,
           'created_at': now,
@@ -851,6 +1083,7 @@ class LocalSyncStore {
       'grade': grade,
       'subject': subject,
       'highest_diff_passed': highestDiffPassed,
+      'current_node_index': currentNodeIndex ?? 0,
       'total_time_played': totalTimePlayed,
       'last_played_at': playedAtValue,
       'created_at': now,
@@ -1097,6 +1330,73 @@ class LocalSyncStore {
     return rows.first['value'] as String?;
   }
 
+  Future<void> setHasOnlineLogin(bool hasLoggedInOnline) async {
+    final value = hasLoggedInOnline ? '1' : '0';
+    if (_useWebMemoryStore) {
+      _webSettings['has_online_login'] = value;
+      return;
+    }
+    final db = await _database();
+    await db.insert('app_settings', {
+      'key': 'has_online_login',
+      'value': value,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> setAutoSyncListenerEnabled(bool enabled) async {
+    final value = enabled ? '1' : '0';
+    if (_useWebMemoryStore) {
+      _webSettings['auto_sync_listener_enabled'] = value;
+      return;
+    }
+
+    final db = await _database();
+    await db.insert('app_settings', {
+      'key': 'auto_sync_listener_enabled',
+      'value': value,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<bool> isAutoSyncListenerEnabled() async {
+    if (_useWebMemoryStore) {
+      return _webSettings['auto_sync_listener_enabled'] == '1' ||
+          _webSettings['has_online_login'] == '1';
+    }
+
+    final db = await _database();
+    final rows = await db.query(
+      'app_settings',
+      columns: ['key', 'value'],
+      where: 'key IN (?, ?)',
+      whereArgs: ['auto_sync_listener_enabled', 'has_online_login'],
+    );
+
+    for (final row in rows) {
+      if (row['value'] == '1') {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  Future<bool> hasOnlineLogin() async {
+    if (_useWebMemoryStore) {
+      return _webSettings['has_online_login'] == '1';
+    }
+
+    final db = await _database();
+    final rows = await db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: ['has_online_login'],
+      limit: 1,
+    );
+
+    return rows.isNotEmpty && rows.first['value'] == '1';
+  }
+
   Future<void> setOfflineBootstrapComplete(bool complete) async {
     final value = complete ? '1' : '0';
     if (_useWebMemoryStore) {
@@ -1162,6 +1462,7 @@ class LocalSyncStore {
     if (_useWebMemoryStore) {
       _webSettings.remove('offline_bootstrap_complete');
       _webSettings.remove('selected_theme');
+      _webSettings.remove('auto_sync_listener_enabled');
       _webQuestionCache.clear();
       _webQuestionImageCache.clear();
       return;
@@ -1173,6 +1474,11 @@ class LocalSyncStore {
         'app_settings',
         where: 'key IN (?, ?)',
         whereArgs: ['offline_bootstrap_complete', 'selected_theme'],
+      );
+      await txn.delete(
+        'app_settings',
+        where: 'key = ?',
+        whereArgs: ['auto_sync_listener_enabled'],
       );
       await txn.delete('question_cache');
       await txn.delete('question_image_cache');
@@ -1805,6 +2111,7 @@ class LocalSyncStore {
           grade: row['grade'] as String,
           subject: row['subject'] as String,
           highestDiffPassed: (row['highest_diff_passed'] as num?)?.toInt(),
+          currentNodeIndex: (row['current_node_index'] as num?)?.toInt(),
           totalTimePlayed: (row['total_time_played'] as num).toInt(),
           lastPlayedAt: row['last_played_at'] as String,
         );

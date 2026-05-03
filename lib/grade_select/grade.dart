@@ -20,15 +20,17 @@ class R {
 }
 
 class GradeApp extends StatelessWidget {
-  const GradeApp({super.key});
+  const GradeApp({super.key, this.initialGradeLabel});
+  final String? initialGradeLabel;
   @override
-  Widget build(BuildContext context) => const GradeSelectScreen();
+  Widget build(BuildContext context) =>
+      GradeSelectScreen(initialGradeLabel: initialGradeLabel);
 }
 
 // ── Grade data ─────────────────────────────────────────────────
 const List<Map<String, String>> _kGrades = [
-  {'label': 'PUNLA', 'age': '3-5 YRS OLD'},
-  {'label': 'BINHI', 'age': '6-8 YRS OLD'},
+  {'label': 'PUNLA', 'age': '4-5 YRS OLD'},
+  {'label': 'BINHI', 'age': '6-7 YRS OLD'},
   {'label': 'COMING', 'age': 'SOON'},
 ];
 
@@ -85,7 +87,8 @@ class _CardSlot {
 }
 
 class GradeSelectScreen extends StatefulWidget {
-  const GradeSelectScreen({super.key});
+  const GradeSelectScreen({super.key, this.initialGradeLabel});
+  final String? initialGradeLabel;
   @override
   State<GradeSelectScreen> createState() => _GradeSelectScreenState();
 }
@@ -119,7 +122,17 @@ class _GradeSelectScreenState extends State<GradeSelectScreen>
   void initState() {
     super.initState();
 
-    _rebuildCards(centre: 0, dir: 0);
+    final normalizedInitial = widget.initialGradeLabel?.trim().toUpperCase();
+    if (normalizedInitial != null && normalizedInitial.isNotEmpty) {
+      final idx = _kGrades.indexWhere(
+        (grade) => grade['label'] == normalizedInitial,
+      );
+      if (idx >= 0) {
+        _centreIndex = idx;
+      }
+    }
+
+    _rebuildCards(centre: _centreIndex, dir: 0);
 
     _carouselCtrl = AnimationController(
       vsync: this,

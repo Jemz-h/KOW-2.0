@@ -9,8 +9,14 @@ import 'break_time_coordinator.dart';
 import 'local_sync_store.dart';
 import 'services/audio.dart';
 import 'screens/start.dart';
+import 'stable_connection_listener.dart';
 import 'widgets/backend_feedback.dart';
 import 'widgets/mock_background.dart';
+
+/// Global stable connection listener for resource downloads
+final stableConnectionListener = StableConnectionListener(
+  stabilityDuration: const Duration(seconds: 12),
+);
 
 // ─── MAIN ─────────────────────────────────────────────
 void main() async {
@@ -76,10 +82,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     BreakTimeCoordinator.instance.initialize(_navigatorKey);
     unawaited(_restoreSavedTheme());
-    unawaited(_watchConnectivity());
+    // Keep light connectivity watching for resumed state syncing only
+    unawaited(_watchConnectivityLightweight());
   }
 
-  Future<void> _watchConnectivity() async {
+  /// Lightweight connectivity watching - only for detecting when app resumes online
+  Future<void> _watchConnectivityLightweight() async {
     final connectivity = Connectivity();
     _wasOnline = await ApiService.canReachServer(
       timeout: const Duration(seconds: 3),
@@ -94,6 +102,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Future<void> _handleConnectivityChange(
     List<ConnectivityResult> results,
   ) async {
+    if (!await LocalSyncStore.instance.isAutoSyncListenerEnabled()) {
+      _wasOnline = _isOnline(results);
+      return;
+    }
+
     if (!_isOnline(results)) {
       _wasOnline = false;
       return;
@@ -150,98 +163,77 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       return;
     }
 
+    if (!await LocalSyncStore.instance.isAutoSyncListenerEnabled()) {
+      return;
+    }
+
     final serverReachable = await ApiService.canReachServer();
     if (!serverReachable) {
       return;
     }
 
-    final feedbackContext = _navigatorKey.currentContext;
-    if (feedbackContext == null) {
-      await ApiService.syncPending();
-      return;
-    }
-
     final hasPendingWork = await LocalSyncStore.instance.hasPendingSyncWork();
     final needsBootstrap = !await ApiService.isOfflineBootstrapComplete();
-    if (!mounted || !feedbackContext.mounted) return;
+    final shouldShowBlockingSync =
+        showWhenIdle || hasPendingWork || needsBootstrap;
+    final feedbackContext = _navigatorKey.currentContext;
+    _showingSyncFeedback = true;
+    try {
+      if (!hasPendingWork && !needsBootstrap && !showWhenIdle) {
+        await ApiService.syncPending();
+        return;
+      }
 
-    if (!hasPendingWork && !needsBootstrap && !showWhenIdle) {
-      await ApiService.syncPending();
-      return;
-    }
-
-    if (!hasPendingWork && !needsBootstrap && showWhenIdle) {
-      _showingSyncFeedback = true;
-      try {
+      if (shouldShowBlockingSync &&
+          feedbackContext != null &&
+          feedbackContext.mounted) {
         await BackendFeedbackOverlay.runWithLoading<void>(
           context: feedbackContext,
           title: 'Syncing Online',
-          message: 'Refreshing offline play data.',
+          message: 'Please wait while KOW updates offline data.',
           loadingMessages: const [
-            'Checking learner logins',
-            'Downloading progress',
-            'Saving Sisa position',
-            'Downloading questions',
-            'Downloading question images',
+            'Checking connection stability',
+            'Uploading offline progress',
+            'Downloading learner updates',
+            'Downloading questions and media',
+            'Finalizing offline-ready files',
           ],
-          hideButtonLabel: 'Hide',
-          task: ApiService.bootstrapOfflineData,
+          task: () async {
+            if (needsBootstrap) {
+              await ApiService.bootstrapOfflineData();
+            } else {
+              await ApiService.syncPending();
+              await ApiService.checkContentVersion();
+            }
+          },
         );
-      } catch (_) {
         if (feedbackContext.mounted) {
           await BackendFeedbackOverlay.showMessage(
             context: feedbackContext,
-            title: 'Sync Paused',
-            tone: BackendFeedbackTone.warning,
+            title: 'Ready Offline',
+            tone: BackendFeedbackTone.success,
             message:
-                'Some offline files are still downloading. Keep internet on and KOW will continue syncing.',
+                'Sync complete. You may continue offline and reconnect later to keep progress updated.',
+            barrierDismissible: false,
+            showCloseButton: false,
           );
         }
-      } finally {
-        _showingSyncFeedback = false;
-      }
-      return;
-    }
-
-    _showingSyncFeedback = true;
-    try {
-      await BackendFeedbackOverlay.runWithLoading<void>(
-        context: feedbackContext,
-        title: 'Syncing Online',
-        message: 'Updating this device for online and offline play.',
-        loadingMessages: const [
-          'Uploading local data',
-          'Syncing learner progress',
-          'Saving Sisa position',
-          'Downloading questions',
-          'Downloading question images',
-        ],
-        hideButtonLabel: needsBootstrap ? null : 'Hide',
-        task: needsBootstrap
-            ? ApiService.bootstrapOfflineData
-            : () async {
-                await ApiService.syncPending();
-                await ApiService.checkContentVersion();
-              },
-      );
-
-      if (needsBootstrap && feedbackContext.mounted) {
-        await BackendFeedbackOverlay.showMessage(
-          context: feedbackContext,
-          title: 'Ready Offline',
-          tone: BackendFeedbackTone.success,
-          message:
-              'This device has the latest question cache and can keep working offline. It will sync again when internet returns.',
-        );
+      } else {
+        if (needsBootstrap) {
+          await ApiService.bootstrapOfflineData();
+        } else {
+          await ApiService.syncPending();
+          await ApiService.checkContentVersion();
+        }
       }
     } catch (_) {
-      if (feedbackContext.mounted) {
+      if (feedbackContext != null && feedbackContext.mounted) {
         await BackendFeedbackOverlay.showMessage(
           context: feedbackContext,
           title: 'Sync Paused',
           tone: BackendFeedbackTone.warning,
           message:
-              'The connection was interrupted. KOW will continue syncing when internet is stable again.',
+              'Sync was interrupted. Keep internet stable and KOW will continue syncing.',
         );
       }
     } finally {
@@ -252,6 +244,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     _connectivitySubscription?.cancel();
+    stableConnectionListener.stopListening();
     BreakTimeCoordinator.instance.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -319,6 +312,12 @@ class _SessionGateState extends State<_SessionGate> {
   }
 
   Future<void> _checkOfflineReadiness() async {
+    final autoSyncEnabled = await LocalSyncStore.instance
+        .isAutoSyncListenerEnabled();
+    if (!autoSyncEnabled) {
+      return;
+    }
+
     if (await ApiService.isOfflineBootstrapComplete()) {
       return;
     }
