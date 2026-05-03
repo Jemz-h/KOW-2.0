@@ -102,8 +102,11 @@ class LocalSyncStore {
     final normalizedBirthday = _normalizeBirthday(birthday);
     final rowNickname = (row['nickname'] as String? ?? '').trim().toLowerCase();
     final rowBirthday = (row['birthday'] as String? ?? '').trim();
+    final normalizedRowBirthday = _normalizeBirthday(rowBirthday);
     return rowNickname == nickname.trim().toLowerCase() &&
-        (rowBirthday == birthday.trim() || rowBirthday == normalizedBirthday);
+        (rowBirthday == birthday.trim() ||
+            rowBirthday == normalizedBirthday ||
+            normalizedRowBirthday == normalizedBirthday);
   }
 
   Map<String, dynamic>? _pickPreferredRow(
@@ -141,6 +144,23 @@ class LocalSyncStore {
 
   String _normalizeBirthday(String value) {
     final raw = value.trim();
+    final iso = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})[T\s]').firstMatch(raw);
+    if (iso != null) {
+      final month = int.tryParse(iso.group(2) ?? '');
+      final day = int.tryParse(iso.group(3) ?? '');
+      if (month == null ||
+          day == null ||
+          month < 1 ||
+          month > 12 ||
+          day < 1 ||
+          day > 31) {
+        return raw;
+      }
+      final mm = month.toString().padLeft(2, '0');
+      final dd = day.toString().padLeft(2, '0');
+      return '${iso.group(1)}-$mm-$dd';
+    }
+
     final ymd = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})$').firstMatch(raw);
     if (ymd != null) {
       final month = int.tryParse(ymd.group(2) ?? '');
@@ -519,10 +539,7 @@ class LocalSyncStore {
     final nextHighest = highestNodeIndex > currentHighest
         ? highestNodeIndex
         : currentHighest;
-    final nextCurrent = (currentNodeIndex ?? nextHighest).clamp(
-      0,
-      nextHighest,
-    );
+    final nextCurrent = (currentNodeIndex ?? nextHighest).clamp(0, nextHighest);
 
     await db.insert('level_progress_local', {
       'student_id': studentId,
@@ -1109,6 +1126,57 @@ class LocalSyncStore {
     );
 
     return rows.isNotEmpty && rows.first['value'] == '1';
+  }
+
+  Future<String?> getInstallStateVersion() async {
+    if (_useWebMemoryStore) {
+      return _webSettings['install_state_version'];
+    }
+
+    final db = await _database();
+    final rows = await db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: ['install_state_version'],
+      limit: 1,
+    );
+
+    return rows.isEmpty ? null : rows.first['value'] as String?;
+  }
+
+  Future<void> setInstallStateVersion(String version) async {
+    if (_useWebMemoryStore) {
+      _webSettings['install_state_version'] = version;
+      return;
+    }
+
+    final db = await _database();
+    await db.insert('app_settings', {
+      'key': 'install_state_version',
+      'value': version,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> resetVersionedInstallState() async {
+    if (_useWebMemoryStore) {
+      _webSettings.remove('offline_bootstrap_complete');
+      _webSettings.remove('selected_theme');
+      _webQuestionCache.clear();
+      _webQuestionImageCache.clear();
+      return;
+    }
+
+    final db = await _database();
+    await db.transaction((txn) async {
+      await txn.delete(
+        'app_settings',
+        where: 'key IN (?, ?)',
+        whereArgs: ['offline_bootstrap_complete', 'selected_theme'],
+      );
+      await txn.delete('question_cache');
+      await txn.delete('question_image_cache');
+    });
   }
 
   Future<void> saveMusicEnabled(bool enabled) async {

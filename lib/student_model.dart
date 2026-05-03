@@ -51,7 +51,10 @@ class Student {
       return direct;
     }
 
-    final canonical = RegExp(r'^STU-(\d+)$', caseSensitive: false).firstMatch(text);
+    final canonical = RegExp(
+      r'^STU-(\d+)$',
+      caseSensitive: false,
+    ).firstMatch(text);
     if (canonical != null) {
       return int.tryParse(canonical.group(1)!) ?? 0;
     }
@@ -66,13 +69,33 @@ class Student {
 
   factory Student.fromJson(Map<String, dynamic> json) {
     final studentId = _parseStudentId(json);
-    final firstName = (_readAny<String>(json, ['FIRST_NAME', 'first_name', 'firstName']) ?? '').trim();
-    final lastName = (_readAny<String>(json, ['LAST_NAME', 'last_name', 'lastName']) ?? '').trim();
-    final nickname = (_readAny<String>(json, ['NICKNAME', 'nickname']) ?? '').trim();
+    final firstName =
+        (_readAny<String>(json, ['FIRST_NAME', 'first_name', 'firstName']) ??
+                '')
+            .trim();
+    final lastName =
+        (_readAny<String>(json, ['LAST_NAME', 'last_name', 'lastName']) ?? '')
+            .trim();
+    final nickname = (_readAny<String>(json, ['NICKNAME', 'nickname']) ?? '')
+        .trim();
     final birthday = _readAny<String>(json, ['BIRTHDAY', 'birthday'])?.trim();
-    final sex = (_readAny<String>(json, ['SEX', 'sex']) ?? 'Unknown').trim();
+    final sexText = _readAny<String>(json, ['SEX', 'sex'])?.trim();
+    final sexId = _readAny<num>(json, ['SEX_ID', 'sex_id', 'sexId'])?.toInt();
+    final sex =
+        sexText ??
+        (sexId == 1
+            ? 'Male'
+            : sexId == 2
+            ? 'Female'
+            : 'Unknown');
     final area = _readAny<String>(json, ['AREA', 'area'])?.trim();
-    final totalScore = _readAny<num>(json, ['TOTAL_SCORE', 'total_score', 'totalScore'])?.toInt() ?? 0;
+    final totalScore =
+        _readAny<num>(json, [
+          'TOTAL_SCORE',
+          'total_score',
+          'totalScore',
+        ])?.toInt() ??
+        0;
 
     return Student(
       studentId: studentId,
@@ -87,13 +110,13 @@ class Student {
   }
 
   Map<String, dynamic> toJson() => {
-    'STUDENT_ID':  studentId,
-    'FIRST_NAME':  firstName,
-    'LAST_NAME':   lastName,
-    'NICKNAME':    nickname,
-    'BIRTHDAY':    birthday,
-    'SEX':         sex,
-    'AREA':        area,
+    'STUDENT_ID': studentId,
+    'FIRST_NAME': firstName,
+    'LAST_NAME': lastName,
+    'NICKNAME': nickname,
+    'BIRTHDAY': birthday,
+    'SEX': sex,
+    'AREA': area,
     'TOTAL_SCORE': totalScore,
   };
 }

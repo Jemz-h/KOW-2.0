@@ -21,6 +21,10 @@ class ApiService {
   static String get _base => ApiConfig.baseUrl;
   static const _requestTimeout = Duration(seconds: 12);
   static const _interactiveAuthTimeout = Duration(seconds: 5);
+  static const _installStateVersion = String.fromEnvironment(
+    'KOW_INSTALL_STATE_VERSION',
+    defaultValue: '0.0.8+8-cache-v2',
+  );
   static const _maxRetryAttempts = 3;
   static const _retryBaseDelay = Duration(milliseconds: 450);
   static final _uuid = Uuid();
@@ -93,6 +97,20 @@ class ApiService {
   static bool get hasActiveSession {
     final nickname = _currentNickname?.trim();
     return nickname != null && nickname.isNotEmpty;
+  }
+
+  static Future<void> prepareInstallStateForCurrentBuild() async {
+    final storedVersion = await LocalSyncStore.instance
+        .getInstallStateVersion();
+    if (storedVersion == _installStateVersion) {
+      return;
+    }
+
+    await LocalSyncStore.instance.resetVersionedInstallState();
+    await LocalSyncStore.instance.setInstallStateVersion(_installStateVersion);
+    _lastContentVersionTag = null;
+    _hasDeferredContentRefresh = false;
+    _questionCache.clear();
   }
 
   static Future<bool> restoreSession() async {
@@ -443,6 +461,44 @@ class ApiService {
       }
     }
 
+    try {
+      final userListStudent = await _findStudentFromUserList(
+        nickname: normalizedNickname,
+        birthday: normalizedBirthday,
+      );
+      if (userListStudent != null) {
+        final resolvedBirthday = _normalizeBirthday(
+          userListStudent.birthday ?? normalizedBirthday,
+        );
+        _currentStudentId = userListStudent.studentId;
+        _currentNickname = userListStudent.nickname.isEmpty
+            ? normalizedNickname
+            : userListStudent.nickname;
+        _currentBirthday = resolvedBirthday;
+
+        await LocalSyncStore.instance.saveSyncedStudent(
+          student: userListStudent,
+          birthday: resolvedBirthday,
+        );
+        await LocalSyncStore.instance.saveActiveSession(
+          studentId: userListStudent.studentId,
+          nickname: _currentNickname!,
+          birthday: resolvedBirthday,
+        );
+
+        startContentVersionPolling();
+        unawaited(syncPending());
+        _scheduleOracleReconciliation(
+          nickname: _currentNickname!,
+          birthday: resolvedBirthday,
+        );
+
+        return userListStudent;
+      }
+    } on ApiException catch (e) {
+      lookupError ??= e;
+    }
+
     final offlineStudent = await LocalSyncStore.instance.findOfflineStudent(
       nickname: normalizedNickname,
       birthday: normalizedBirthday,
@@ -603,14 +659,60 @@ class ApiService {
     await _ensureDeviceAuth();
     await syncPending();
 
-    final bootstrapPayload = await _fetchOfflineBootstrap();
-    await _cacheOfflineBootstrap(bootstrapPayload);
+    var hasCachedLearners = false;
+    var learners = const <Map<String, dynamic>>[];
+    try {
+      final bootstrapPayload = await _fetchOfflineBootstrap();
+      hasCachedLearners = await _cacheOfflineBootstrap(bootstrapPayload);
+      learners = _extractLearnersFromBootstrap(bootstrapPayload);
+    } on ApiException catch (e) {
+      if (!_isLegacyEndpointFallbackError(e)) {
+        rethrow;
+      }
+    }
 
-    final remoteResult = await _fetchAllRemoteQuestions();
-    await _cacheQuestionGroups(
-      rows: remoteResult.rows,
-      contentVersion: remoteResult.versionTag,
-    );
+    if (!hasCachedLearners) {
+      final result = await _cacheUserListLearners();
+      hasCachedLearners = result.cachedAny;
+      learners = result.learners;
+    }
+
+    await _cacheLearnerProgressSnapshots(learners);
+
+    var hasPlayableQuestions = false;
+    try {
+      final remoteResult = await _fetchAllRemoteQuestions();
+      if (remoteResult.rows.isNotEmpty) {
+        await _cacheQuestionGroups(
+          rows: remoteResult.rows,
+          contentVersion: remoteResult.versionTag,
+        );
+        hasPlayableQuestions = true;
+      }
+    } on ApiException catch (e) {
+      if (!_isLegacyEndpointFallbackError(e) && !_isConnectivityException(e)) {
+        rethrow;
+      }
+    }
+
+    if (!hasPlayableQuestions) {
+      hasPlayableQuestions = await _cacheBundledSeedQuestions();
+    }
+
+    if (!hasPlayableQuestions) {
+      throw const ApiException(
+        503,
+        'No playable question content is available on this device.',
+      );
+    }
+
+    if (!hasCachedLearners) {
+      throw const ApiException(
+        503,
+        'No learner login cache is available on this device.',
+      );
+    }
+
     await LocalSyncStore.instance.setOfflineBootstrapComplete(true);
   }
 
@@ -634,9 +736,10 @@ class ApiService {
     return const <String, dynamic>{};
   }
 
-  static Future<void> _cacheOfflineBootstrap(
+  static Future<bool> _cacheOfflineBootstrap(
     Map<String, dynamic> payload,
   ) async {
+    var cachedLearners = false;
     final learners = payload['learners'];
     if (learners is List) {
       for (final rawLearner in learners) {
@@ -660,46 +763,131 @@ class ApiService {
           student: student,
           birthday: birthday,
         );
+        cachedLearners = true;
       }
     }
 
-    final progressRows = payload['progress'];
-    if (progressRows is List) {
-      for (final rawProgress in progressRows) {
-        if (rawProgress is! Map) {
-          continue;
+    await _cacheProgressRows(_readListMap(payload['progress']));
+
+    return cachedLearners;
+  }
+
+  static List<Map<String, dynamic>> _extractLearnersFromBootstrap(
+    Map<String, dynamic> payload,
+  ) {
+    return _readListMap(payload['learners'] ?? payload['students']);
+  }
+
+  static Future<_LearnerCacheResult> _cacheUserListLearners() async {
+    final learners = await _fetchUserListLearners();
+    var cachedAny = false;
+
+    for (final learner in learners) {
+      final birthday = _normalizeBirthday(_asString(learner['birthday']) ?? '');
+      final student = Student.fromJson(learner);
+      if (student.studentId <= 0 ||
+          student.nickname.trim().isEmpty ||
+          birthday.isEmpty) {
+        continue;
+      }
+
+      await LocalSyncStore.instance.saveSyncedStudent(
+        student: student,
+        birthday: birthday,
+      );
+      cachedAny = true;
+    }
+
+    return _LearnerCacheResult(cachedAny: cachedAny, learners: learners);
+  }
+
+  static Future<void> _cacheLearnerProgressSnapshots(
+    List<Map<String, dynamic>> learners,
+  ) async {
+    for (final learner in learners) {
+      final studentId =
+          _parseStudentId(learner['stud_id']) ??
+          _parseStudentId(learner['student_id']);
+      if (studentId == null || studentId <= 0) {
+        continue;
+      }
+
+      try {
+        await getProgress(studentId);
+      } on ApiException catch (e) {
+        if (!_isConnectivityException(e) &&
+            !_isLegacyEndpointFallbackError(e) &&
+            e.statusCode != 401 &&
+            e.statusCode != 403) {
+          rethrow;
         }
-
-        final progress = Map<String, dynamic>.from(rawProgress);
-        final studentId =
-            _parseStudentId(progress['student_id']) ??
-            _parseStudentId(progress['stud_id']);
-        if (studentId == null || studentId <= 0) {
-          continue;
-        }
-
-        final grade =
-            _gradeNameForId(_asInt(progress['gradelvl_id'])) ??
-            _asString(progress['gradelvl']) ??
-            'PUNLA';
-        final subject =
-            _subjectNameForId(_asInt(progress['subject_id'])) ??
-            _asString(progress['subject']) ??
-            'English';
-        final highestDiffPassed = _asInt(progress['highest_diff_passed']) ?? 0;
-        final highestNodeIndex = highestDiffPassed
-            .clamp(0, LevelProgression.totalNodes - 1)
-            .toInt();
-
-        await LocalSyncStore.instance.saveLocalLevelProgress(
-          studentId: studentId,
-          grade: grade,
-          subject: subject,
-          highestNodeIndex: highestNodeIndex,
-          currentNodeIndex: highestNodeIndex,
-        );
       }
     }
+  }
+
+  static Future<Student?> _findStudentFromUserList({
+    required String nickname,
+    required String birthday,
+  }) async {
+    final normalizedNickname = nickname.trim().toLowerCase();
+    final normalizedBirthday = _normalizeBirthday(birthday);
+    final learners = await _fetchUserListLearners();
+
+    for (final learner in learners) {
+      final learnerNickname = (_asString(learner['nickname']) ?? '')
+          .trim()
+          .toLowerCase();
+      final learnerBirthday = _normalizeBirthday(
+        _asString(learner['birthday']) ?? '',
+      );
+      if (learnerNickname != normalizedNickname ||
+          learnerBirthday != normalizedBirthday) {
+        continue;
+      }
+
+      final student = Student.fromJson(learner);
+      if (student.studentId > 0 && student.nickname.trim().isNotEmpty) {
+        return student;
+      }
+    }
+
+    return null;
+  }
+
+  static Future<List<Map<String, dynamic>>> _fetchUserListLearners() async {
+    final res = await _runWithRetry(
+      () => _sendWithTimeout(
+        _client.get(Uri.parse('$_base/api/users'), headers: _headers),
+      ),
+      shouldRetry: _isRetryableSyncError,
+    );
+    _checkStatus(res);
+
+    final decoded = jsonDecode(res.body);
+    final rawUsers = decoded is Map<String, dynamic>
+        ? decoded['users']
+        : decoded is List
+        ? decoded
+        : null;
+
+    if (rawUsers is! List) {
+      return const <Map<String, dynamic>>[];
+    }
+
+    return rawUsers
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  static List<Map<String, dynamic>> _readListMap(dynamic value) {
+    if (value is! List) {
+      return const <Map<String, dynamic>>[];
+    }
+    return value
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
   }
 
   /// Update student profile information.
@@ -800,6 +988,16 @@ class ApiService {
       includeSeed: false,
     );
     if (cachedRows.isNotEmpty) {
+      final hydratedRows = await _hydrateQuestionImages(
+        cachedRows,
+        awaitDownloads: await _hasNetworkTransport(),
+      );
+      _questionCache[cacheKey] = hydratedRows;
+      await LocalSyncStore.instance.saveCachedQuestionRows(
+        cacheKey: cacheKey,
+        rows: hydratedRows,
+        contentVersion: _lastContentVersionTag,
+      );
       unawaited(
         _refreshQuestionsCache(
           cacheKey: cacheKey,
@@ -808,7 +1006,7 @@ class ApiService {
           difficulty: normalizedDifficulty,
         ),
       );
-      return cachedRows;
+      return hydratedRows;
     }
 
     if (!await _hasNetworkTransport()) {
@@ -1031,7 +1229,11 @@ class ApiService {
         .toList(growable: false);
 
     return _RemoteQuestionResult(
-      rows: await _hydrateQuestionImages(rows, awaitDownloads: true),
+      rows: await _hydrateQuestionImages(
+        rows,
+        awaitDownloads: true,
+        requireDownloads: true,
+      ),
       versionTag: _lastContentVersionTag,
     );
   }
@@ -1084,6 +1286,74 @@ class ApiService {
     }
   }
 
+  static Future<bool> _cacheBundledSeedQuestions() async {
+    var cachedAny = false;
+
+    for (final grade in _bootstrapGrades) {
+      for (final subject in _bootstrapSubjects) {
+        for (final difficulty in _bootstrapDifficulties) {
+          final rows = await SeededQuestionStore.instance.getQuestions(
+            grade: grade,
+            subject: subject,
+            difficulty: difficulty,
+          );
+          if (rows.isEmpty) {
+            continue;
+          }
+
+          final key = _questionCacheKey(
+            grade: grade,
+            subject: subject,
+            difficulty: difficulty,
+          );
+          _questionCache[key] = rows;
+          await LocalSyncStore.instance.saveCachedQuestionRows(
+            cacheKey: key,
+            rows: rows,
+            contentVersion: 'bundled-seed',
+          );
+          cachedAny = true;
+        }
+
+        final allRows = await SeededQuestionStore.instance.getQuestions(
+          grade: grade,
+          subject: subject,
+        );
+        if (allRows.isEmpty) {
+          continue;
+        }
+
+        final allKey = _questionCacheKey(grade: grade, subject: subject);
+        _questionCache[allKey] = allRows;
+        await LocalSyncStore.instance.saveCachedQuestionRows(
+          cacheKey: allKey,
+          rows: allRows,
+          contentVersion: 'bundled-seed',
+        );
+        cachedAny = true;
+      }
+    }
+
+    return cachedAny && await _hasBundledSeedQuestions();
+  }
+
+  static Future<bool> _hasBundledSeedQuestions() async {
+    for (final grade in _bootstrapGrades) {
+      for (final subject in _bootstrapSubjects) {
+        final rows = await SeededQuestionStore.instance.getQuestions(
+          grade: grade,
+          subject: subject,
+          difficulty: 'EASY',
+        );
+        if (rows.isNotEmpty) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
   static List<Map<String, dynamic>> _filterQuestionRows({
     required List<Map<String, dynamic>> rows,
     required String grade,
@@ -1116,6 +1386,7 @@ class ApiService {
   static Future<List<Map<String, dynamic>>> _hydrateQuestionImages(
     List<Map<String, dynamic>> rows, {
     bool awaitDownloads = false,
+    bool requireDownloads = false,
   }) async {
     if (rows.isEmpty) {
       return rows;
@@ -1143,6 +1414,11 @@ class ApiService {
           );
           if (downloadedBytes != null && downloadedBytes.isNotEmpty) {
             copy['imageBlob'] = base64Encode(downloadedBytes);
+          } else if (requireDownloads) {
+            throw ApiException(
+              503,
+              'Question image is not available offline yet: $imageUrl',
+            );
           }
         } else {
           unawaited(
@@ -1338,6 +1614,23 @@ class ApiService {
       }
     }
 
+    if (remoteRows.isEmpty) {
+      try {
+        remoteRows = await _fetchStudentDetailProgress(studentId);
+      } on ApiException catch (e) {
+        if (e.statusCode != 401 &&
+            e.statusCode != 403 &&
+            !_isLegacyEndpointFallbackError(e) &&
+            !_isConnectivityException(e)) {
+          rethrow;
+        }
+      }
+    }
+
+    if (remoteRows.isNotEmpty) {
+      await _cacheProgressRows(remoteRows, fallbackStudentId: studentId);
+    }
+
     final pending = await LocalSyncStore.instance.getPendingProgressForStudent(
       studentId,
     );
@@ -1354,6 +1647,135 @@ class ApiService {
         .toList(growable: false);
 
     return <Map<String, dynamic>>[...remoteRows, ...pendingRows];
+  }
+
+  static Future<List<Map<String, dynamic>>> _fetchStudentDetailProgress(
+    int studentId,
+  ) async {
+    for (final path in <String>[
+      '/api/users/$studentId/progress',
+      '/api/users/$studentId',
+      '/api/admin/students/$studentId',
+    ]) {
+      try {
+        final res = await _sendWithTimeout(
+          _client.get(Uri.parse('$_base$path'), headers: _headers),
+        );
+        _checkStatus(res);
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        final rows = _progressRowsFromDetailPayload(body);
+        if (rows.isNotEmpty) {
+          return rows;
+        }
+      } on ApiException catch (e) {
+        if (e.statusCode == 404 ||
+            e.statusCode == 401 ||
+            e.statusCode == 403 ||
+            e.statusCode == 400 ||
+            _isConnectivityException(e)) {
+          continue;
+        }
+        rethrow;
+      }
+    }
+
+    return const <Map<String, dynamic>>[];
+  }
+
+  static List<Map<String, dynamic>> _progressRowsFromDetailPayload(
+    Map<String, dynamic> body,
+  ) {
+    final directRows = _readListMap(body['progress'] ?? body['data']);
+    if (directRows.isNotEmpty) {
+      return directRows;
+    }
+
+    final profile = body['profile'];
+    if (profile is Map<String, dynamic>) {
+      final nestedRows = _readListMap(profile['progress']);
+      if (nestedRows.isNotEmpty) {
+        return nestedRows;
+      }
+    }
+
+    return const <Map<String, dynamic>>[];
+  }
+
+  static Future<void> _cacheProgressRows(
+    List<Map<String, dynamic>> progressRows, {
+    int? fallbackStudentId,
+  }) async {
+    for (final progress in progressRows) {
+      final studentId =
+          _parseStudentId(progress['student_id']) ??
+          _parseStudentId(progress['stud_id']) ??
+          fallbackStudentId;
+      if (studentId == null || studentId <= 0) {
+        continue;
+      }
+
+      final grade =
+          _gradeNameForId(_asInt(progress['gradelvl_id'])) ??
+          _asString(progress['gradelvl']) ??
+          _asString(progress['grade']) ??
+          'PUNLA';
+      final subject =
+          _subjectNameForId(_asInt(progress['subject_id'])) ??
+          _asString(progress['subject']) ??
+          'English';
+      final highestNodeIndex = _progressNodeIndex(
+        progress,
+        preferredKeys: const [
+          'highest_node_index',
+          'current_node_index',
+          'highest_level',
+          'current_level',
+        ],
+      );
+      final highestDiffPassed =
+          _asInt(progress['highest_diff_passed']) ??
+          _asInt(progress['HIGHEST_DIFF_PASSED']);
+      final fallbackHighestNodeIndex = highestDiffPassed
+          ?.clamp(0, LevelProgression.totalNodes - 1)
+          .toInt();
+      final resolvedHighestNodeIndex =
+          highestNodeIndex ?? fallbackHighestNodeIndex ?? 0;
+      final currentNodeIndex =
+          _progressNodeIndex(
+            progress,
+            preferredKeys: const [
+              'current_node_index',
+              'selected_node_index',
+              'current_level',
+              'level',
+            ],
+          ) ??
+          resolvedHighestNodeIndex;
+
+      await LocalSyncStore.instance.saveLocalLevelProgress(
+        studentId: studentId,
+        grade: grade,
+        subject: subject,
+        highestNodeIndex: resolvedHighestNodeIndex,
+        currentNodeIndex: currentNodeIndex,
+      );
+    }
+  }
+
+  static int? _progressNodeIndex(
+    Map<String, dynamic> row, {
+    required List<String> preferredKeys,
+  }) {
+    for (final key in preferredKeys) {
+      final value = _asInt(row[key]) ?? _asInt(row[key.toUpperCase()]);
+      if (value == null) {
+        continue;
+      }
+      final isOneBasedLevel = key.toLowerCase().contains('level');
+      final nodeIndex = isOneBasedLevel ? value - 1 : value;
+      return nodeIndex.clamp(0, LevelProgression.totalNodes - 1).toInt();
+    }
+    return null;
   }
 
   /// Save or update learner progress.
@@ -1695,6 +2117,21 @@ class ApiService {
 
   static String _normalizeBirthday(String value) {
     final raw = value.trim();
+    final iso = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})[T\s]').firstMatch(raw);
+    if (iso != null) {
+      final month = int.tryParse(iso.group(2) ?? '');
+      final day = int.tryParse(iso.group(3) ?? '');
+      if (month == null ||
+          day == null ||
+          month < 1 ||
+          month > 12 ||
+          day < 1 ||
+          day > 31) {
+        return raw;
+      }
+      return '${iso.group(1)}-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+    }
+
     final ymd = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})$').firstMatch(raw);
     if (ymd != null) {
       final month = int.tryParse(ymd.group(2) ?? '');
@@ -2710,4 +3147,11 @@ class _RemoteQuestionResult {
   final String? versionTag;
 
   const _RemoteQuestionResult({required this.rows, this.versionTag});
+}
+
+class _LearnerCacheResult {
+  final bool cachedAny;
+  final List<Map<String, dynamic>> learners;
+
+  const _LearnerCacheResult({required this.cachedAny, required this.learners});
 }
