@@ -1,0 +1,1 @@
+KOW-2.0 v0.0.9 alpha improves sync reliability, offline-first sign-in flow, and level-map interaction stability on fresh installs. This build is packaged from a full clean release process to minimize stale build-cache or package-residue issues across uninstall/reinstall cycles.

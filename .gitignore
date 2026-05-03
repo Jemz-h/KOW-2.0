@@ -76,3 +76,4 @@ backend/.env
 backend/.env.development
 .env.dev
 .env.prod
+releases/*.apk
