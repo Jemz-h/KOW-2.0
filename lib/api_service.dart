@@ -1746,7 +1746,6 @@ class ApiService {
     for (final path in <String>[
       '/api/users/$studentId/progress',
       '/api/users/$studentId',
-      '/api/admin/students/$studentId',
     ]) {
       try {
         final res = await _sendWithTimeout(
