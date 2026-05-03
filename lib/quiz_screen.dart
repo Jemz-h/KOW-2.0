@@ -432,11 +432,6 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
     }
   }
 
-  String? get _outsidePrompt {
-    if (_isEasy) return _q.prompt;
-    return _q.subPrompt;
-  }
-
   @override
   void initState() {
     super.initState();
@@ -1209,25 +1204,20 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                                   ),
                                 ),
 
-                                if (_isEasy) ...[
-                                  () {
-                                    final questionImage = _buildQuestionImage(
-                                      sw,
-                                    );
-                                    if (questionImage == null) {
-                                      return const SizedBox.shrink();
-                                    }
-
-                                    return Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        SizedBox(height: sh * kImagePadT),
-                                        questionImage,
-                                        SizedBox(height: sh * kImagePadB),
-                                      ],
-                                    );
-                                  }(),
-                                ],
+                                () {
+                                  final questionImage = _buildQuestionImage(sw);
+                                  if (questionImage == null) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SizedBox(height: sh * kImagePadT),
+                                      questionImage,
+                                      SizedBox(height: sh * kImagePadB),
+                                    ],
+                                  );
+                                }(),
 
                                 if (!_isEasy && _q.prompt != null) ...[
                                   SizedBox(height: sh * kDefPadT),
@@ -1267,33 +1257,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
                           ),
                         ),
 
-                        if (_outsidePrompt != null && !_showResult) ...[
-                          SizedBox(height: sh * kGapCardPrompt),
-                          Padding(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: sw * kPromptOutPadH,
-                            ),
-                            child: Text(
-                              _outsidePrompt!,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontFamily: 'SuperCartoon',
-                                fontSize: sw * kPromptOutFs,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                                shadows: const [
-                                  Shadow(
-                                    color: Colors.black38,
-                                    blurRadius: 3,
-                                    offset: Offset(1, 1),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          SizedBox(height: sh * kGapPromptBtns),
-                        ] else
-                          SizedBox(height: sh * kGapCardBtns),
+                        SizedBox(height: sh * kGapCardBtns),
 
                         Expanded(
                           child: AnimatedSwitcher(
