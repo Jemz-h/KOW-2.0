@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:android_id/android_id.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
@@ -29,6 +30,7 @@ class ApiService {
   static const _retryBaseDelay = Duration(milliseconds: 450);
   static final _uuid = Uuid();
   static final _deviceInfo = DeviceInfoPlugin();
+  static const _androidId = AndroidId();
   static int? _currentStudentId;
   static String? _currentNickname;
   static String? _currentBirthday;
@@ -2045,8 +2047,9 @@ class ApiService {
                         'subject_id': subjectId,
                         'gradelvl_id': gradeLevelId,
                         'highest_diff_passed': highestDiffPassed ?? 0,
-                        if (currentNodeIndex != null)
-                          'current_node_index': currentNodeIndex,
+                        ...?(currentNodeIndex == null
+                            ? null
+                            : {'current_node_index': currentNodeIndex}),
                         'total_time_played': totalTimePlayed,
                         'last_played_at': lastPlayedAt,
                       },
@@ -2077,8 +2080,9 @@ class ApiService {
             'grade': grade,
             'subject': normalizedSubject,
             'highest_diff_passed': highestDiffPassed,
-            if (currentNodeIndex != null)
-              'current_node_index': currentNodeIndex,
+            ...?(currentNodeIndex == null
+                ? null
+                : {'current_node_index': currentNodeIndex}),
             'total_time_played': totalTimePlayed,
             'last_played_at': lastPlayedAt,
           }),
@@ -2476,7 +2480,7 @@ class ApiService {
       return;
     }
 
-    _deviceUuid ??= _uuid.v4();
+    _deviceUuid = await _resolvePersistedDeviceUuid();
     final deviceName = await _resolveDeviceName();
 
     final res = await _runWithRetry(
@@ -2502,6 +2506,68 @@ class ApiService {
     if (token is String && token.isNotEmpty) {
       _deviceToken = token;
     }
+  }
+
+  static Future<String> _resolvePersistedDeviceUuid() async {
+    final inMemory = _deviceUuid?.trim();
+    if (inMemory != null && inMemory.isNotEmpty) {
+      return inMemory;
+    }
+
+    final stored = (await LocalSyncStore.instance.getDeviceUuid())?.trim();
+    if (stored != null && stored.isNotEmpty) {
+      _deviceUuid = stored;
+      return stored;
+    }
+
+    final resolved =
+        await _resolveDeterministicAndroidDeviceUuid() ??
+        'generated-${_uuid.v4()}';
+    _deviceUuid = resolved;
+    await LocalSyncStore.instance.saveDeviceUuid(resolved);
+    return resolved;
+  }
+
+  static Future<String?> _resolveDeterministicAndroidDeviceUuid() async {
+    try {
+      final androidId = await _androidId.getId();
+      final normalizedAndroidId = androidId?.trim();
+      if (normalizedAndroidId != null && normalizedAndroidId.isNotEmpty) {
+        return 'android-$normalizedAndroidId';
+      }
+    } catch (_) {
+      // Fall back to a deterministic hardware-derived value below.
+    }
+
+    try {
+      final androidInfo = await _deviceInfo.androidInfo;
+      final stableSeed = <String>[
+        androidInfo.serialNumber.trim(),
+        androidInfo.fingerprint.trim(),
+        androidInfo.brand.trim(),
+        androidInfo.manufacturer.trim(),
+        androidInfo.model.trim(),
+        androidInfo.device.trim(),
+        androidInfo.product.trim(),
+      ].where((value) => value.isNotEmpty).join('|');
+
+      if (stableSeed.isEmpty) {
+        return null;
+      }
+
+      return 'android-fallback-${_stableDeviceHash(stableSeed)}';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static String _stableDeviceHash(String value) {
+    var hash = 0xcbf29ce484222325;
+    for (final codeUnit in value.codeUnits) {
+      hash ^= codeUnit;
+      hash = (hash * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF;
+    }
+    return hash.toRadixString(16).padLeft(16, '0');
   }
 
   static Future<void> _tryEnsureDeviceAuth() async {

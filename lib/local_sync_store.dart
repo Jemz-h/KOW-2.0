@@ -63,6 +63,7 @@ class LocalSyncStore {
   LocalSyncStore._();
 
   static final LocalSyncStore instance = LocalSyncStore._();
+  static const _deviceUuidSettingKey = 'device_uuid';
 
   Database? _db;
   final List<Map<String, dynamic>> _webStudentsLocal = <Map<String, dynamic>>[];
@@ -639,8 +640,7 @@ class LocalSyncStore {
     int? clampNodeIndex(int? value, int? maxIndex) {
       if (value == null) return null;
       if (maxIndex == null) return value;
-      final clamped = value.clamp(0, maxIndex);
-      return clamped is int ? clamped : clamped.toInt();
+      return value.clamp(0, maxIndex);
     }
 
     final normalizedGrade = grade.trim().toUpperCase();
@@ -1456,6 +1456,46 @@ class LocalSyncStore {
       'key': 'install_state_version',
       'value': version,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> saveDeviceUuid(String deviceUuid) async {
+    final normalized = deviceUuid.trim();
+    if (normalized.isEmpty) {
+      return;
+    }
+
+    if (_useWebMemoryStore) {
+      _webSettings[_deviceUuidSettingKey] = normalized;
+      return;
+    }
+
+    final db = await _database();
+    await db.insert('app_settings', {
+      'key': _deviceUuidSettingKey,
+      'value': normalized,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<String?> getDeviceUuid() async {
+    if (_useWebMemoryStore) {
+      return _webSettings[_deviceUuidSettingKey];
+    }
+
+    final db = await _database();
+    final rows = await db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [_deviceUuidSettingKey],
+      limit: 1,
+    );
+
+    if (rows.isEmpty) {
+      return null;
+    }
+
+    final value = (rows.first['value'] as String?)?.trim();
+    return value == null || value.isEmpty ? null : value;
   }
 
   Future<void> resetVersionedInstallState() async {
